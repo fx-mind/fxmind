@@ -201,9 +201,12 @@ If no reusable knowledge was learned, omit memory noise unless it clarifies the 
 
 **Read-only analysis.** Do **not** edit code unless the user explicitly asks to implement fixes after reviewing the plan.
 
+> **Output path (mandatory):** write the report to **`.fxmind/audits/<resource-name>.md`** only.  
+> **Forbidden:** `.fxmind/audit-<name>.md` or any `audit-*.md` in the `.fxmind/` root — use the `audits/` folder. Read `.fxmind/audits/README.md` if present.
+
 Audit the target Lua/JS resource(s) for **security**, **performance**, and **patterns**. Deliver a structured report + prioritized correction plan.
 
-> **Assertiveness:** Follow **`best-practices.md` §2.4** (mandatory passes), **§1.6.1** (broadcast targets), and **§5.1** (manager events). An audit that covers only one file, skips matrices, treats cooldown as permission, or recommends `TriggerClientEvent("manager:*", -1, ...)` is **failed/incomplete** — redo before delivering.
+> **Assertiveness:** Follow **`best-practices.md` §2.4** (mandatory passes), **§2.5** (quality gates), **§1.6.1** (broadcast), **§5.1** (manager events). Incomplete matrix, invented files, or wrong summary counts = **redo audit**.
 
 ### Step 1 — Load standards
 
@@ -211,7 +214,7 @@ Read from **`.fxmind/skills/`** (installed from [fivem-skill](https://github.com
 
 | Skill file | Sections |
 |------------|----------|
-| `fivem-development/best-practices.md` | **§1.6.1** broadcast, §2.2–**§2.4** (view cache + assertiveness), §3.6 globals, **§4.2** cerberus vs `-1`, **§5.1** manager auth |
+| `fivem-development/best-practices.md` | **§1.6.1** broadcast, §2.2–**§2.5**, §3.6, **§4.2**, **§5.1** |
 | Framework skill (`vrp-framework`, etc.) | If detected |
 | `fivem-react-nui/ui-guide.md` | If scope includes NUI/web |
 
@@ -255,8 +258,8 @@ playerConnect|playerJoining|playerSpawned
 
    a. Grep **every** `build*`, `Sanitize*`, `Get*List`, `Get*Summary*`, `Load*Player`, `Load*Cache`, `ChunkTable`.
    b. For **each** caller: read enclosing handler name; record `file:line` + symbol.
-   c. Explicitly search: `TriggerClientEvent\([^)]*build`, same-handler double build, CRUD + `Load*Player` + delta fn.
-   d. Flag all applicable rows — **do not report only the first match**.
+   c. Grep **`Get.*SummaryList`** and **`build.*List`** — list **all** call sites in V-b detail (not only the first).
+   d. Explicitly search: `TriggerClientEvent\([^)]*build`, same-handler double build, CRUD + count **every** sync line (`Load*Player`, `Send*Update`, manager events, world delta).
 
 7. **Broadcast matrix (§1.6.1)** — grep every `TriggerClientEvent(-1, ...)` and large sync path:
 
@@ -270,7 +273,7 @@ playerConnect|playerJoining|playerSpawned
 
 9. **Manager events pass (§5.1 Pass 4)** — build **Manager events matrix** for every `manager:*` / admin event.
 
-10. **Pass 6 self-check** — complete checklist in §2.4 before writing report.
+10. **Pass 6 + Pass 7 self-check** — complete §2.4 Pass 6 and **§2.5 quality gates** before writing report.
 
 ### Step 3 — Evaluate (evidence required — Pass 1)
 
@@ -299,9 +302,9 @@ Report as **systemic finding** when multiple events share the same missing auth 
 Report **separate findings** for each matrix row hit (V-a through V-i):
 
 - **V-a** `build*` inside `TriggerClientEvent` argument
-- **V-b** `build*List()` in get/open event handler
+- **V-b** `build*List()` / `Get*Summary*()` — **every** call site with `file:line`
 - **V-c** double build (item + list same handler)
-- **V-d** triple sync (delta + full list + `Load*Player` same CRUD)
+- **V-d** redundant sync storm — list **each** send in CRUD handler (manager + list + `Load*Player` + world delta)
 - **V-e** `Load*Player` on connect/bootstrap
 - **V-f** `Load*Player` after single CRUD when delta exists
 - **V-g** full `Load*Cache()` after one DB write
@@ -343,7 +346,7 @@ For each §2.3 finding in the report, the plan must include:
 
 1. **New caches** — name `SourceCache` / `ViewCache` / optional `ViewListCache`
 2. **Rebuild hooks** — where to call `rebuildViewItem(id)` / `rebuildViewAll()` (load, create, update, delete)
-3. **Send sites** — replace hot-path `build*` calls with cached references
+3. **Send sites** — replace hot-path `build*` calls with cached references; on **delete**, nil view cache entry
 4. **Delta vs full** — remove redundant `Load*Player` when delta exists; large bootstrap → cerberus not `TriggerClientEvent(-1)`
 5. **Broadcast** — admin/manager → `source`; world small delta → `-1`; world large → cerberus + scope
 6. **Minimal snippet** — before/after for the worst caller (`file:line`); **never** `manager:*` with `-1` in fixes
@@ -369,7 +372,9 @@ Assign severity:
 
 ### Step 4 — Write report
 
-Save to **`.fxmind/audits/<resource-name>.md`**.
+Create **`.fxmind/audits/`** if missing. Save to **`.fxmind/audits/<resource-name>.md`** (e.g. scope `garages` → `.fxmind/audits/garages.md`).
+
+**Forbidden:** do not write `.fxmind/audit-<name>.md` at the `.fxmind/` root.
 
 Use structure from `audit.template.md` — **required sections:**
 
@@ -380,8 +385,8 @@ Use structure from `audit.template.md` — **required sections:**
 5. **Globals table** (Symbol | Declared | Used in | Verdict)
 6. Findings tables: Security, Performance (V-a…V-j), Patterns, NUI
 7. **Correction plan** — phased; severity must match findings
-8. **Files reviewed** — every manifest Lua file with line count
-9. **Pass 6 self-check** — all boxes ticked
+8. **Files reviewed** — **only** manifest script paths (+ NUI if scoped); line count each
+9. **Pass 6 + Pass 7 self-check** — all boxes ticked (§2.4 + §2.5)
 
 Write report in **Portuguese** if codebase/comments are PT-BR; otherwise match project language.
 
@@ -405,9 +410,12 @@ In chat, provide:
 - **Never use `TriggerClientEvent(-1, largeTable)`** in fixes — cerberus `SendFullSync` / `SendDeltaSync` + scope (§4.2)
 - **Never skip view-cache matrix rows** — report each V-a–V-j as found or N/A
 - **Never mismatch severity and phase** — High findings go to Phase 2, not Phase 3
+- **Never list files not in `fxmanifest`** in Files reviewed (§2.5)
+- **Never guess summary counts** — count Findings rows; grep before "N events use cooldown" (§2.5)
+- **Never report only first V-b caller** — grep all `build*List` / `Get*Summary*` sites (§2.5)
 - **Do not** auto-fix during audit mode
 - Prefer concrete **before/after** snippets for every Critical/High finding
-- If scope is too large, audit **one resource at a time** (full manifest), not one file
+- **Do not** write audit reports outside `.fxmind/audits/`
 - **Do not recommend** creating a function whose body is only `TriggerEvent(...)` / `TriggerServerEvent(...)` — inline at call site, or expand into a helper that also closes NUI/camera/state (see best-practices §1.3)
 - **Do not recommend** `TriggerEvent` for logic that already exists as `local function` in the same file — call the function directly
 - When a fix needs a cross-resource hook (e.g. `login:Spawn`, `hookSelector`), show the **inlined** `TriggerEvent` in the plan, not a one-line wrapper alias

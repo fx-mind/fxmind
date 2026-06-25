@@ -104,7 +104,14 @@ fxmind graph
 
 Agent paths stay `.fxmind/memory/` — symlinks keep compatibility. `/fxmind query` may load foreign memories when graph links to another project.
 
-Migrate an existing local install: `fxmind --global-store --update -y`
+Migrate legacy audit files at `.fxmind/` root:
+
+```bash
+fxmind migrate
+fxmind --update -y    # also refreshes fxmind.md + agent commands
+```
+
+Enable global store on existing project: `fxmind --global-store --update -y`
 
 ### CLI vs agent
 
@@ -224,7 +231,7 @@ Inside Cursor, Claude, Gemini, OpenCode, or Codex — project memory workflows (
 |---------|--------|
 | `/fxmind reference` | Generate/update `reference.mdc` |
 | `/fxmind learn <topic>` | Save topic memory |
-| `/fxmind audit` | Code audit (pack-specific templates when installed) |
+| `/fxmind audit` | Code audit → saves to `.fxmind/audits/<resource>.md` |
 | `/fxmind graph` | Knowledge graph + 3D map |
 | `/fxmind query "…"` | Graph retrieval |
 | `/fxmind path <a> <b>` | Shortest path between topics |

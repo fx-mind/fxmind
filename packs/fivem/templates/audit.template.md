@@ -1,5 +1,7 @@
 # FiveM Audit — {{RESOURCE_OR_SCOPE}}
 
+> **Save this report to:** `.fxmind/audits/{{RESOURCE_OR_SCOPE}}.md` — not `.fxmind/audit-*.md` at the root.
+
 **Date:** {{DATE}}  
 **Framework:** {{FRAMEWORK}}  
 **Scope:** {{SCOPE_PATHS}}  
@@ -39,15 +41,18 @@ Or: **N/A** — no manager/admin events in scope.
 | Row | Check | Found? | File:line | Severity |
 |-----|-------|--------|-----------|----------|
 | V-a | `build*` inside `TriggerClientEvent` args | | | High |
-| V-b | `build*List()` in get/open handler | | | High |
+| V-b | `build*List()` / `Get*Summary*()` in handler | | | High |
 | V-c | Double build (item + list same handler) | | | High |
-| V-d | Triple sync (delta + list + `Load*Player`) | | | High |
+| V-d | Redundant sync storm (list every send in CRUD) | | | High |
 | V-e | `Load*Player` on connect | | | High |
 | V-f | `Load*Player` after CRUD + delta exists | | | High |
 | V-g | Full `Load*Cache()` after one DB write | | | Medium |
 | V-h | Duplicate transform / duplicate fn | | | Medium |
 | V-i | Manual `ChunkTable` + `Wait` | | | Medium |
 | V-j | Broadcast misuse (`manager:*` or large payload to `-1`) | | | High / Critical |
+
+> **V-b detail:** list **every** call site (grep `build*List\(` and `Get*Summary*`).
+> **V-d detail:** count each sync line — e.g. manager + full list + `Load*Player` + world delta = 4 paths.
 
 Mark **N/A** only when the resource has no caches/sync — explain why.
 
@@ -136,7 +141,7 @@ exports["cerberus"]:SendFullSync(source, "garages:fullSync", SanitizedGarageCach
 
 ### Phase 2 — High (view cache + hot paths)
 
-1. [ ] V-a–V-f — view cache layer; remove hot-path rebuilds
+1. [ ] V-a–V-f — view cache layer; remove hot-path rebuilds; **nil view cache on delete**
 2. [ ] Large sync → cerberus instead of manual chunks (V-i)
 
 ### Phase 3 — Medium
@@ -149,19 +154,23 @@ exports["cerberus"]:SendFullSync(source, "garages:fullSync", SanitizedGarageCach
 
 ---
 
-## Pass 6 Self-Check (§2.4)
+## Pass 6 + Pass 7 Self-Check (§2.4 + §2.5)
 
-- [ ] All fxmanifest Lua files in **Files reviewed**
+- [ ] **Files reviewed** = only `fxmanifest` script paths (+ NUI if scoped) — no invented paths
 - [ ] View cache matrix V-a–V-j each marked Found or N/A
-- [ ] **Broadcast matrix** filled for every `TriggerClientEvent(-1, ...)` and large sync
-- [ ] Summary counts = findings row counts
-- [ ] Every finding has correct **symbol** and verified line
-- [ ] Phase plan matches severities
+- [ ] V-b detail lists **all** `build*List` / `Get*Summary*` callers
+- [ ] V-d lists **each** sync line in CRUD handlers (exact count, not "triple")
+- [ ] Cooldown helper usage count from grep (not guessed)
+- [ ] **Broadcast matrix** filled for every `TriggerClientEvent(-1, ...)`
+- [ ] Summary counts = findings row counts (or explain systemic grouping)
+- [ ] Security checklist honest — no `[x]` on failed items
 - [ ] Before/after snippets for all Critical/High items
 
 ---
 
 ## Files Reviewed
+
+> **Only** paths listed in `fxmanifest` (`server_scripts`, `client_scripts`, `shared_scripts`). Do not add `config.lua` unless it appears in the manifest.
 
 | File | Lines | Side |
 |------|-------|------|
@@ -169,7 +178,7 @@ exports["cerberus"]:SendFullSync(source, "garages:fullSync", SanitizedGarageCach
 
 ## Skills Referenced
 
-- **fivem-skill** → `.fxmind/skills/fivem-development/best-practices.md` (§1.6.1, §2.2–2.4, §3.6, §4.2, §5.1)
+- **fivem-skill** → `.fxmind/skills/fivem-development/best-practices.md` (§1.6.1, §2.2–**§2.5**, §3.6, §4.2, §5.1)
 - Framework skill: `{{FRAMEWORK_SKILL}}`
 
 **Repo split:** patterns live in [fivem-skill](https://github.com/proelias7/fivem-skill); audit workflow lives in [fxmind](https://github.com/fx-mind/fxmind).

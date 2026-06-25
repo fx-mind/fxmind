@@ -36,6 +36,7 @@ Only read skills listed in `.fxmind/skills/_index.md` — skip missing paths.
 | Path | Role |
 |------|------|
 | `.fxmind/memory/<topic>.md` | Topic memories |
+| `.fxmind/audits/<resource>.md` | Audit reports (**never** `.fxmind/audit-*.md` at root) |
 | `.fxmind/knowledge-graph.json` | Graph for query/path/explain |
 | `.fxmind/topic-catalog.md` | Learn search hints |
 | `.fxmind/store.json` | Global store pointer when enabled |

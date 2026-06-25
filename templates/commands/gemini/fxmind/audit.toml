@@ -23,7 +23,13 @@ Check: SafeEvent on advantage events, SetCooldown on client spam, server validat
 
 ## Output
 
-Save report to **`.fxmind/audits/<resource-name>.md`** using audit.template.md structure + phased correction plan.
+Read `.fxmind/audits/README.md` if present.
+
+Save report **only** to **`.fxmind/audits/<resource-name>.md`** (e.g. `garages` → `.fxmind/audits/garages.md`).
+
+**Forbidden:** never create `.fxmind/audit-<name>.md` in the `.fxmind/` root.
+
+Use audit.template.md structure + phased correction plan.
 
 Reply with executive summary, top 3 fixes, report path. Ask if user wants Phase 1 implemented — wait for approval.
 

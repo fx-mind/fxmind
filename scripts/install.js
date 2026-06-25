@@ -148,6 +148,7 @@ Without global install:
   ${npxInstall("--update -y")}       Refresh installed packs, skills, and templates
   ${npxInstall("graph")}             Build graph from .fxmind/memory/ + open browser
   ${npxInstall("--global-store -y")} Install with global store (~/.fxmind/projects/<id>/)
+  ${npxInstall("migrate")}            Move legacy audit-*.md → audits/
   ${npxInstall("global list")}       List projects in global store
 
 Local dev (monorepo):
@@ -1113,7 +1114,7 @@ function migrateAndCleanLegacyAgentArtifacts(targetRoot) {
       }
 
       const legacyPath = path.join(legacyFull, name);
-      const resourceName = name.slice("audit-".length);
+      const resourceName = auditReportSlug(name);
       const auditsDir = path.join(sharedDir, "audits");
       const sharedPath = path.join(auditsDir, `${resourceName}.md`);
       fs.mkdirSync(auditsDir, { recursive: true });
@@ -1375,6 +1376,81 @@ function resolveUpdateOptions(options) {
   }
 }
 
+function installAuditsDir(targetRoot) {
+  const auditsDir = path.join(targetRoot, AUDITS_DIR);
+  fs.mkdirSync(auditsDir, { recursive: true });
+
+  const readmeSrc = path.join(PACKAGE_ROOT, FXMIND_TEMPLATES_DIR, "audits", "README.md");
+  const readmeDest = path.join(auditsDir, "README.md");
+  if (fs.existsSync(readmeSrc)) {
+    fs.copyFileSync(readmeSrc, readmeDest);
+  }
+
+  return AUDITS_DIR.replace(/\\/g, "/");
+}
+
+function runMigrateCli(argv) {
+  const options = { target: process.cwd(), help: false };
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "-h" || arg === "--help") {
+      options.help = true;
+    } else if (arg === "--target") {
+      options.target = path.resolve(argv[i + 1] || "");
+      i += 1;
+    }
+  }
+
+  if (options.help) {
+    console.log(`
+Migrate legacy .fxmind layout (e.g. audit-*.md at root → audits/).
+
+Usage:
+  fxmind migrate [--target <dir>]
+
+Moves:
+  .fxmind/audit-<resource>.md  →  .fxmind/audits/<resource>.md
+
+Also ensures .fxmind/audits/ exists with README.
+`);
+    return 0;
+  }
+
+  if (!fs.existsSync(options.target)) {
+    console.error(`Error: target directory does not exist: ${options.target}`);
+    return 1;
+  }
+
+  const fxmindDir = path.join(options.target, SHARED_DIR);
+  if (!fs.existsSync(fxmindDir)) {
+    console.error(`Error: missing ${SHARED_DIR}/ — run fxmind -y first.`);
+    return 1;
+  }
+
+  installAuditsDir(options.target);
+  const migrated = migrateAuditReports(options.target);
+
+  console.log(`\nMigrated: ${options.target}`);
+  if (migrated.length === 0) {
+    console.log("  (nothing to move — audits/ already clean)");
+  } else {
+    for (const dest of migrated) {
+      console.log(`  ✓ → ${dest}`);
+    }
+  }
+  console.log(`  ✓ audits/ ready\n`);
+  return 0;
+}
+
+function auditReportSlug(fileName) {
+  let slug = fileName.slice("audit-".length);
+  if (slug.endsWith(".md")) {
+    slug = slug.slice(0, -3);
+  }
+  return slug;
+}
+
 function migrateAuditReports(targetRoot) {
   const fxmindDir = path.join(targetRoot, SHARED_DIR);
   const auditsDir = path.join(targetRoot, AUDITS_DIR);
@@ -1396,7 +1472,7 @@ function migrateAuditReports(targetRoot) {
       continue;
     }
 
-    const resourceName = name.slice("audit-".length);
+    const resourceName = auditReportSlug(name);
     const destPath = path.join(auditsDir, `${resourceName}.md`);
 
     if (!fs.existsSync(destPath)) {
@@ -1506,7 +1582,7 @@ function installSharedFxmind(targetRoot, packIds, installOptions = {}) {
   }
 
   fs.mkdirSync(path.join(targetRoot, AUDITS_DIR), { recursive: true });
-  installed.push(AUDITS_DIR.replace(/\\/g, "/"));
+  installed.push(installAuditsDir(targetRoot));
   for (const dest of migrateAuditReports(targetRoot)) {
     installed.push(dest);
   }
@@ -1751,6 +1827,10 @@ async function main() {
   if (argv[0] === "global") {
     const { runGlobalCli } = require("./global-store");
     process.exit(runGlobalCli(argv.slice(1)));
+  }
+
+  if (argv[0] === "migrate") {
+    process.exit(runMigrateCli(argv.slice(1)));
   }
 
   const options = parseArgs(argv);
