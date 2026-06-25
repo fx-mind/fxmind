@@ -76,6 +76,8 @@ const LEGACY_FIVEM_FILES = [
 const SHARED_DIR = ".fxmind";
 const PACK_SKILLS_DIR = path.join(SHARED_DIR, "skills");
 const AUDITS_DIR = path.join(SHARED_DIR, "audits");
+/** Bump when shared layout changes (e.g. audits/ folder). */
+const LAYOUT_VERSION = 2;
 const LEGACY_SHARED_DIRS = [".fivem"];
 
 const LEGACY_AGENT_FIVEM_DIRS = [
@@ -1306,6 +1308,29 @@ function detectInstalledSkills(targetRoot) {
 function detectInstalledCommand(targetRoot, agentIds) {
   return agentIds.some((agentId) => {
     const agent = AGENTS[agentId];
+
+    const fxmindSkill = path.join(
+      targetRoot,
+      agent.skillsDir,
+      COMMAND_SKILL_NAME,
+      "SKILL.md",
+    );
+    if (fs.existsSync(fxmindSkill)) {
+      return true;
+    }
+
+    if (agent.altSkillsDir) {
+      const altSkill = path.join(
+        targetRoot,
+        agent.altSkillsDir,
+        COMMAND_SKILL_NAME,
+        "SKILL.md",
+      );
+      if (fs.existsSync(altSkill)) {
+        return true;
+      }
+    }
+
     if (agent.commandMode === "file" && agent.commandsDir) {
       return fs.existsSync(path.join(targetRoot, agent.commandsDir, COMMAND_FILE));
     }
@@ -1374,6 +1399,78 @@ function resolveUpdateOptions(options) {
       "Nothing to update: no skills or /fxmind helper detected. Re-run install.",
     );
   }
+}
+
+function hasLegacyAuditLayout(targetRoot) {
+  const fxmindGuide = path.join(targetRoot, SHARED_DIR, "fxmind.md");
+  if (!fs.existsSync(fxmindGuide)) {
+    return true;
+  }
+
+  const content = fs.readFileSync(fxmindGuide, "utf8");
+  return (
+    content.includes(".fxmind/audit-<") &&
+    !content.includes(".fxmind/audits/")
+  );
+}
+
+function listLegacyAuditReportsAtRoot(targetRoot) {
+  const fxmindDir = path.join(targetRoot, SHARED_DIR);
+  if (!fs.existsSync(fxmindDir)) {
+    return [];
+  }
+
+  return fs
+    .readdirSync(fxmindDir)
+    .filter(
+      (name) =>
+        name.startsWith("audit-") &&
+        name.endsWith(".md") &&
+        name !== "audit.template.md",
+    );
+}
+
+function refreshSharedAuditLayout(targetRoot) {
+  const installed = [];
+  installed.push(installAuditsDir(targetRoot));
+
+  const guideSrc = path.join(PACKAGE_ROOT, COMMAND_TEMPLATE);
+  const guideDest = path.join(targetRoot, SHARED_DIR, "fxmind.md");
+  if (fs.existsSync(guideSrc)) {
+    fs.mkdirSync(path.dirname(guideDest), { recursive: true });
+    fs.copyFileSync(guideSrc, guideDest);
+    installed.push(path.relative(targetRoot, guideDest).replace(/\\/g, "/"));
+  }
+
+  for (const dest of migrateAuditReports(targetRoot)) {
+    installed.push(dest);
+  }
+
+  return installed;
+}
+
+function printLegacyAuditLayoutWarning(targetRoot) {
+  const legacyFiles = listLegacyAuditReportsAtRoot(targetRoot);
+  const legacyGuide = hasLegacyAuditLayout(targetRoot);
+  const auditsDir = path.join(targetRoot, AUDITS_DIR);
+
+  if (!legacyGuide && legacyFiles.length === 0 && fs.existsSync(auditsDir)) {
+    return;
+  }
+
+  console.log("\n⚠ Legacy audit layout detected:");
+  if (legacyGuide) {
+    console.log("  • .fxmind/fxmind.md still points to .fxmind/audit-<name>.md");
+  }
+  if (legacyFiles.length > 0) {
+    console.log(`  • ${legacyFiles.length} report(s) at .fxmind/ root: ${legacyFiles.join(", ")}`);
+  }
+  if (!fs.existsSync(auditsDir)) {
+    console.log("  • .fxmind/audits/ folder missing");
+  }
+  console.log(
+    "  → Run update from the latest fxmind (npm/github or local monorepo), then restart the agent.\n",
+  );
 }
 
 function installAuditsDir(targetRoot) {
@@ -1593,6 +1690,7 @@ function installSharedFxmind(targetRoot, packIds, installOptions = {}) {
 function writePacksManifest(targetRoot, packIds, meta = {}) {
   const manifest = {
     version: 1,
+    layoutVersion: LAYOUT_VERSION,
     packSkillsDir: PACK_SKILLS_DIR.replace(/\\/g, "/"),
     packs: packIds.map((id) => {
       const pack = getPack(id);
@@ -1880,6 +1978,15 @@ async function main() {
       `Agents: ${agents.map((agent) => agent.label).join(", ")}\n`,
     );
 
+    const layoutRefresh = refreshSharedAuditLayout(options.target);
+    if (layoutRefresh.length > 0) {
+      console.log("[Layout]");
+      for (const dest of layoutRefresh) {
+        console.log(`  ✓ ${dest}`);
+      }
+      console.log("");
+    }
+
     if (options.command) {
       console.log("[Shared .fxmind]");
       const shared = installSharedFxmind(options.target, packs, {
@@ -1938,6 +2045,7 @@ async function main() {
     }
 
     console.log("Update complete.");
+    printLegacyAuditLayoutWarning(options.target);
     console.log("Restart your agent IDE/CLI or open a new session.");
     console.log(`Refresh again anytime: ${npxInstall("--update -y")}`);
     console.log("Gemini: run /commands reload after update.");

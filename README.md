@@ -111,6 +111,14 @@ fxmind migrate
 fxmind --update -y    # also refreshes fxmind.md + agent commands
 ```
 
+If `--update` still leaves `audit-*.md` at `.fxmind/` root (no `audits/` folder), the npm/GitHub package may be behind — update from this monorepo:
+
+```bash
+node /path/to/fxmind/scripts/install.js --target . --update -y
+```
+
+After update, **open a new agent chat** so it reads the refreshed `.fxmind/fxmind.md`.
+
 Enable global store on existing project: `fxmind --global-store --update -y`
 
 ### CLI vs agent
