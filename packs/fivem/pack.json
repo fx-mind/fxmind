@@ -1,0 +1,20 @@
+{
+  "id": "fivem",
+  "label": "FiveM",
+  "description": "vRP, QBCore, Qbox, ESX, NUI — Lua resources, natives, and server patterns",
+  "skills": {
+    "repo": "https://github.com/proelias7/fivem-skill.git",
+    "cacheName": "fivem-skill",
+    "siblingPath": "../fivem-skill/skills"
+  },
+  "defaultSkills": [
+    "vrp-framework",
+    "fivem-development",
+    "fivem-react-nui"
+  ],
+  "templateFiles": [
+    "topic-catalog.md",
+    "audit.template.md",
+    "reference.example.mdc"
+  ]
+}
