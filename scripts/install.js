@@ -123,7 +123,13 @@ Recommended (install once globally, then use short command):
 
 Without global install:
   ${npxInstall()}                    Interactive mode (packs, agents, skills)
-  ${npxInstall("-y")}                Core + fivem pack (default skills)
+  ${npxInstall("-y")}                Core + fivem pack (Cursor only)
+  ${npxInstall("--cursor -y")}       Cursor only (explicit)
+  ${npxInstall("--claude -y")}       Claude Code only
+  ${npxInstall("--codex -y")}        Codex only
+  ${npxInstall("--gemini -y")}       Gemini CLI only
+  ${npxInstall("--opencode -y")}     OpenCode only
+  ${npxInstall("--agent cursor,claude,gemini -y")}  Multiple agents
   ${npxInstall("--no-packs -y")}     Core /fxmind only — no domain skills
   ${npxInstall("--pack fivem -y")}   Explicit fivem knowledge pack
   ${npxInstall("--all-packs -y")}    Every available pack

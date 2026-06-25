@@ -27,6 +27,44 @@ npx github:fx-mind/fxmind --no-packs -y
 npx github:fx-mind/fxmind --pack fivem -y
 ```
 
+### Install for specific agents
+
+By default, `-y` installs for **Cursor** only. Target one or more agents with flags:
+
+```bash
+# Single agent
+npx github:fx-mind/fxmind --cursor -y
+npx github:fx-mind/fxmind --claude -y
+npx github:fx-mind/fxmind --codex -y
+npx github:fx-mind/fxmind --gemini -y
+npx github:fx-mind/fxmind --opencode -y
+
+# Multiple agents (comma-separated)
+npx github:fx-mind/fxmind --agent cursor,claude,gemini -y
+npx github:fx-mind/fxmind -a cursor,codex -y
+
+# Agent + pack + update examples
+npx github:fx-mind/fxmind --gemini --pack fivem -y
+npx github:fx-mind/fxmind --cursor --update -y
+npx github:fx-mind/fxmind --claude --no-packs -y
+```
+
+| Agent | Flag | Skill path | Command path |
+|-------|------|------------|--------------|
+| Cursor | `--cursor` | `.cursor/skills/fxmind/` | `.cursor/commands/fxmind.md` |
+| Claude Code | `--claude` | `.claude/skills/fxmind/` | `.claude/commands/fxmind.md` |
+| Codex | `--codex` | `.agents/skills/fxmind/` | (skill only) |
+| Gemini CLI | `--gemini` | `.gemini/skills/fxmind/` | `.gemini/commands/fxmind/` |
+| OpenCode | `--opencode` | `.opencode/skills/fxmind/` | `.opencode/commands/fxmind.md` |
+
+Shared `.fxmind/` (memory, pack skills, graph) is the same for all agents — install once per project, even when using multiple agent flags.
+
+```bash
+cd fxmind
+node scripts/install.js --target ../my-project --pack fivem --cursor -y
+node scripts/install.js --target ../my-project --agent cursor,claude --update -y
+```
+
 ## Knowledge packs
 
 | Pack | Description | Skills repo |
@@ -91,6 +129,8 @@ Interactive 3D map from `/fxmind graph` — learned topics, cross-links, filters
 ```bash
 cd fxmind
 node scripts/install.js --target ../my-project --pack fivem -y
+node scripts/install.js --target ../my-project --pack fivem --cursor -y
+node scripts/install.js --target ../my-project --agent cursor,claude --update -y
 ```
 
 Skills resolve: sibling `../fivem-skill/skills` → env `FXMIND_PACK_FIVEM_SKILLS_DIR` → git cache `~/.fxmind/packs-cache/`.
