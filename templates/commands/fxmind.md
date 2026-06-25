@@ -39,7 +39,9 @@ Parse `$ARGUMENTS` (trim, case-insensitive):
 
 ## Shared memory (`.fxmind/`)
 
-All agents (Cursor, Claude, Gemini, OpenCode, Codex) read and write the **same project memory** under `.fxmind/` at the project root.
+All agents read and write the **same project memory** under `.fxmind/` at the project root.
+
+**Global store** (`fxmind --global-store -y`): memories and graph live in `~/.fxmind/projects/<id>/`; project `.fxmind/store.json` + symlinks keep agent paths unchanged. Pack skills install once to `~/.fxmind/shared/skills/`. Run `fxmind global list` to see registered projects. Graph/query may use **cross-project** memories when links exist.
 
 | Path | Role |
 |------|------|
@@ -619,9 +621,15 @@ Graph mode is intentionally mechanical:
 
 Do **not** think beyond this operation, improve graph code, tune visuals, edit templates, learn memories, create scripts, or modify project code.
 
-This mode is file-only: **no Python, no Node, no Bash helper, no generated script, no HTTP server, no background process**.
+This mode is file-only when run by the agent. **CLI:** `fxmind graph` runs the bundled Node builder — no agent required.
 
-### Step 1 — Read sources
+**Agent mode:** no Python/Bash helper scripts; assemble JSON in context and write files directly.
+
+### Step 1 — Read sources (or run CLI)
+
+**Preferred:** from project root run `fxmind graph` — builds JSON/HTML and opens the browser.
+
+**Agent fallback:** read sources manually and write files as below.
 
 From the FiveM project root, read:
 

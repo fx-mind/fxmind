@@ -12,8 +12,10 @@ You are the **fxmind** skill — the only skill that should live in the agent sk
 ## Routing
 
 1. **Modes** (`/fxmind learn`, `audit`, `graph`, `query`, task workflow, …) → read **`.fxmind/fxmind.md`**
-2. **Project memories** → **`.fxmind/memory/_index.md`** then relevant `memory/<topic>.md`
-3. **Installed pack skills** → **`.fxmind/skills/_index.md`** and **`.fxmind/packs.json`**
+2. **Graph (CLI)** → `fxmind graph` builds + opens `.fxmind/knowledge-graph.html`
+3. **Project memories** → **`.fxmind/memory/_index.md`** then relevant `memory/<topic>.md`
+4. **Installed pack skills** → **`.fxmind/skills/_index.md`** and **`.fxmind/packs.json`**
+5. **Global store** → if `.fxmind/store.json` has `mode: global`, memories live in `~/.fxmind/projects/<id>/` (paths via symlink). Cross-project memories may appear in graph/query links.
 
 ## Pack skills (on demand)
 
@@ -36,6 +38,7 @@ Only read skills listed in `.fxmind/skills/_index.md` — skip missing paths.
 | `.fxmind/memory/<topic>.md` | Topic memories |
 | `.fxmind/knowledge-graph.json` | Graph for query/path/explain |
 | `.fxmind/topic-catalog.md` | Learn search hints |
-| `.fxmind/packs.json` | Installed packs + skill list |
+| `.fxmind/store.json` | Global store pointer when enabled |
+| `.fxmind/packs.json` | Installed packs + `storage: global|local` |
 
 **Write policy:** `learn`, `memory health fix`, and `graph` write only to `.fxmind/`.

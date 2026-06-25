@@ -16,6 +16,12 @@ const {
   buildSkillSources,
   refreshPackSkillsCaches,
 } = require("./resolve-packs");
+const {
+  setupGlobalStore,
+  isGlobalStore,
+  resolveSkillsRoot,
+  GLOBAL_SHARED_SKILLS,
+} = require("./global-store");
 
 let SKILL_SOURCES = new Map();
 
@@ -120,6 +126,10 @@ Knowledge packs add domain-specific skills under \`.fxmind/skills/\` and the fxm
 Recommended (install once globally, then use short command):
   ${globalInstall()}
   fxmind -y
+  fxmind --update -y
+  fxmind graph               Build 3D knowledge graph + open browser
+  fxmind graph --no-open     Build graph files only
+  fxmind -h
 
 Without global install:
   ${npxInstall()}                    Interactive mode (packs, agents, skills)
@@ -135,12 +145,17 @@ Without global install:
   ${npxInstall("--all-packs -y")}    Every available pack
   ${npxInstall("--all -y")}          All skills from selected pack(s)
   ${npxInstall("--update -y")}       Refresh installed packs, skills, and templates
+  ${npxInstall("graph")}             Build graph from .fxmind/memory/ + open browser
+  ${npxInstall("--global-store -y")} Install with global store (~/.fxmind/projects/<id>/)
+  ${npxInstall("global list")}       List projects in global store
 
 Local dev (monorepo):
   node scripts/install.js --target ./my-project --pack fivem -y
   node scripts/install.js --target ./my-project --update -y
+  node scripts/build-graph.js --target ./my-project
 
 Options:
+  --global-store     Store memories/graph in ~/.fxmind/projects/<id>/ (shared pack skills)
   --update           Refresh packs/skills/commands from .fxmind/packs.json (keeps memories)
   --target <dir>     Project root (default: current directory)
   --pack <id>        Knowledge pack to install (e.g. fivem)
@@ -187,6 +202,7 @@ function parseArgs(argv) {
     explicitAgents: false,
     explicitPacks: false,
     update: false,
+    globalStore: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -256,6 +272,11 @@ function parseArgs(argv) {
         .filter(Boolean);
       options.explicitAgents = true;
       i += 1;
+      continue;
+    }
+
+    if (arg === "--global-store") {
+      options.globalStore = true;
       continue;
     }
 
@@ -609,7 +630,7 @@ function copyDir(src, dest) {
   fs.cpSync(src, dest, { recursive: true, force: true });
 }
 
-function installPackSkill(skillName, targetRoot) {
+function installPackSkill(skillName, skillsRoot) {
   const src = path.join(getSkillsDirForSkill(skillName), skillName);
 
   if (!fs.existsSync(src)) {
@@ -620,23 +641,33 @@ function installPackSkill(skillName, targetRoot) {
     throw new Error(`Invalid skill (missing SKILL.md): ${skillName}`);
   }
 
-  const dest = path.join(targetRoot, PACK_SKILLS_DIR, skillName);
+  const dest = path.join(skillsRoot, skillName);
   copyDir(src, dest);
-  return path.relative(targetRoot, dest);
+  return dest;
 }
 
-function installPackSkills(targetRoot, skills) {
+function installPackSkills(targetRoot, skills, options = {}) {
+  const skillsRoot =
+    options.skillsRoot ||
+    (options.globalStore || isGlobalStore(targetRoot)
+      ? GLOBAL_SHARED_SKILLS
+      : path.join(targetRoot, PACK_SKILLS_DIR));
   const installed = [];
 
   for (const skillName of skills) {
-    installed.push(installPackSkill(skillName, targetRoot));
+    installed.push(installPackSkill(skillName, skillsRoot));
   }
 
-  return installed;
+  return installed.map((dest) => path.relative(targetRoot, dest).replace(/\\/g, "/") || dest);
 }
 
-function writePackSkillsIndex(targetRoot, skills) {
-  const indexPath = path.join(targetRoot, PACK_SKILLS_DIR, "_index.md");
+function writePackSkillsIndex(targetRoot, skills, options = {}) {
+  const skillsRoot =
+    options.skillsRoot ||
+    (options.globalStore || isGlobalStore(targetRoot)
+      ? GLOBAL_SHARED_SKILLS
+      : path.join(targetRoot, PACK_SKILLS_DIR));
+  const indexPath = path.join(skillsRoot, "_index.md");
   const lines = [
     "# Pack skills (fxmind-managed)",
     "",
@@ -654,6 +685,28 @@ function writePackSkillsIndex(targetRoot, skills) {
   fs.mkdirSync(path.dirname(indexPath), { recursive: true });
   fs.writeFileSync(indexPath, `${lines.join("\n")}\n`, "utf8");
   return path.relative(targetRoot, indexPath);
+}
+
+function applyGlobalStore(targetRoot, packs, enabled) {
+  if (!enabled && !isGlobalStore(targetRoot)) {
+    return null;
+  }
+
+  const result = setupGlobalStore(targetRoot, {
+    packs: packs.map((id) => ({ id })),
+  });
+
+  const manifestPath = path.join(targetRoot, SHARED_DIR, "packs.json");
+  if (fs.existsSync(manifestPath)) {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    manifest.storage = "global";
+    manifest.projectId = result.projectId;
+    manifest.globalRoot = result.globalProjectDir.replace(/\\/g, "/");
+    manifest.sharedSkills = result.sharedSkills.replace(/\\/g, "/");
+    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  }
+
+  return result;
 }
 
 function removePackSkillsFromAgentDirs(targetRoot, packSkillNames) {
@@ -1230,7 +1283,7 @@ function detectInstalledAgents(targetRoot) {
 }
 
 function detectInstalledSkills(targetRoot) {
-  const packSkillsRoot = path.join(targetRoot, PACK_SKILLS_DIR);
+  const packSkillsRoot = resolveSkillsRoot(targetRoot);
   if (!fs.existsSync(packSkillsRoot)) {
     return [];
   }
@@ -1439,6 +1492,18 @@ function writePacksManifest(targetRoot, packIds, meta = {}) {
     manifest.command = meta.command;
   }
 
+  if (meta.storage) {
+    manifest.storage = meta.storage;
+  }
+
+  if (meta.projectId) {
+    manifest.projectId = meta.projectId;
+  }
+
+  if (meta.globalRoot) {
+    manifest.globalRoot = meta.globalRoot;
+  }
+
   fs.writeFileSync(
     path.join(targetRoot, SHARED_DIR, "packs.json"),
     `${JSON.stringify(manifest, null, 2)}\n`,
@@ -1565,12 +1630,15 @@ function installCommand(targetRoot, agent) {
   return [path.relative(targetRoot, dest)];
 }
 
-function installPackSkillsLayer(targetRoot, skills, allPackSkillNames) {
+function installPackSkillsLayer(targetRoot, skills, allPackSkillNames, options = {}) {
   const actions = { installed: [], removed: [], index: null };
+  const packSkillOptions = {
+    globalStore: options.globalStore || isGlobalStore(targetRoot),
+  };
 
   if (skills.length > 0) {
-    actions.installed.push(...installPackSkills(targetRoot, skills));
-    actions.index = writePackSkillsIndex(targetRoot, skills);
+    actions.installed.push(...installPackSkills(targetRoot, skills, packSkillOptions));
+    actions.index = writePackSkillsIndex(targetRoot, skills, packSkillOptions);
   }
 
   if (allPackSkillNames.length > 0) {
@@ -1628,7 +1696,19 @@ function resolvePackOptions(options) {
 }
 
 async function main() {
-  const options = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+
+  if (argv[0] === "graph") {
+    const { runGraphCli } = require("./build-graph");
+    process.exit(runGraphCli(argv.slice(1)));
+  }
+
+  if (argv[0] === "global") {
+    const { runGlobalCli } = require("./global-store");
+    process.exit(runGlobalCli(argv.slice(1)));
+  }
+
+  const options = parseArgs(argv);
 
   if (options.help) {
     printHelp();
@@ -1689,6 +1769,7 @@ async function main() {
         options.target,
         skills,
         listAllSkills(),
+        { globalStore: options.globalStore || isGlobalStore(options.target) },
       );
       for (const dest of packSkills.installed) {
         console.log(`  ✓ pack skill → ${dest}`);
@@ -1698,6 +1779,16 @@ async function main() {
       }
       for (const dest of packSkills.removed) {
         console.log(`  ✓ cleanup  → ${dest} (removed from agent folder)`);
+      }
+
+      const globalStore = applyGlobalStore(
+        options.target,
+        packs,
+        options.globalStore || isGlobalStore(options.target),
+      );
+      if (globalStore) {
+        console.log(`  ✓ global   → ${globalStore.globalProjectDir}`);
+        console.log(`  ✓ shared   → ${globalStore.sharedSkills}`);
       }
       console.log("");
     } else {
@@ -1859,6 +1950,7 @@ async function main() {
       options.target,
       skills,
       listAllSkills(),
+      { globalStore: options.globalStore || isGlobalStore(options.target) },
     );
     for (const dest of packSkills.installed) {
       console.log(`  ✓ pack skill → ${dest}`);
@@ -1868,6 +1960,16 @@ async function main() {
     }
     for (const dest of packSkills.removed) {
       console.log(`  ✓ cleanup  → ${dest} (removed from agent folder)`);
+    }
+
+    const globalStore = applyGlobalStore(
+      options.target,
+      packs,
+      options.globalStore || isGlobalStore(options.target),
+    );
+    if (globalStore) {
+      console.log(`  ✓ global   → ${globalStore.globalProjectDir}`);
+      console.log(`  ✓ shared   → ${globalStore.sharedSkills}`);
     }
 
     console.log("");
@@ -1909,7 +2011,7 @@ async function main() {
     "Run /fxmind memory health [fix] [topic] to verify memories vs codebase and optionally compact-rewrite stale topics.",
   );
   console.log(
-    "Run /fxmind graph to build a static 3D knowledge map and open it in the browser.",
+    "Run fxmind graph (or /fxmind graph) to build a static 3D knowledge map and open it in the browser.",
   );
 }
 

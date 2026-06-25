@@ -231,6 +231,7 @@
 
     .dot.learned { background: linear-gradient(135deg, #2DD4BF, #6366F1, #A855F7); }
     .dot.catalog { background: var(--catalog); }
+    .dot.foreign { background: #F59E0B; }
 
     .stats {
       padding: 12px;
@@ -328,6 +329,12 @@
       background: rgba(168, 85, 247, 0.12);
       color: #c084fc;
       border: 1px solid rgba(168, 85, 247, 0.2);
+    }
+
+    .badge.foreign {
+      background: rgba(245, 158, 11, 0.12);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.2);
     }
 
     .detail button {
@@ -447,6 +454,7 @@
         <div class="legend">
           <div class="legend-item"><span class="dot learned"></span> Com ligação</div>
           <div class="legend-item"><span class="dot catalog"></span> Órfão</div>
+          <div class="legend-item"><span class="dot foreign"></span> Outro projeto</div>
         </div>
       </section>
 
@@ -930,8 +938,8 @@
         return;
       }
 
-      const badgeClass = node.group === "learned" ? "learned" : "catalog";
-      const badgeLabel = node.group === "learned" ? "Aprendido" : "Catálogo (órfão)";
+      const badgeClass = node.group === "learned" ? "learned" : node.group === "foreign" ? "foreign" : "catalog";
+      const badgeLabel = node.group === "learned" ? "Aprendido" : node.group === "foreign" ? "Outro projeto" : "Catálogo (órfão)";
 
       detailEl.innerHTML = `
         <span class="badge ${badgeClass}">${badgeLabel}</span>
@@ -941,6 +949,7 @@
         ${node.updated ? `<p><strong>Atualizado:</strong> ${node.updated}</p>` : ""}
         ${node.framework ? `<p><strong>Framework:</strong> ${node.framework}</p>` : ""}
         ${node.triggers ? `<p><strong>Triggers:</strong> ${node.triggers}</p>` : ""}
+        ${node.projectName ? `<p><strong>Projeto:</strong> ${node.projectName}</p>` : ""}
         ${node.group === "catalog" ? `<p>Execute <code>/fxmind learn ${node.id}</code> para gerar a memória.</p>` : ""}
         ${node.file ? `<button type="button" id="copy-path">Copiar path</button>` : ""}
       `;
