@@ -1,0 +1,25 @@
+description = "Refresh installed fxmind packs, skills, templates, and /fxmind helper"
+
+prompt = """
+Execute **Update mode** from `.fxmind/packs.json`.
+
+This is not Task, Learn, Audit, or Graph mode. Do not edit memories or project code.
+
+### Step 1 — Verify
+
+If `.fxmind/packs.json` is missing → tell user to run `npx --yes github:fx-mind/fxmind -y` first.
+
+### Step 2 — Run CLI from project root
+
+```bash
+npx --yes github:fx-mind/fxmind --update -y
+```
+
+Or `fxmind --update -y` if installed globally.
+
+### Step 3 — Report
+
+Summarize CLI output. Remind: restart agent session; Gemini → `/commands reload`.
+
+Preserves `.fxmind/memory/*` and `knowledge-graph.json`. Refreshes `.fxmind/skills/` and the fxmind agent skill only.
+"""

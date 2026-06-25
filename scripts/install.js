@@ -14,6 +14,7 @@ const {
 const {
   PACKAGE_ROOT,
   buildSkillSources,
+  refreshPackSkillsCaches,
 } = require("./resolve-packs");
 
 let SKILL_SOURCES = new Map();
@@ -23,6 +24,7 @@ const DEFAULT_AGENTS = ["cursor"];
 const COMMAND_FILE = "fxmind.md";
 const COMMAND_SKILL_NAME = "fxmind";
 const COMMAND_TEMPLATE = path.join("templates", "commands", COMMAND_FILE);
+const FXMIND_SKILL_TEMPLATE = path.join("templates", "skills", "fxmind", "SKILL.md");
 const LEGACY_COMMAND_FILE = "fivem.md";
 const LEGACY_COMMAND_SKILL = "fivem";
 const LEGACY_COMMAND_FILE_DEV = "fivem-dev.md";
@@ -66,6 +68,7 @@ const LEGACY_FIVEM_FILES = [
   path.join("scripts", "update-knowledge-graph.py"),
 ];
 const SHARED_DIR = ".fxmind";
+const PACK_SKILLS_DIR = path.join(SHARED_DIR, "skills");
 const LEGACY_SHARED_DIRS = [".fivem"];
 
 const LEGACY_AGENT_FIVEM_DIRS = [
@@ -112,7 +115,7 @@ function printHelp() {
   console.log(`
 Install fxmind — project memory and knowledge packs for AI agents (Cursor, Claude Code, Codex, Gemini CLI, OpenCode).
 
-Knowledge packs add domain-specific Agent Skills and templates (e.g. fivem for FiveM).
+Knowledge packs add domain-specific skills under \`.fxmind/skills/\` and the fxmind agent skill.
 
 Recommended (install once globally, then use short command):
   ${globalInstall()}
@@ -125,11 +128,14 @@ Without global install:
   ${npxInstall("--pack fivem -y")}   Explicit fivem knowledge pack
   ${npxInstall("--all-packs -y")}    Every available pack
   ${npxInstall("--all -y")}          All skills from selected pack(s)
+  ${npxInstall("--update -y")}       Refresh installed packs, skills, and templates
 
 Local dev (monorepo):
   node scripts/install.js --target ./my-project --pack fivem -y
+  node scripts/install.js --target ./my-project --update -y
 
 Options:
+  --update           Refresh packs/skills/commands from .fxmind/packs.json (keeps memories)
   --target <dir>     Project root (default: current directory)
   --pack <id>        Knowledge pack to install (e.g. fivem)
   --packs <list>     Comma-separated packs (e.g. fivem)
@@ -174,6 +180,7 @@ function parseArgs(argv) {
     explicitSkills: false,
     explicitAgents: false,
     explicitPacks: false,
+    update: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -243,6 +250,11 @@ function parseArgs(argv) {
         .filter(Boolean);
       options.explicitAgents = true;
       i += 1;
+      continue;
+    }
+
+    if (arg === "--update") {
+      options.update = true;
       continue;
     }
 
@@ -326,7 +338,20 @@ function ensureNonInteractiveChoice(options) {
 }
 
 function getManagedSkillNames(skills, includeCommand) {
-  const names = new Set(skills);
+  const names = new Set();
+  if (includeCommand) {
+    names.add(COMMAND_SKILL_NAME);
+    names.add(LEGACY_COMMAND_SKILL);
+    names.add(LEGACY_COMMAND_SKILL_DEV);
+  }
+  for (const skillName of skills) {
+    names.add(skillName);
+  }
+  return names;
+}
+
+function getAgentSkillCleanupNames(packSkillNames, includeCommand) {
+  const names = new Set(packSkillNames);
   if (includeCommand) {
     names.add(COMMAND_SKILL_NAME);
     names.add(LEGACY_COMMAND_SKILL);
@@ -578,26 +603,7 @@ function copyDir(src, dest) {
   fs.cpSync(src, dest, { recursive: true, force: true });
 }
 
-function readCommandSource() {
-  const src = path.join(PACKAGE_ROOT, COMMAND_TEMPLATE);
-  if (!fs.existsSync(src)) {
-    throw new Error(`Command template not found: ${COMMAND_TEMPLATE}`);
-  }
-  return fs.readFileSync(src, "utf8");
-}
-
-function toCodexSkillContent(content) {
-  if (/^---[\s\S]*?name:/m.test(content)) {
-    return content;
-  }
-
-  return content.replace(
-    /^---\n/,
-    `---\nname: ${COMMAND_SKILL_NAME}\n`,
-  );
-}
-
-function installSkill(skillName, targetRoot, agent) {
+function installPackSkill(skillName, targetRoot) {
   const src = path.join(getSkillsDirForSkill(skillName), skillName);
 
   if (!fs.existsSync(src)) {
@@ -608,14 +614,88 @@ function installSkill(skillName, targetRoot, agent) {
     throw new Error(`Invalid skill (missing SKILL.md): ${skillName}`);
   }
 
-  const destinations = [path.join(targetRoot, agent.skillsDir, skillName)];
+  const dest = path.join(targetRoot, PACK_SKILLS_DIR, skillName);
+  copyDir(src, dest);
+  return path.relative(targetRoot, dest);
+}
+
+function installPackSkills(targetRoot, skills) {
+  const installed = [];
+
+  for (const skillName of skills) {
+    installed.push(installPackSkill(skillName, targetRoot));
+  }
+
+  return installed;
+}
+
+function writePackSkillsIndex(targetRoot, skills) {
+  const indexPath = path.join(targetRoot, PACK_SKILLS_DIR, "_index.md");
+  const lines = [
+    "# Pack skills (fxmind-managed)",
+    "",
+    "Domain skills installed by fxmind. Read from here — not from the agent skills folder.",
+    "",
+    "| Skill | Path |",
+    "|-------|------|",
+  ];
+
+  for (const skillName of [...skills].sort()) {
+    lines.push(`| ${skillName} | \`.fxmind/skills/${skillName}/SKILL.md\` |`);
+  }
+
+  lines.push("");
+  fs.mkdirSync(path.dirname(indexPath), { recursive: true });
+  fs.writeFileSync(indexPath, `${lines.join("\n")}\n`, "utf8");
+  return path.relative(targetRoot, indexPath);
+}
+
+function removePackSkillsFromAgentDirs(targetRoot, packSkillNames) {
+  const removed = [];
+
+  for (const agent of Object.values(AGENTS)) {
+    const skillRoots = [path.join(targetRoot, agent.skillsDir)];
+    if (agent.altSkillsDir) {
+      skillRoots.push(path.join(targetRoot, agent.altSkillsDir));
+    }
+
+    for (const skillRoot of skillRoots) {
+      for (const skillName of packSkillNames) {
+        const skillPath = path.join(skillRoot, skillName);
+        if (!fs.existsSync(skillPath)) {
+          continue;
+        }
+
+        fs.rmSync(skillPath, { recursive: true, force: true });
+        removed.push(path.relative(targetRoot, skillPath));
+      }
+
+      pruneEmptyDirsUpward(skillRoot, targetRoot);
+    }
+  }
+
+  return removed;
+}
+
+function installFxmindAgentSkill(targetRoot, agent) {
+  const src = path.join(PACKAGE_ROOT, FXMIND_SKILL_TEMPLATE);
+  if (!fs.existsSync(src)) {
+    throw new Error(`fxmind skill template not found: ${FXMIND_SKILL_TEMPLATE}`);
+  }
+
+  const destinations = [
+    path.join(targetRoot, agent.skillsDir, COMMAND_SKILL_NAME, "SKILL.md"),
+  ];
 
   if (agent.altSkillsDir) {
-    destinations.push(path.join(targetRoot, agent.altSkillsDir, skillName));
+    destinations.push(
+      path.join(targetRoot, agent.altSkillsDir, COMMAND_SKILL_NAME, "SKILL.md"),
+    );
   }
 
   for (const dest of destinations) {
-    copyDir(src, dest);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(src, dest);
   }
 
   return destinations.map((dest) => path.relative(targetRoot, dest));
@@ -1057,7 +1137,183 @@ function migrateLegacySharedDir(targetRoot) {
   return actions;
 }
 
-function installSharedFxmind(targetRoot, packIds) {
+function readInstalledManifest(targetRoot) {
+  const manifestPath = path.join(targetRoot, SHARED_DIR, "packs.json");
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(
+      `No fxmind install found (.fxmind/packs.json missing). Run ${npxInstall("-y")} first.`,
+    );
+  }
+
+  return JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+}
+
+function hasAgentInstall(targetRoot, agent) {
+  if (agent.commandsDir && agent.commandMode === "file") {
+    if (fs.existsSync(path.join(targetRoot, agent.commandsDir, COMMAND_FILE))) {
+      return true;
+    }
+  }
+
+  if (agent.commandsDir && agent.commandMode === "toml") {
+    const tomlPath = path.join(targetRoot, agent.commandsDir, "fxmind.toml");
+    const dirPath = path.join(targetRoot, agent.commandsDir, "fxmind");
+    if (fs.existsSync(tomlPath) || fs.existsSync(dirPath)) {
+      return true;
+    }
+  }
+
+  if (agent.commandMode === "skill") {
+    const skillPath = path.join(
+      targetRoot,
+      agent.skillsDir,
+      COMMAND_SKILL_NAME,
+      "SKILL.md",
+    );
+    if (fs.existsSync(skillPath)) {
+      return true;
+    }
+
+    if (agent.altSkillsDir) {
+      const altPath = path.join(
+        targetRoot,
+        agent.altSkillsDir,
+        COMMAND_SKILL_NAME,
+        "SKILL.md",
+      );
+      if (fs.existsSync(altPath)) {
+        return true;
+      }
+    }
+  }
+
+  const skillRoots = [path.join(targetRoot, agent.skillsDir)];
+  if (agent.altSkillsDir) {
+    skillRoots.push(path.join(targetRoot, agent.altSkillsDir));
+  }
+
+  for (const skillRoot of skillRoots) {
+    if (!fs.existsSync(skillRoot)) {
+      continue;
+    }
+
+    for (const entry of fs.readdirSync(skillRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      if (entry.name === COMMAND_SKILL_NAME) {
+        continue;
+      }
+
+      if (fs.existsSync(path.join(skillRoot, entry.name, "SKILL.md"))) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function detectInstalledAgents(targetRoot) {
+  const found = Object.entries(AGENTS)
+    .filter(([, agent]) => hasAgentInstall(targetRoot, agent))
+    .map(([agentId]) => agentId);
+
+  return found.length ? found : [...DEFAULT_AGENTS];
+}
+
+function detectInstalledSkills(targetRoot) {
+  const packSkillsRoot = path.join(targetRoot, PACK_SKILLS_DIR);
+  if (!fs.existsSync(packSkillsRoot)) {
+    return [];
+  }
+
+  return fs
+    .readdirSync(packSkillsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name !== "node_modules")
+    .map((entry) => entry.name)
+    .filter((name) =>
+      fs.existsSync(path.join(packSkillsRoot, name, "SKILL.md")),
+    )
+    .sort();
+}
+
+function detectInstalledCommand(targetRoot, agentIds) {
+  return agentIds.some((agentId) => {
+    const agent = AGENTS[agentId];
+    if (agent.commandMode === "file" && agent.commandsDir) {
+      return fs.existsSync(path.join(targetRoot, agent.commandsDir, COMMAND_FILE));
+    }
+
+    if (agent.commandMode === "toml" && agent.commandsDir) {
+      return (
+        fs.existsSync(path.join(targetRoot, agent.commandsDir, "fxmind.toml")) ||
+        fs.existsSync(path.join(targetRoot, agent.commandsDir, "fxmind"))
+      );
+    }
+
+    if (agent.commandMode === "skill") {
+      return fs.existsSync(
+        path.join(targetRoot, agent.skillsDir, COMMAND_SKILL_NAME, "SKILL.md"),
+      );
+    }
+
+    return false;
+  });
+}
+
+function resolveUpdateOptions(options) {
+  const manifest = readInstalledManifest(options.target);
+  const packIds = (manifest.packs || []).map((pack) => pack.id).filter(Boolean);
+
+  if (packIds.length === 0) {
+    throw new Error(
+      "Installed manifest has no packs. Re-run install with a pack, e.g. fxmind --pack fivem -y",
+    );
+  }
+
+  validatePackIds(packIds);
+  options.packs = packIds;
+
+  const agentIds =
+    Array.isArray(manifest.agents) && manifest.agents.length > 0
+      ? manifest.agents.filter((agentId) => AGENTS[agentId])
+      : detectInstalledAgents(options.target);
+
+  options.agents = agentIds.length ? agentIds : [...DEFAULT_AGENTS];
+
+  refreshPackSkillsCaches(packIds, options);
+  SKILL_SOURCES = buildSkillSources(packIds, options);
+
+  const manifestSkills = Array.isArray(manifest.skills)
+    ? manifest.skills.filter((skillName) => SKILL_SOURCES.has(skillName))
+    : [];
+  const detectedSkills = detectInstalledSkills(options.target).filter((skillName) =>
+    SKILL_SOURCES.has(skillName),
+  );
+
+  options.skills =
+    manifestSkills.length > 0
+      ? manifestSkills
+      : detectedSkills.length > 0
+        ? detectedSkills
+        : getDefaultSkillsForPacks(packIds);
+
+  options.command =
+    typeof manifest.command === "boolean"
+      ? manifest.command
+      : detectInstalledCommand(options.target, options.agents);
+
+  if (options.skills.length === 0 && !options.command) {
+    throw new Error(
+      "Nothing to update: no skills or /fxmind helper detected. Re-run install.",
+    );
+  }
+}
+
+function installSharedFxmind(targetRoot, packIds, installOptions = {}) {
+  const preserveUserData = Boolean(installOptions.preserveUserData);
   const relativeDestDir = SHARED_DIR;
   const destDir = path.join(targetRoot, relativeDestDir);
   const removed = cleanLegacyFivemFiles(targetRoot, relativeDestDir);
@@ -1079,25 +1335,39 @@ function installSharedFxmind(targetRoot, packIds) {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
 
     if (fileName === "knowledge-graph.html") {
-      const emptyGraph = {
-        nodes: [],
-        links: [],
-        meta: {
-          generatedAt: "",
-          agent: "shared",
-          fxmindDir: SHARED_DIR,
-          counts: { learned: 0, catalog: 0, links: 0, tokens: 0 },
-        },
-      };
-      const emptyGraphJson = JSON.stringify(emptyGraph, null, 2);
+      const graphJsonPath = path.join(destDir, "knowledge-graph.json");
+      let graphData = null;
+
+      if (preserveUserData && fs.existsSync(graphJsonPath)) {
+        try {
+          graphData = JSON.parse(fs.readFileSync(graphJsonPath, "utf8"));
+        } catch {
+          graphData = null;
+        }
+      }
+
+      if (!graphData) {
+        graphData = {
+          nodes: [],
+          links: [],
+          meta: {
+            generatedAt: "",
+            agent: "shared",
+            fxmindDir: SHARED_DIR,
+            counts: { learned: 0, catalog: 0, links: 0, tokens: 0 },
+          },
+        };
+      }
+
+      const graphJsonStr = JSON.stringify(graphData, null, 2);
       const html = fs
         .readFileSync(src, "utf8")
-        .replace("/*__GRAPH_DATA__*/", emptyGraphJson);
+        .replace("/*__GRAPH_DATA__*/", graphJsonStr);
       fs.writeFileSync(dest, html, "utf8");
 
       const jsonDest = path.join(destDir, "knowledge-graph.json");
-      if (!fs.existsSync(jsonDest)) {
-        fs.writeFileSync(jsonDest, `${emptyGraphJson}\n`, "utf8");
+      if (!preserveUserData || !fs.existsSync(jsonDest)) {
+        fs.writeFileSync(jsonDest, `${graphJsonStr}\n`, "utf8");
         installed.push(path.relative(targetRoot, jsonDest));
       }
     } else {
@@ -1127,21 +1397,41 @@ function installSharedFxmind(targetRoot, packIds) {
     }
   }
 
-  writePacksManifest(targetRoot, packIds);
+  writePacksManifest(targetRoot, packIds, installOptions.manifestMeta);
   installed.push(path.join(relativeDestDir, "packs.json").replace(/\\/g, "/"));
+
+  const fxmindGuideSrc = path.join(PACKAGE_ROOT, COMMAND_TEMPLATE);
+  const fxmindGuideDest = path.join(destDir, "fxmind.md");
+  if (fs.existsSync(fxmindGuideSrc)) {
+    fs.copyFileSync(fxmindGuideSrc, fxmindGuideDest);
+    installed.push(path.relative(targetRoot, fxmindGuideDest));
+  }
 
   return { installed, removed };
 }
 
-function writePacksManifest(targetRoot, packIds) {
+function writePacksManifest(targetRoot, packIds, meta = {}) {
   const manifest = {
     version: 1,
+    packSkillsDir: PACK_SKILLS_DIR.replace(/\\/g, "/"),
     packs: packIds.map((id) => {
       const pack = getPack(id);
       return { id, label: pack.label };
     }),
     updatedAt: new Date().toISOString(),
   };
+
+  if (Array.isArray(meta.agents) && meta.agents.length > 0) {
+    manifest.agents = meta.agents;
+  }
+
+  if (Array.isArray(meta.skills) && meta.skills.length > 0) {
+    manifest.skills = meta.skills;
+  }
+
+  if (typeof meta.command === "boolean") {
+    manifest.command = meta.command;
+  }
 
   fs.writeFileSync(
     path.join(targetRoot, SHARED_DIR, "packs.json"),
@@ -1254,36 +1544,8 @@ function installTomlCommands(targetRoot, agent) {
 function installCommand(targetRoot, agent) {
   removeLegacyCommand(targetRoot, agent);
 
-  const content = readCommandSource();
-
   if (agent.commandMode === "skill") {
-    const skillContent = toCodexSkillContent(content);
-    const destinations = [
-      path.join(
-        targetRoot,
-        agent.skillsDir,
-        COMMAND_SKILL_NAME,
-        "SKILL.md",
-      ),
-    ];
-
-    if (agent.altSkillsDir) {
-      destinations.push(
-        path.join(
-          targetRoot,
-          agent.altSkillsDir,
-          COMMAND_SKILL_NAME,
-          "SKILL.md",
-        ),
-      );
-    }
-
-    for (const dest of destinations) {
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
-      fs.writeFileSync(dest, skillContent, "utf8");
-    }
-
-    return destinations.map((dest) => path.relative(targetRoot, dest));
+    return [];
   }
 
   if (agent.commandMode === "toml") {
@@ -1295,6 +1557,43 @@ function installCommand(targetRoot, agent) {
   fs.copyFileSync(path.join(PACKAGE_ROOT, COMMAND_TEMPLATE), dest);
 
   return [path.relative(targetRoot, dest)];
+}
+
+function installPackSkillsLayer(targetRoot, skills, allPackSkillNames) {
+  const actions = { installed: [], removed: [], index: null };
+
+  if (skills.length > 0) {
+    actions.installed.push(...installPackSkills(targetRoot, skills));
+    actions.index = writePackSkillsIndex(targetRoot, skills);
+  }
+
+  if (allPackSkillNames.length > 0) {
+    actions.removed.push(
+      ...removePackSkillsFromAgentDirs(targetRoot, allPackSkillNames),
+    );
+  }
+
+  return actions;
+}
+
+function installAgentsLayer(targetRoot, agents, options) {
+  const installed = [];
+
+  for (const agent of agents) {
+    if (options.command) {
+      for (const dest of installFxmindAgentSkill(targetRoot, agent)) {
+        installed.push({ agent: agent.label, path: dest, kind: "skill" });
+      }
+    }
+
+    if (options.command) {
+      for (const dest of installCommand(targetRoot, agent)) {
+        installed.push({ agent: agent.label, path: dest, kind: "command" });
+      }
+    }
+  }
+
+  return installed;
 }
 
 function resolvePackOptions(options) {
@@ -1333,6 +1632,94 @@ async function main() {
   if (!fs.existsSync(options.target)) {
     console.error(`Error: target directory does not exist: ${options.target}`);
     process.exit(1);
+  }
+
+  if (options.update) {
+    if (options.interactive || options.allPacks || options.noPacks || options.explicitPacks) {
+      console.error("Error: --update cannot be combined with pack selection flags.");
+      process.exit(1);
+    }
+
+    try {
+      resolveUpdateOptions(options);
+    } catch (error) {
+      console.error(`Error: ${error.message}`);
+      process.exit(1);
+    }
+
+    const skills = options.skills;
+    const packs = options.packs;
+    const agents = resolveAgents(options.agents);
+    const manifestMeta = {
+      agents: agents.map((agent) => agent.id),
+      skills,
+      command: options.command,
+    };
+
+    console.log(`\nUpdating: ${options.target}`);
+    console.log(`Packs: ${packs.join(", ")}`);
+    for (const packId of packs) {
+      const source = [...SKILL_SOURCES.values()].find((entry) => entry.packId === packId);
+      if (source) {
+        console.log(`  ${packId} skills → ${source.skillsDir}`);
+      }
+    }
+    console.log(`Skills: ${skills.length ? skills.join(", ") : "(none)"}`);
+    console.log(
+      `Agents: ${agents.map((agent) => agent.label).join(", ")}\n`,
+    );
+
+    if (options.command) {
+      console.log("[Shared .fxmind]");
+      const shared = installSharedFxmind(options.target, packs, {
+        preserveUserData: true,
+        manifestMeta,
+      });
+      for (const dest of shared.installed) {
+        console.log(`  ✓ template → ${dest}`);
+      }
+
+      const packSkills = installPackSkillsLayer(
+        options.target,
+        skills,
+        listAllSkills(),
+      );
+      for (const dest of packSkills.installed) {
+        console.log(`  ✓ pack skill → ${dest}`);
+      }
+      if (packSkills.index) {
+        console.log(`  ✓ index    → ${packSkills.index}`);
+      }
+      for (const dest of packSkills.removed) {
+        console.log(`  ✓ cleanup  → ${dest} (removed from agent folder)`);
+      }
+      console.log("");
+    } else {
+      writePacksManifest(options.target, packs, manifestMeta);
+    }
+
+    let lastAgentLabel = "";
+    for (const entry of installAgentsLayer(options.target, agents, options)) {
+      if (entry.agent !== lastAgentLabel) {
+        if (lastAgentLabel) {
+          console.log("");
+        }
+        console.log(`[${entry.agent}]`);
+        lastAgentLabel = entry.agent;
+      }
+      console.log(
+        `  ✓ ${entry.kind === "skill" ? "skill   " : "command "} → ${entry.path}`,
+      );
+    }
+    if (lastAgentLabel) {
+      console.log("");
+    }
+
+    console.log("Update complete.");
+    console.log("Restart your agent IDE/CLI or open a new session.");
+    console.log(`Refresh again anytime: ${npxInstall("--update -y")}`);
+    console.log("Gemini: run /commands reload after update.");
+    return;
   }
 
   if (wantsInteractive(options)) {
@@ -1418,7 +1805,13 @@ async function main() {
       }
     }
 
-    const shared = installSharedFxmind(options.target, packs);
+    const shared = installSharedFxmind(options.target, packs, {
+      manifestMeta: {
+        agents: agents.map((agent) => agent.id),
+        skills,
+        command: options.command,
+      },
+    });
     for (const dest of shared.removed) {
       console.log(`  ✓ cleanup  → ${dest}`);
     }
@@ -1456,47 +1849,45 @@ async function main() {
       console.log(`  ✓ legacy   → removed ${dest}`);
     }
 
+    const packSkills = installPackSkillsLayer(
+      options.target,
+      skills,
+      listAllSkills(),
+    );
+    for (const dest of packSkills.installed) {
+      console.log(`  ✓ pack skill → ${dest}`);
+    }
+    if (packSkills.index) {
+      console.log(`  ✓ index    → ${packSkills.index}`);
+    }
+    for (const dest of packSkills.removed) {
+      console.log(`  ✓ cleanup  → ${dest} (removed from agent folder)`);
+    }
+
     console.log("");
   }
 
-  if (skills.length > 0) {
-    for (const agent of agents) {
-      console.log(`[${agent.label}]`);
-
-      for (const skill of skills) {
-        const dests = installSkill(skill, options.target, agent);
-        for (const dest of dests) {
-          console.log(`  ✓ skill   → ${dest}`);
-        }
+  let lastAgentLabel = "";
+  for (const entry of installAgentsLayer(options.target, agents, options)) {
+    if (entry.agent !== lastAgentLabel) {
+      if (lastAgentLabel) {
+        console.log("");
       }
-
-      if (options.command) {
-        const dests = installCommand(options.target, agent);
-        for (const dest of dests) {
-          console.log(`  ✓ command → ${dest}`);
-        }
-      }
-
-      console.log("");
+      console.log(`[${entry.agent}]`);
+      lastAgentLabel = entry.agent;
     }
-  } else {
-    for (const agent of agents) {
-      console.log(`[${agent.label}]`);
-
-      if (options.command) {
-        const dests = installCommand(options.target, agent);
-        for (const dest of dests) {
-          console.log(`  ✓ command → ${dest}`);
-        }
-      }
-
-      console.log("");
-    }
+    console.log(
+      `  ✓ ${entry.kind === "skill" ? "skill   " : "command "} → ${entry.path}`,
+    );
+  }
+  if (lastAgentLabel) {
+    console.log("");
   }
 
   console.log("Done.");
   console.log("Restart your agent IDE/CLI or open a new session.");
-  console.log(`Update anytime: ${npxInstall("-y")}  (or after global: fxmind -y)`);
+  console.log(`Update packs/skills: ${npxInstall("--update -y")}  (or after global: fxmind --update -y)`);
+  console.log(`Reinstall from scratch: ${npxInstall("-y")}  (or after global: fxmind -y)`);
   console.log(
     "Cursor/Claude/OpenCode: /fxmind  |  Codex: $fxmind  |  Gemini: /fxmind, /fxmind:reference, /fxmind:audit, /fxmind:learn, /fxmind:memory, /fxmind:graph",
   );

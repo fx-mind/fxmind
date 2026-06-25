@@ -1,6 +1,6 @@
 ---
-description: "fxmind — FiveM project memory — task workflow, docs, reference, audit, learn, memory health, graph, query, path, explain"
-argument-hint: "<task/question> | reference | audit [scope] | learn <topic> | memory health [fix] [topic] | graph | query \"<question>\" [--dfs] [--budget N] | path <a> <b> | explain <topic>"
+description: "fxmind — FiveM project memory — task workflow, docs, reference, audit, learn, memory health, graph, query, path, explain, update"
+argument-hint: "<task/question> | reference | audit [scope] | learn <topic> | memory health [fix] [topic] | graph | query \"<question>\" [--dfs] [--budget N] | path <a> <b> | explain <topic> | update"
 ---
 
 # fxmind
@@ -25,6 +25,7 @@ Parse `$ARGUMENTS` (trim, case-insensitive):
 | `query "<question>" --budget N` | **Query** — cap loaded memory context at N tokens (default 1500) |
 | `path <topic-a> <topic-b>` | **Path** — shortest path between two learned topics |
 | `explain <topic>` | **Explain** — describe a topic node and its connections |
+| `update` | **Update** — refresh installed pack skills, templates, and `/fxmind` helper |
 | implementation/correction request | **Task** — analyze, retrieve minimal memories, implement, then capture reusable knowledge |
 | empty or conceptual question | **Help** — answer FiveM development questions |
 
@@ -51,6 +52,22 @@ All agents (Cursor, Claude, Gemini, OpenCode, Codex) read and write the **same p
 **Read policy:** always prefer `.fxmind/memory/` and `.fxmind/knowledge-graph.json`. If a topic exists only under a legacy per-agent folder (`.cursor/fivem/memory/`, `.gemini/fivem/memory/`, `.opencode/fivem/memory/`), read it as fallback and suggest re-running `fxmind -y` or `/fxmind memory health fix` to consolidate.
 
 **Write policy:** `learn`, `memory health fix`, and `graph` write **only** to `.fxmind/` — never to per-agent memory folders.
+
+---
+
+## Skills layout
+
+Only **`fxmind`** lives in the agent skills folder (`.cursor/skills/fxmind/`, `.gemini/skills/fxmind/`, etc.).
+
+**Pack skills** (FiveM, frameworks, NUI) are installed by fxmind under **`.fxmind/skills/`** — read them on demand:
+
+| Path | Role |
+|------|------|
+| `.fxmind/skills/_index.md` | Installed pack skills index |
+| `.fxmind/skills/<name>/SKILL.md` | Domain skill (e.g. `fivem-development`, `vrp-framework`) |
+| `.fxmind/fxmind.md` | Full mode reference (same content as `/fxmind` command) |
+
+**Never** look for pack skills in `.cursor/skills/`, `.gemini/skills/`, `.opencode/skills/`, etc.
 
 ---
 
@@ -186,7 +203,7 @@ Audit the target Lua/JS resource(s) for **security**, **performance**, and **pat
 
 ### Step 1 — Load standards
 
-Read from the project agent skills directory (`.cursor/skills/`, `.gemini/skills/`, `.opencode/skills/`, `.claude/skills/`, or `.agents/skills/`):
+Read from **`.fxmind/skills/`** (pack skills managed by fxmind):
 
 | Skill file | Sections |
 |------------|----------|
@@ -386,7 +403,7 @@ Generate or update a **topic memory** at `.fxmind/memory/<topic>.md` (shared by 
 
 ### Step 2 — Load context
 
-Read from agent skills directory (`.cursor/skills/`, `.gemini/skills/`, `.opencode/skills/`, etc.):
+Read from **`.fxmind/skills/`**:
 
 | File | Purpose |
 |------|---------|
@@ -920,6 +937,53 @@ Suggest `/fxmind path <this> <neighbor>` for trace if useful.
 
 ---
 
+## Mode: Update
+
+Refresh **installed knowledge packs**, **Agent Skills**, **pack templates**, and the **`/fxmind` helper** when fxmind or pack skills changed upstream.
+
+This mode runs the fxmind CLI — it does **not** edit memories, `memory/_index.md`, or `knowledge-graph.json`.
+
+### Step 1 — Verify install
+
+If `.fxmind/packs.json` is missing → tell user to run `npx github:fx-mind/fxmind -y` (or `fxmind -y` if installed globally) from the project root; stop.
+
+### Step 2 — Run update CLI
+
+From the **project root** (where `.fxmind/` lives), run in the terminal:
+
+```bash
+npx --yes github:fx-mind/fxmind --update -y
+```
+
+If fxmind is installed globally:
+
+```bash
+fxmind --update -y
+```
+
+Optional: `--target <dir>` when not in project root; `--agent cursor,claude` only if user wants to limit agents (otherwise uses `.fxmind/packs.json` + auto-detect).
+
+The updater:
+
+1. Reads `.fxmind/packs.json` (packs, agents, skills from last install)
+2. Pulls latest skills from the pack repo cache (e.g. `fivem-skill` on GitHub)
+3. Re-copies pack skills into `.fxmind/skills/` and refreshes the fxmind agent skill
+4. Refreshes pack templates (`topic-catalog.md`, `audit.template.md`, …) and core `/fxmind` templates
+5. Removes legacy pack skills from agent skill folders (`.cursor/skills/`, etc.)
+6. Preserves `.fxmind/memory/*` and existing `knowledge-graph.json`
+
+### Step 3 — Confirm
+
+Report stdout from the command. Remind user to restart the agent IDE/CLI (Gemini: `/commands reload`).
+
+### Update rules
+
+- **Do not** hand-edit skill folders when the CLI can refresh them
+- **Do not** delete or rewrite user memories during update
+- **Do not** enter Task/Learn/Audit modes during update
+
+---
+
 ## Mode: Reference
 
 Generate or update **`reference.mdc` in the project root** (same level as `resources/`, `server.cfg`, or main `fxmanifest.lua`).
@@ -970,7 +1034,7 @@ Required sections (adapt titles to what exists in **this** project):
 7. **Integrações** — cacheaside, cerberus (`SendFullSync` / `SendDeltaSync`, `SafeEvent`, `SetCooldown`), oxmysql patterns **as used here**
 8. **NUI** — source folder + `pnpm run build` path if applicable
 9. **Git / submodules** — if relevant
-10. **Skills FiveM** — `.cursor/skills/`, `.opencode/skills/`, etc. paths installed in this project
+10. **Skills FiveM** — `.fxmind/skills/` (pack skills); agent folder has only `fxmind` skill
 
 Write in **Portuguese** if the codebase/comments are PT-BR; otherwise match project language.
 
@@ -1015,7 +1079,7 @@ You are a FiveM development expert. Help the user with their FiveM scripting que
    - Architecture / cross-topic flow → suggest `/fxmind query "<question>"` if `knowledge-graph.json` exists
    - Project conventions → Read **`reference.mdc`** at project root if it exists
 
-2. **Read the relevant skill** from the agent skills directory (`.cursor/skills/`, `.gemini/skills/`, `.opencode/skills/`, etc.)
+2. **Read the relevant skill** from **`.fxmind/skills/<name>/`** (see `.fxmind/skills/_index.md`)
 
 3. **Fetch current documentation** with WebFetch when needed (never invent natives or APIs)
 

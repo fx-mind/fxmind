@@ -136,10 +136,55 @@ function buildSkillSources(packIds, options = {}) {
   return sources;
 }
 
+function usesRemoteSkillsCache(packId, options = {}) {
+  const pack = getPack(packId);
+
+  if (options.packSkillsDirs?.[packId]) {
+    return false;
+  }
+
+  if (
+    options.skillsDir &&
+    options.packs?.length === 1 &&
+    options.packs[0] === packId
+  ) {
+    return false;
+  }
+
+  const envKey = `FXMIND_PACK_${packId.toUpperCase()}_SKILLS_DIR`;
+  if (process.env[envKey]) {
+    return false;
+  }
+
+  if (process.env.FXMIND_SKILLS_DIR && packId === "fivem") {
+    return false;
+  }
+
+  const sibling = path.resolve(PACKAGE_ROOT, pack.skills.siblingPath);
+  if (hasValidSkillsDir(sibling)) {
+    return false;
+  }
+
+  return true;
+}
+
+function refreshPackSkillsCaches(packIds, options = {}) {
+  for (const packId of packIds) {
+    if (!usesRemoteSkillsCache(packId, { ...options, packs: packIds })) {
+      continue;
+    }
+
+    syncPackSkillsCache(getPack(packId));
+  }
+}
+
 module.exports = {
   PACKAGE_ROOT,
   CACHE_ROOT,
   hasValidSkillsDir,
+  syncPackSkillsCache,
+  usesRemoteSkillsCache,
+  refreshPackSkillsCaches,
   resolvePackSkillsDir,
   listSkillsInDir,
   buildSkillSources,

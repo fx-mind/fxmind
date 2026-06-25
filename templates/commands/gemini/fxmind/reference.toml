@@ -4,7 +4,7 @@ prompt = """
 Generate or update **`reference.mdc` in the project root** (same level as `resources/`, `server.cfg`, or main `fxmanifest.lua`).
 
 Read structure from `.fxmind/reference.template.mdc` and depth from `.fxmind/reference.example.mdc`.
-Read skills from `.gemini/skills/` or `.agents/skills/`.
+Read pack skills from `.fxmind/skills/` when needed.
 If `reference.mdc` already exists, merge/update — do not duplicate valid sections.
 
 Frontmatter:

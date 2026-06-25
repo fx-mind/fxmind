@@ -22,7 +22,7 @@ Do not create memory for tiny style/text changes, one-off bugs without reusable 
 ## General instructions
 
 1. For conceptual questions, check `_index.md` first; for cross-topic architecture use `/fxmind:query "<question>"` when graph exists.
-2. Read relevant skills from `.gemini/skills/` or `.agents/skills/`.
+2. Read relevant pack skills from `.fxmind/skills/` (see `_index.md`) when domain knowledge is needed.
 3. Read `reference.mdc` at project root if it exists.
 4. Fetch official docs when unsure. Never invent APIs.
 

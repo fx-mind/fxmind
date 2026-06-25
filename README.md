@@ -17,6 +17,9 @@ npx github:fx-mind/fxmind
 # Default: core + fivem pack
 npx github:fx-mind/fxmind -y
 
+# Refresh skills/templates after pack updates (keeps memories)
+npx github:fx-mind/fxmind --update -y
+
 # Core only — /fxmind + .fxmind/, no domain skills
 npx github:fx-mind/fxmind --no-packs -y
 
@@ -32,7 +35,8 @@ npx github:fx-mind/fxmind --pack fivem -y
 
 Each pack ships:
 
-- **Agent Skills** copied into your IDE/CLI
+- **Pack skills** in `.fxmind/skills/` (read on demand by the fxmind skill)
+- **Agent skill** `fxmind` only in your IDE/CLI skills folder
 - **Pack templates** in `.fxmind/` (e.g. FiveM `topic-catalog.md`, `audit.template.md`)
 - Entry in `.fxmind/packs.json`
 
@@ -49,9 +53,18 @@ packs/<id>/
 | Path | Role |
 |------|------|
 | `.fxmind/memory/` | Shared topic memories |
+| `.fxmind/skills/` | Pack domain skills (fxmind-managed) |
 | `.fxmind/knowledge-graph.json` | Topic graph |
 | `.fxmind/packs.json` | Installed knowledge packs |
 | `reference.mdc` | Lean project map (via `/fxmind reference`) |
+
+## Knowledge graph
+
+Interactive 3D map from `/fxmind graph` — learned topics, cross-links, filters, and node details.
+
+<p align="center">
+  <img src="https://i.postimg.cc/13mZzHTy/image.png" alt="fxmind knowledge graph — 3D topic map" width="900" />
+</p>
 
 ## Commands
 
@@ -62,6 +75,7 @@ packs/<id>/
 | `/fxmind audit` | Code audit (pack-specific templates when installed) |
 | `/fxmind graph` | Knowledge graph + 3D map |
 | `/fxmind query "…"` | Graph retrieval |
+| `/fxmind update` | Refresh pack skills & templates (or `fxmind --update -y`) |
 
 ## Monorepo dev
 
