@@ -65,6 +65,21 @@
       margin-bottom: 6px;
     }
 
+    .sidebar-brand-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .sidebar-logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      flex-shrink: 0;
+      object-fit: cover;
+    }
+
     .sidebar h1 {
       font-size: 13px;
       font-weight: 500;
@@ -390,7 +405,14 @@
     <aside class="sidebar">
       <header class="sidebar-header">
         <div class="sidebar-brand">
-          <h1>Graph</h1>
+          <div class="sidebar-brand-title">
+            <img
+              src="https://avatars.githubusercontent.com/u/296747387?s=200&v=4"
+              alt="fxmind logo"
+              class="sidebar-logo"
+            />
+            <h1>Graph</h1>
+          </div>
         </div>
         <p class="subtitle">Tópicos aprendidos via <code>/fxmind learn</code></p>
       </header>
