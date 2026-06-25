@@ -16,6 +16,8 @@
 | Medium | 0 |
 | Low | 0 |
 
+> **Counts must match** the number of rows in the Findings tables (not grouped themes).
+
 One-paragraph overview of the main risks and quick wins.
 
 ---
@@ -25,12 +27,10 @@ One-paragraph overview of the main risks and quick wins.
 | Event | File:line | SafeEvent | Real permission | Cooldown-only trap | Verdict |
 |-------|-----------|-----------|-----------------|-------------------|---------|
 | `manager:getGarages` | `server/adapter.lua:571` | ❌ | ❌ | — | **Critical** — data leak |
-| `manager:createGarage` | `server/adapter.lua:463` | ✅ | ❌ (only cooldown) | `CanUseGarageManager` | **Critical** |
-| `manager:deleteGarage` | `server/adapter.lua:676` | ❌ | ❌ | cooldown | **Critical** |
 
 Or: **N/A** — no manager/admin events in scope.
 
-**Systemic finding (if multiple rows lack auth):** list all events in one S* row; fix with shared `CanManageResource(source)`.
+**Systemic finding:** when multiple rows lack auth, one S* row listing all events + shared `CanManageResource(source)`.
 
 ---
 
@@ -47,8 +47,21 @@ Or: **N/A** — no manager/admin events in scope.
 | V-g | Full `Load*Cache()` after one DB write | | | Medium |
 | V-h | Duplicate transform / duplicate fn | | | Medium |
 | V-i | Manual `ChunkTable` + `Wait` | | | Medium |
+| V-j | Broadcast misuse (`manager:*` or large payload to `-1`) | | | High / Critical |
 
 Mark **N/A** only when the resource has no caches/sync — explain why.
+
+---
+
+## Broadcast Matrix (§1.6.1)
+
+| File:line | Event | Target | Payload | Verdict |
+|-----------|-------|--------|---------|---------|
+| `adapter.lua:668` | `manager:garageUpdated` | `source` | small | **OK** |
+| `adapter.lua:61` | `garages:updateGarage` | `-1` | small world delta | **OK** |
+| example | `manager:receiveGarages` | `-1` | full list | **Critical** — admin leak |
+
+**Rules:** `manager:*` / admin UI → **`source` only**. `-1` only for **global gameplay** sync with **small** payload (< ~8 KB). Large or full cache → cerberus `SendFullSync` / `SendDeltaSync` (+ `range`, `scopeRadius`).
 
 ---
 
@@ -57,8 +70,7 @@ Mark **N/A** only when the resource has no caches/sync — explain why.
 | Symbol | Declared | Used in files | Verdict |
 |--------|----------|---------------|---------|
 | `GarageCache` | `adapter.lua:5` | `adapter.lua` only | → `local` |
-| `GarageLocates` | `adapter.lua:258` | `adapter.lua`, `server.lua` | **OK** — cross-file server |
-| `GarageVehicleSetCache` | `adapter.lua:840` | `adapter.lua` only | → `local` |
+| `GarageLocates` | `server.lua:184` | `server.lua`, `adapter.lua` | **OK** — cross-file server |
 
 ---
 
@@ -68,57 +80,48 @@ Mark **N/A** only when the resource has no caches/sync — explain why.
 
 | ID | Severity | File:line | Symbol | Issue | Recommendation |
 |----|----------|-----------|--------|-------|----------------|
-| S1 | Critical | `server/adapter.lua:571` | `manager:getGarages` | No server auth; leaks full garage list with perms | Shared `CanManageResource`; block before send |
-| S2 | Critical | `server/adapter.lua:676` | `manager:deleteGarage` | No SafeEvent; no real permission | SafeEvent + `CanManageResource` |
+| S1 | Critical | `server/adapter.lua:571` | `manager:getGarages` | No server auth; leaks list with perms | `CanManageResource` before send |
 
 Checklist:
 
 - [ ] Manager events matrix complete
 - [ ] Cooldown helpers not mistaken for permission
-- [ ] SafeEvent on all mutating admin events (compare siblings)
-- [ ] Client/NUI data re-validated on server
-- [ ] No secrets in client files
+- [ ] SafeEvent on all mutating admin events
+- [ ] No `manager:*` sent to `-1`
 
-### Performance — View Cache (IDs = matrix row)
+### Performance — View Cache
 
 | ID | Severity | File:line | Symbol | Issue | Recommendation |
 |----|----------|-----------|--------|-------|----------------|
-| V-a | High | `server/adapter.lua:668` | `manager:updateGarage` | `buildManagerGarageListItem(...)` in `TriggerClientEvent` | `ViewCache[id]` on CRUD |
-| V-b | High | `server/adapter.lua:574` | `manager:getGarages` | `buildManagerGarageList()` every request | Send `getViewList()` from cache |
-| V-c | High | `server/adapter.lua:565` | `manager:createGarage` | `listItem` + `buildManagerGarageList()` same handler | Single cache rebuild |
-| V-d | High | `server/adapter.lua:567` | `manager:createGarage` | `receiveGarages` + `LoadGaragePlayer` + delta | Keep delta only |
-| V-e | High | `server/adapter.lua:837` | `playerConnect` | Full sanitize/chunk every connect | Pre-built chunks |
-| V-f | High | `server/adapter.lua:669` | `manager:updateGarage` | `LoadGaragePlayer` after update | Use existing delta fn |
-| V-g | Medium | `server/adapter.lua:947` | `CreateGarageVehicleSet` | `LoadGarageVehicleSetCache()` full DB | Upsert one entry |
+| V-a | High | `adapter.lua:668` | `manager:updateGarage` | build-on-send | `ViewCache[id]` |
+| V-j | Critical | `adapter.lua:???` | `manager:*` | `-1` on admin event | Use `source` only |
 
-**Snippet (required for High/Critical):**
+**Snippets (required for Critical/High):**
 
 ```lua
--- Before @ adapter.lua:668
-TriggerClientEvent("manager:garageUpdated", source, buildManagerGarageListItem(id, cacheEntry))
-
--- After
+-- Admin UI: always source (§1.6.1)
 TriggerClientEvent("manager:garageUpdated", source, ManagerGarageListCache[id])
+
+-- World sync: small delta to all
+TriggerClientEvent("garages:updateGarage", -1, WorldViewCache[id])
+
+-- Large bootstrap: cerberus, not TriggerClientEvent(-1, hugeTable)
+exports["cerberus"]:SendFullSync(source, "garages:fullSync", SanitizedGarageCache, {
+    key = "garages:bootstrap",
+    coords = GetEntityCoords(GetPlayerPed(source)),
+    range = 150.0
+})
 ```
 
 ### Performance — General
 
 | ID | Severity | File:line | Issue | Recommendation |
 |----|----------|-----------|-------|----------------|
-| P1 | High | `client/client.lua:45` | `Wait(0)` idle loop | Dynamic sleep |
 
 ### Patterns & Code Quality
 
 | ID | Severity | File:line | Issue | Recommendation |
 |----|----------|-----------|-------|----------------|
-| C1 | Medium | `adapter.lua:288,842` | `decodeJsonField` defined twice | Remove duplicate |
-| G1 | Medium | `adapter.lua:5` | `GarageCache` global, single-file use | `local GarageCache` |
-
-### NUI (if applicable)
-
-| ID | Severity | File | Issue | Recommendation |
-|----|----------|------|-------|----------------|
-| N1 | Medium | `web/script.js` | Missing `cb("{}")` | Return valid JSON |
 
 ---
 
@@ -128,22 +131,17 @@ TriggerClientEvent("manager:garageUpdated", source, ManagerGarageListCache[id])
 
 ### Phase 1 — Critical security
 
-1. [ ] S1 — `CanManageResource` on all `manager:*` read/list/teleport events
-2. [ ] S2 — SafeEvent on delete events; real permission on CRUD
+1. [ ] S* — auth on all `manager:*`; SafeEvent on deletes
+2. [ ] V-j — fix any `manager:*` or admin payload sent to `-1`
 
 ### Phase 2 — High (view cache + hot paths)
 
-1. [ ] V-a — remove build-on-send
-2. [ ] V-b — cache list for get/open handlers
-3. [ ] V-c / V-d — remove double/triple sync on create
-4. [ ] V-e — pre-build chunks for connect
-5. [ ] V-f — delta-only on update/delete
-6. [ ] P1 — ...
+1. [ ] V-a–V-f — view cache layer; remove hot-path rebuilds
+2. [ ] Large sync → cerberus instead of manual chunks (V-i)
 
 ### Phase 3 — Medium
 
-1. [ ] V-g — incremental cache after DB write
-2. [ ] C1 / G1 — dedupe functions; local globals
+1. [ ] V-g, V-h — incremental cache; dedupe functions; local globals
 
 ### Phase 4 — Low
 
@@ -154,12 +152,11 @@ TriggerClientEvent("manager:garageUpdated", source, ManagerGarageListCache[id])
 ## Pass 6 Self-Check (§2.4)
 
 - [ ] All fxmanifest Lua files in **Files reviewed**
-- [ ] View cache matrix V-a–V-i each marked Found or N/A
-- [ ] Every finding has correct **symbol** (event/fn name)
-- [ ] Line numbers verified by reading file
-- [ ] Globals table complete (server + client scope)
-- [ ] Manager matrix complete or N/A
-- [ ] Phase plan matches finding severities
+- [ ] View cache matrix V-a–V-j each marked Found or N/A
+- [ ] **Broadcast matrix** filled for every `TriggerClientEvent(-1, ...)` and large sync
+- [ ] Summary counts = findings row counts
+- [ ] Every finding has correct **symbol** and verified line
+- [ ] Phase plan matches severities
 - [ ] Before/after snippets for all Critical/High items
 
 ---
@@ -168,12 +165,11 @@ TriggerClientEvent("manager:garageUpdated", source, ManagerGarageListCache[id])
 
 | File | Lines | Side |
 |------|-------|------|
-| `src/server/adapter.lua` | 1162 | server |
-| `src/server/server.lua` | 1553 | server |
-| `src/client/client.lua` | 400 | client |
-| `fxmanifest.lua` | 37 | — |
+| `fxmanifest.lua` | | — |
 
 ## Skills Referenced
 
-- `fivem-development/best-practices.md` — §2.2–2.4, §3.6, §5.1
+- **fivem-skill** → `.fxmind/skills/fivem-development/best-practices.md` (§1.6.1, §2.2–2.4, §3.6, §4.2, §5.1)
 - Framework skill: `{{FRAMEWORK_SKILL}}`
+
+**Repo split:** patterns live in [fivem-skill](https://github.com/proelias7/fivem-skill); audit workflow lives in [fxmind](https://github.com/fx-mind/fxmind).

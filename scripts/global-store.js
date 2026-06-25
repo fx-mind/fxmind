@@ -13,6 +13,7 @@ const STORE_FILE = "store.json";
 
 const PROJECT_DATA_LINKS = [
   "memory",
+  "audits",
   "knowledge-graph.json",
   "knowledge-graph.html",
 ];
@@ -205,7 +206,7 @@ function wireProjectLinks(projectRoot, globalProjectDir) {
     const globalPath = path.join(globalProjectDir, name);
     const localPath = path.join(localFxmind, name);
 
-    if (name === "memory") {
+    if (name === "memory" || name === "audits") {
       fs.mkdirSync(globalPath, { recursive: true });
       createSymlink(globalPath, localPath, "dir");
       continue;

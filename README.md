@@ -202,6 +202,7 @@ packs/<id>/
 | Path | Role |
 |------|------|
 | `.fxmind/memory/` | Shared topic memories |
+| `.fxmind/audits/` | Audit reports (`/fxmind audit`) |
 | `.fxmind/skills/` | Pack domain skills (fxmind-managed) |
 | `.fxmind/knowledge-graph.json` | Topic graph |
 | `.fxmind/packs.json` | Installed knowledge packs |

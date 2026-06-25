@@ -75,6 +75,7 @@ const LEGACY_FIVEM_FILES = [
 ];
 const SHARED_DIR = ".fxmind";
 const PACK_SKILLS_DIR = path.join(SHARED_DIR, "skills");
+const AUDITS_DIR = path.join(SHARED_DIR, "audits");
 const LEGACY_SHARED_DIRS = [".fivem"];
 
 const LEGACY_AGENT_FIVEM_DIRS = [
@@ -1112,7 +1113,10 @@ function migrateAndCleanLegacyAgentArtifacts(targetRoot) {
       }
 
       const legacyPath = path.join(legacyFull, name);
-      const sharedPath = path.join(sharedDir, name);
+      const resourceName = name.slice("audit-".length);
+      const auditsDir = path.join(sharedDir, "audits");
+      const sharedPath = path.join(auditsDir, `${resourceName}.md`);
+      fs.mkdirSync(auditsDir, { recursive: true });
       if (shouldPreferLegacyArtifact(legacyPath, sharedPath)) {
         fs.copyFileSync(legacyPath, sharedPath);
         migrated.push(path.relative(targetRoot, sharedPath));
@@ -1371,6 +1375,41 @@ function resolveUpdateOptions(options) {
   }
 }
 
+function migrateAuditReports(targetRoot) {
+  const fxmindDir = path.join(targetRoot, SHARED_DIR);
+  const auditsDir = path.join(targetRoot, AUDITS_DIR);
+  const migrated = [];
+
+  if (!fs.existsSync(fxmindDir)) {
+    return migrated;
+  }
+
+  fs.mkdirSync(auditsDir, { recursive: true });
+
+  for (const name of fs.readdirSync(fxmindDir)) {
+    if (!name.startsWith("audit-") || !name.endsWith(".md") || name === "audit.template.md") {
+      continue;
+    }
+
+    const legacyPath = path.join(fxmindDir, name);
+    if (!fs.statSync(legacyPath).isFile()) {
+      continue;
+    }
+
+    const resourceName = name.slice("audit-".length);
+    const destPath = path.join(auditsDir, `${resourceName}.md`);
+
+    if (!fs.existsSync(destPath)) {
+      fs.copyFileSync(legacyPath, destPath);
+      migrated.push(path.relative(targetRoot, destPath));
+    }
+
+    fs.unlinkSync(legacyPath);
+  }
+
+  return migrated;
+}
+
 function installSharedFxmind(targetRoot, packIds, installOptions = {}) {
   const preserveUserData = Boolean(installOptions.preserveUserData);
   const relativeDestDir = SHARED_DIR;
@@ -1464,6 +1503,12 @@ function installSharedFxmind(targetRoot, packIds, installOptions = {}) {
   if (fs.existsSync(fxmindGuideSrc)) {
     fs.copyFileSync(fxmindGuideSrc, fxmindGuideDest);
     installed.push(path.relative(targetRoot, fxmindGuideDest));
+  }
+
+  fs.mkdirSync(path.join(targetRoot, AUDITS_DIR), { recursive: true });
+  installed.push(AUDITS_DIR.replace(/\\/g, "/"));
+  for (const dest of migrateAuditReports(targetRoot)) {
+    installed.push(dest);
   }
 
   return { installed, removed };
