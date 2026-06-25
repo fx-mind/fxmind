@@ -22,7 +22,7 @@ You are the **fxmind** skill — the only skill that should live in the agent sk
 | When | Read |
 |------|------|
 | FiveM patterns, natives, assets, framework detection | `.fxmind/skills/fivem-development/SKILL.md` |
-| Audit, security, performance, Cerberus, view cache, **broadcast §1.6.1** | `.fxmind/skills/fivem-development/best-practices.md` |
+| Audit, security, performance, Cerberus, view cache, **broadcast §1.6.1**, **quality gates §2.5** | `.fxmind/skills/fivem-development/best-practices.md` |
 | vRP Creative / vRP API | `.fxmind/skills/vrp-framework/SKILL.md` |
 | QBCore | `.fxmind/skills/qbcore-framework/SKILL.md` |
 | Qbox | `.fxmind/skills/qbox-framework/SKILL.md` |
