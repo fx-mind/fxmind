@@ -246,6 +246,22 @@ Inside Cursor, Claude, Gemini, OpenCode, or Codex — project memory workflows (
 | `/fxmind explain <topic>` | Describe a topic node |
 | `/fxmind memory health` | Verify memories vs codebase |
 | `/fxmind update` | Prompts to run `fxmind --update -y` in terminal |
+| `/fxmind task <request>` | **Task** — analyze → load memories → implement → post-task learn |
+| `/fxmind update` | Prompts to run `fxmind --update -y` in terminal |
+
+### Task mode (`/fxmind task <implementation request>`)
+
+Preferred for any code/config change. Gates (in `.cursor/skills/fxmind/SKILL.md` and `.fxmind/fxmind.md`):
+
+1. **Gate A** — show goal/scope/topics in chat **before** editing code
+2. **Gate B** — read `.fxmind/memory/_index.md` and load relevant memories (or state none matched)
+3. **Gate C** — after implementation, review learning; update memory or state "no reusable knowledge"
+
+```text
+/fxmind task desative garagem no menu admin_f
+```
+
+Legacy `/fxmind <request>` without `task` still routes to Task mode. Gemini: `/fxmind:task <request>`
 
 To refresh skills/templates after upstream changes, use the **CLI**: `fxmind --update -y` (see [CLI](#cli-fxmind)).
 

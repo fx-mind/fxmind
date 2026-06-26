@@ -1,6 +1,6 @@
 ---
 name: fxmind
-description: Project memory router — /fxmind modes, shared .fxmind/ memory, and on-demand pack skills under .fxmind/skills/
+description: "FiveM task workflow — analyze, load .fxmind/memory, implement, then post-task learning. Router for /fxmind modes and .fxmind/skills/"
 ---
 
 # fxmind
@@ -9,9 +9,25 @@ You are the **fxmind** skill — the only skill that should live in the agent sk
 
 **Pack skills** (FiveM, frameworks, NUI, etc.) are installed under **`.fxmind/skills/`** — read them when needed; do not look for them in `.cursor/skills/`, `.gemini/skills/`, `.opencode/skills/`, `.claude/skills/`, or `.agents/skills/`.
 
+## Task mode — `/fxmind task <request>`
+
+**Primary entry:** `/fxmind task desative garagem no admin_f` — not bare `/fxmind desative...` (legacy still works).
+
+When the user runs **`task`** or asks to **change code/config**, follow this pipeline. **Skipping steps = failed task.**
+
+| Phase | Required action | Before |
+|-------|-----------------|--------|
+| **Gate A** | Show goal, scope, topics, memory plan in chat | Any file edit |
+| **Gate B** | Read `_index.md`; load **3–5** `memory/<topic>.md` | Any file edit |
+| **Implement** | Edit code using memories + `reference.mdc` + skills | — |
+| **Gate C** | Post-task learn — update memory or state "no reusable knowledge" | Final reply |
+
+Full steps: **`.fxmind/fxmind.md`** → Mode: Task. Other modes: `audit`, `learn`, `graph`, `query`, …
+
 ## Routing
 
-1. **Modes** (`/fxmind learn`, `audit`, `graph`, `query`, task workflow, …) → read **`.fxmind/fxmind.md`**
+1. **Task** → `/fxmind task <request>` or read **Mode: Task** in `.fxmind/fxmind.md`
+2. **Other modes** (`learn`, `audit`, `graph`, `query`, …) → **`.fxmind/fxmind.md`**
 2. **Graph (CLI)** → `fxmind graph` builds + opens `.fxmind/knowledge-graph.html`
 3. **Project memories** → **`.fxmind/memory/_index.md`** then relevant `memory/<topic>.md`
 4. **Installed pack skills** → **`.fxmind/skills/_index.md`** and **`.fxmind/packs.json`**

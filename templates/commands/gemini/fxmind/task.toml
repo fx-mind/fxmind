@@ -1,0 +1,56 @@
+description = "Task workflow — analyze, load memories, implement, post-task learning"
+
+prompt = """
+**Task (implementation / fix / refactor / config change).** Do NOT skip gates.
+
+**Task text:** {{args}}
+(Everything after `task` — goal, scope hints, `@` mentions.)
+
+> **Do not edit code until Gates A and B are complete.**
+
+## Gate A — show analysis in chat (before any edit)
+
+Post a short block:
+
+1. **Goal** — what the user wants
+2. **Scope** — resource/files (from args, `@`, open files)
+3. **Topics** — NUI, garage, admin, permissions, events, etc.
+4. **Risks** — if any (permissions, client/server, destructive)
+5. **Memory plan** — candidate topics from index/graph, or "no index match"
+
+## Gate B — load memory (before any edit)
+
+1. Read **`.fxmind/memory/_index.md`** (required every Task)
+2. If **`.fxmind/knowledge-graph.json`** exists → graph-router (keywords → BFS depth 3, ~1500 token budget)
+3. Else → **`.fxmind/topic-catalog.md`** + index row matching
+4. Load **3–5** relevant **`.fxmind/memory/<topic>.md`** files (or state none matched)
+5. Read **`reference.mdc`** if present
+6. Read pack skills from **`.fxmind/skills/`** when domain knowledge is needed (NUI → `fivem-react-nui`, framework → detected skill)
+
+Only after Gates A + B → read task code files and implement.
+
+## Step 4 — Implement
+
+1. Read real code files for the task
+2. Follow loaded memories + `reference.mdc` + skills
+3. Edit only what the task requires
+4. Validate with focused lint/test/grep where practical
+5. Do **not** edit memory files during implementation
+
+## Gate C — post-task learning (before final reply)
+
+After implementation:
+
+1. Review whether reusable project knowledge was learned (flows, events, menu structure, conventions)
+2. If yes → update/create **`.fxmind/memory/<topic>.md`** + **`_index.md`** (use `.fxmind/memory.template.md`, `lang: en-compact`, grep-confirmed frontmatter only)
+3. If no → state explicitly (e.g. "Nenhuma memória nova — mudança pontual")
+4. If memory changed → suggest **`/fxmind:graph`**
+
+Do **not** create memory for: tiny text/UI toggles, one-off bugs without reusable flow, guesses, generic FiveM advice.
+
+## Reply
+
+Reply in the user's language: implementation summary, validation, memories loaded, learn outcome (path or "none").
+
+Never invent paths, events, APIs, or permissions.
+"""

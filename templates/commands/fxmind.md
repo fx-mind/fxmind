@@ -1,6 +1,6 @@
 ---
 description: "fxmind — FiveM project memory — task workflow, docs, reference, audit, learn, memory health, graph, query, path, explain, update"
-argument-hint: "<task/question> | reference | audit [scope] | learn <topic> | memory health [fix] [topic] | graph | query \"<question>\" [--dfs] [--budget N] | path <a> <b> | explain <topic> | update"
+argument-hint: "task <implementation> | reference | audit [scope] | learn <topic> | memory health [fix] [topic] | graph | query \"<question>\" [--dfs] [--budget N] | path <a> <b> | explain <topic> | update | <question>"
 ---
 
 # fxmind
@@ -9,10 +9,11 @@ argument-hint: "<task/question> | reference | audit [scope] | learn <topic> | me
 
 ## Routing
 
-Parse `$ARGUMENTS` (trim, case-insensitive):
+Parse `$ARGUMENTS` (trim, case-insensitive). **Prefer `task` for any code/config change.**
 
 | Input | Mode |
 |-------|------|
+| `task` or `task ...` | **Task** — analyze → load memories → implement → post-task learn (**preferred**) |
 | `reference` or `reference ...` | **Reference** — generate/update `reference.mdc` at project root |
 | `audit` or `audit ...` | **Audit** — scan code, report issues, output correction plan |
 | `learn` or `learn <topic>` | **Learn** — generate/update topic memory in `.fxmind/memory/` |
@@ -26,8 +27,10 @@ Parse `$ARGUMENTS` (trim, case-insensitive):
 | `path <topic-a> <topic-b>` | **Path** — shortest path between two learned topics |
 | `explain <topic>` | **Explain** — describe a topic node and its connections |
 | `update` | **Update** — refresh installed pack skills, templates, and `/fxmind` helper |
-| implementation/correction request | **Task** — analyze, retrieve minimal memories, implement, then capture reusable knowledge |
+| implementation request without `task` prefix | **Task** (legacy) — same as `task ...`; suggest `/fxmind task` next time |
 | empty or conceptual question | **Help** — answer FiveM development questions |
+
+**Task text:** when input starts with `task`, strip that keyword — the rest is the implementation request (e.g. `task desative garagem no admin_f` → goal = desative garagem no admin_f).
 
 **Audit scope** (optional after `audit`):
 
@@ -77,7 +80,40 @@ Only **`fxmind`** lives in the agent skills folder (`.cursor/skills/fxmind/`, `.
 
 ## Mode: Task
 
+**Invoke:** `/fxmind task <implementation request>` (preferred). Legacy: `/fxmind <request>` without `task` still routes here.
+
 Use Task mode when the user asks to **make, create, implement, fix, adjust, refactor, add, remove, wire, migrate, or change code/config** in a FiveM project. This mode optimizes delivery time by loading only the memory needed for the task, then learning from the completed work.
+
+> **Do not edit code until Gates A and B are complete.** Skipping gates = incomplete Task.
+
+### Gate A — show analysis in chat (before any edit)
+
+Post a short block:
+
+1. **Goal** — what the user wants (from task text)
+2. **Scope** — resource/files (from args, `@`, open files)
+3. **Topics** — NUI, garage, admin, permissions, events, etc.
+4. **Risks** — if any (permissions, client/server, destructive)
+5. **Memory plan** — candidate topics from index/graph, or "no index match"
+
+### Gate B — load memory (before any edit)
+
+1. Read **`.fxmind/memory/_index.md`** (required every Task)
+2. If **`.fxmind/knowledge-graph.json`** exists → graph-router (keywords → BFS depth 3, ~1500 token budget)
+3. Else → **`.fxmind/topic-catalog.md`** + index row matching
+4. Load **3–5** relevant **`.fxmind/memory/<topic>.md`** files (or state none matched)
+5. Read **`reference.mdc`** if present
+
+Only after Gates A + B → proceed to Step 1 below and implement.
+
+### Gate C — post-task learning (before final reply)
+
+After implementation:
+
+1. Review whether reusable project knowledge was learned (flows, events, menu structure, conventions)
+2. If yes → update/create **`.fxmind/memory/<topic>.md`** + **`_index.md`** (see Step 6)
+3. If no → state **"Nenhuma memória nova — mudança pontual"** (or equivalent)
+4. If memory changed → suggest **`/fxmind graph`**
 
 ### Step 1 — Initial task analysis
 
@@ -1114,6 +1150,7 @@ You are a FiveM development expert. Help the user with their FiveM scripting que
    - NUI/React UI → Read skill `fivem-react-nui`
    - Patterns/best practices → Read skill `fivem-development` (`best-practices.md`)
    - Code audit → suggest `/fxmind audit [scope]`
+   - Implement, fix, refactor, add/remove code → suggest **`/fxmind task <request>`**
    - Recurring project flow (craft, item, loja, NUI) → read `.fxmind/memory/<topic>.md` if exists; else suggest `/fxmind learn <topic>`
    - Architecture / cross-topic flow → suggest `/fxmind query "<question>"` if `knowledge-graph.json` exists
    - Project conventions → Read **`reference.mdc`** at project root if it exists
