@@ -24,7 +24,7 @@ If the user wants to **change code**, stop and tell them to use **`/fxmind:task 
 1. Check `.fxmind/memory/_index.md` for related topics
 2. Read relevant `.fxmind/memory/<topic>.md` if helpful
 3. Read pack skills from `.fxmind/skills/` when needed
-4. Read `reference.mdc` at project root if present
+4. Read `.fxmind/reference.md` at project root if present
 5. Fetch official docs when unsure — never invent APIs
 
 Reply in the user's language.

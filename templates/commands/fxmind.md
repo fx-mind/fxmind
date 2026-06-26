@@ -14,7 +14,7 @@ Parse `$ARGUMENTS` (trim, case-insensitive). **Prefer `task` for any code/config
 | Input | Mode |
 |-------|------|
 | `task` or `task ...` | **Task** — analyze → load memories → implement → post-task learn (**preferred**) |
-| `reference` or `reference ...` | **Reference** — generate/update `reference.mdc` at project root |
+| `reference` or `reference ...` | **Reference** — generate/update `.fxmind/reference.md` |
 | `audit` or `audit ...` | **Audit** — scan code, report issues, output correction plan |
 | `learn` or `learn <topic>` | **Learn** — generate/update topic memory in `.fxmind/memory/` |
 | `learn list` | **Learn** — list topics in `_index.md` + catalog |
@@ -84,11 +84,11 @@ Only **`fxmind`** lives in the agent skills folder (`.cursor/skills/fxmind/`, `.
 
 Use Task mode when the user asks to **make, create, implement, fix, adjust, refactor, add, remove, wire, migrate, or change code/config** in a FiveM project. This mode optimizes delivery time by loading only the memory needed for the task, then learning from the completed work.
 
-> **Do not edit code until Gates A and B are complete.** Skipping gates = incomplete Task.
+> **🛑 HARD STOP: You MUST NOT read, open, or edit any code file until both Gate A and Gate B output markers are visible in this conversation. This is a blocking requirement, not a suggestion.**
 
 ### Gate A — show analysis in chat (before any edit)
 
-Post a short block:
+Post a block with ALL 5 items below. Do not skip any item.
 
 1. **Goal** — what the user wants (from task text)
 2. **Scope** — resource/files (from args, `@`, open files)
@@ -96,15 +96,27 @@ Post a short block:
 4. **Risks** — if any (permissions, client/server, destructive)
 5. **Memory plan** — candidate topics from index/graph, or "no index match"
 
+**Output:**
+```
+🛑 GATE A COMPLETE — GOAL: <one-line summary>, SCOPE: <files/resources>, TOPICS: <list>, RISKS: <list or none>
+DO NOT proceed to Gate B until this marker is visible.
+```
+
 ### Gate B — load memory (before any edit)
 
 1. Read **`.fxmind/memory/_index.md`** (required every Task)
 2. If **`.fxmind/knowledge-graph.json`** exists → graph-router (keywords → BFS depth 3, ~1500 token budget)
 3. Else → **`.fxmind/topic-catalog.md`** + index row matching
 4. Load **3–5** relevant **`.fxmind/memory/<topic>.md`** files (or state none matched)
-5. Read **`reference.mdc`** if present
+5. Read **`.fxmind/reference.md`** if present (skip if absent)
 
-Only after Gates A + B → proceed to Step 1 below and implement.
+**Output:**
+```
+🛑 GATE B COMPLETE — MEMORIES LOADED: <list topics or "none">, REFERENCE: <loaded/absent>, GRAPH: <used/fallback>
+DO NOT proceed to implementation until this marker is visible.
+```
+
+Only after Gate A marker + Gate B marker → proceed to Step 1 below and implement.
 
 ### Gate C — post-task learning (before final reply)
 
@@ -114,6 +126,11 @@ After implementation:
 2. If yes → update/create **`.fxmind/memory/<topic>.md`** + **`_index.md`** (see Step 6)
 3. If no → state **"Nenhuma memória nova — mudança pontual"** (or equivalent)
 4. If memory changed → suggest **`/fxmind graph`**
+
+**Output:**
+```
+🛑 GATE C COMPLETE — LEARNING: <memory created: path / memory updated: path / none — mudança pontual>
+```
 
 ### Step 1 — Initial task analysis
 
@@ -141,7 +158,7 @@ Ask when unsure about:
 - two valid approaches with meaningful trade-offs
 - money, inventory, permission, vehicle, XP, ban, or sensitive event behavior
 
-Do **not** ask for trivial details that can be resolved by reading existing code, loaded memories, `reference.mdc`, or obvious local patterns.
+Do **not** ask for trivial details that can be resolved by reading existing code, loaded memories, `.fxmind/reference.md`, or obvious local patterns.
 
 ### Step 3 — Selective memory retrieval
 
@@ -161,7 +178,7 @@ Use memories as a routing cache, not as a bulk context dump.
 2. Read `.fxmind/topic-catalog.md` for aliases/search hints.
 3. Match the task against memory rows by slug, canonical slug, aliases, triggers, paths, symbols, and resource names.
 4. Load only the relevant `memory/<topic>.md` files, normally **3–5 maximum**.
-5. If no memory matches, use `topic-catalog.md`, `reference.mdc`, and the task files directly.
+5. If no memory matches, use `topic-catalog.md`, `.fxmind/reference.md`, and the task files directly.
 6. Do not load all memories just to be safe.
 
 Canonical matching:
@@ -175,7 +192,7 @@ Canonical matching:
 After retrieval:
 
 1. Read the real code files needed for the task.
-2. Follow project patterns from relevant memories, `reference.mdc`, and skills.
+2. Follow project patterns from relevant memories, `.fxmind/reference.md`, and skills.
 3. Edit Lua/JS/TS/NUI/config only as required by the task.
 4. Prefer existing helpers/events/framework APIs over new abstractions.
 5. Validate with focused lints/tests/grep where practical.
@@ -212,7 +229,7 @@ When the learning review qualifies:
 6. Frontmatter arrays (`resources`, `paths`, `events`, `exports`, `symbols`, `triggers`) — grep-confirmed literals only; `confidence: extracted`.
 7. Include only verified repo literals: paths, events, exports, config keys, permissions, examples.
 7. Update `.fxmind/memory/_index.md`; create from `memory-index.template.md` if missing.
-8. If `reference.mdc` exists, update only one row under `## Memórias por tópico`.
+8. If `.fxmind/reference.md` exists, update only one row under `## Memórias por tópico`.
 
 ### Step 7 — Reply
 
@@ -223,6 +240,19 @@ Reply in the user's language with the implementation summary and validation. If 
 - suggest `/fxmind graph` to refresh the 3D knowledge map
 
 If no reusable knowledge was learned, omit memory noise unless it clarifies the outcome.
+
+**Compliance checklist (mandatory in every task reply):**
+
+```
+## Compliance
+- [x] Gate A: analysis shown before any edit — `🛑 GATE A COMPLETE`
+- [x] Gate B: _index.md read, 3-5 memories loaded — `🛑 GATE B COMPLETE`
+- [x] Gate C: post-task review completed — `🛑 GATE C COMPLETE`
+- [x] Memories loaded: <list>
+- [x] Learning outcome: <created/updated/none>
+```
+
+If any gate was skipped, mark it `[ ] SKIPPED` and explain why. Never mark a gate as complete if the marker was not output.
 
 ### Task rules
 
@@ -256,7 +286,7 @@ Read from **`.fxmind/skills/`** (installed from [fivem-skill](https://github.com
 
 Read **`.fxmind/audit.template.md`** for report structure.
 
-If **`reference.mdc`** exists at project root → read for project-specific conventions.
+If **`.fxmind/reference.md`** exists at project root → read for project-specific conventions.
 
 ### Step 2 — Discover scope (full resource — Pass 0)
 
@@ -480,13 +510,13 @@ Read from **`.fxmind/skills/`**:
 | Framework skill (`vrp-framework`, etc.) | If detected |
 | `.fxmind/topic-catalog.md` | Search hints for known topics |
 | `.fxmind/memory.template.md` | Output skeleton |
-| `reference.mdc` at project root | If exists — project paths |
+| `.fxmind/reference.md` at project root | If exists — project paths |
 | `.fxmind/memory/<topic>.md` | If exists — **merge** (preserve valid content, update paths) |
 
 ### Step 3 — Scan codebase
 
 1. Match topic to catalog row if possible; use its grep/paths hints
-2. Unknown topic → infer paths from user request + `reference.mdc`
+2. Unknown topic → infer paths from user request + `.fxmind/reference.md`
 3. Grep + read files — **every path in output must exist in the repo**
 4. Extract: config paths, handlers, events, checklists, one real example from the codebase
 
@@ -506,15 +536,15 @@ Save to **`.fxmind/memory/<topic>.md`** using `memory.template.md` structure (**
 Update **`.fxmind/memory/_index.md`** — table row: topic | file | triggers | last updated.
 Create from `memory-index.template.md` if missing.
 
-### Step 6 — Update reference.mdc
+### Step 6 — Update .fxmind/reference.md
 
-If **`reference.mdc`** exists at project root:
+If **`.fxmind/reference.md`** exists at project root:
 
 1. Ensure section **`## Memórias por tópico`** exists (create if absent)
 2. Add or update **one table row** per topic: topic → `memory/<topic>.md`
-3. Keep the rest of `reference.mdc` **lean** — do not duplicate full craft/item flows here
+3. Keep the rest of `.fxmind/reference.md` **lean** — do not duplicate full craft/item flows here
 
-If `reference.mdc` does not exist, skip (user can run `/fxmind reference` later).
+If `.fxmind/reference.md` does not exist, skip (user can run `/fxmind reference` later).
 
 ### Step 7 — Reply
 
@@ -537,7 +567,7 @@ Reply to the user in **their language** (usually PT-BR if they write in PT-BR):
 
 ## Mode: Memory health
 
-Verify **topic memories** against the live codebase and **integration** (`_index.md`, `reference.mdc`). Optionally **auto-fix** stale content and **compact token format**.
+Verify **topic memories** against the live codebase and **integration** (`_index.md`, `.fxmind/reference.md`). Optionally **auto-fix** stale content and **compact token format**.
 
 **Read-only by default.** With `fix` → rewrite markdown only (memories, index, reference links, health report). **Do not edit Lua/JS.**
 
@@ -562,7 +592,7 @@ If no `memory/` files exist → reply suggesting `/fxmind learn <topic>` first; 
 | `.fxmind/memory.template.md` | Target compact format |
 | `.fxmind/memory/_index.md` | Index integration |
 | `.fxmind/topic-catalog.md` | Catalog orphans (info) |
-| `reference.mdc` | Section `## Memórias por tópico` |
+| `.fxmind/reference.md` | Section `## Memórias por tópico` |
 | `.fxmind/memory/<topic>.md` | Each topic to verify |
 | `.fxmind/knowledge-graph.json` | If present — graph drift vs memories |
 
@@ -607,8 +637,8 @@ function names referenced in Recipe steps
 |-------|-------|
 | `_index.md` row | topic in index but no `memory/<topic>.md` |
 | `memory/*.md` file | file exists but missing from `_index.md` |
-| `reference.mdc` table | link to missing memory file |
-| `reference.mdc` | topic in memory folder but no row in `## Memórias por tópico` |
+| `.fxmind/reference.md` table | link to missing memory file |
+| `.fxmind/reference.md` | topic in memory folder but no row in `## Memórias por tópico` |
 
 #### Graph drift (when `knowledge-graph.json` exists)
 
@@ -650,7 +680,7 @@ Only after verification — **never invent** replacements:
 1. **Prune** lines referencing missing paths/events (grep-confirmed dead refs)
 2. **Rewrite** to `memory.template.md` — compact English, `lang: en-compact`, ~25–60 lines; refresh frontmatter arrays from surviving grep evidence
 3. **Re-scan** repo for that topic (catalog hints + surviving valid paths) to refresh `Files`, `Recipe`, `Example`, `Pitfalls`
-4. **Sync** `_index.md` (topic | file | triggers | updated) and `reference.mdc` one-row links
+4. **Sync** `_index.md` (topic | file | triggers | updated) and `.fxmind/reference.md` one-row links
 5. **Broken topics** mostly empty after prune → keep minimal stub + flag **re-learn**: `/fxmind learn <topic>` — do not guess new APIs
 
 Update frontmatter `updated` on changed memories.
@@ -1061,11 +1091,9 @@ Report stdout from the command. Remind user to restart the agent IDE/CLI (Gemini
 
 ## Mode: Reference
 
-Generate or update **`reference.mdc` in the project root** (same level as `resources/`, `server.cfg`, or main `fxmanifest.lua`).
+Generate or update **`.fxmind/reference.md`** — the project map with paths, flows, and anti-bug notes for all agents (Cursor, opencode, Claude, Gemini).
 
-This file is a **Cursor rule** (`alwaysApply: true`) with project-specific paths, flows, and anti-bug notes for future sessions.
-
-Keep it **lean**: detailed flows for recurring topics belong in `.fxmind/memory/<topic>.md` via `/fxmind learn <topic>` — do not paste full craft/item recipes here. Memory files use compact technical English (`lang: en-compact`); only link to them from this rule.
+Keep it **lean**: detailed flows for recurring topics belong in `.fxmind/memory/<topic>.md` via `/fxmind learn <topic>` — do not paste full craft/item recipes here. Memory files use compact technical English (`lang: en-compact`); only link to them from this reference.
 
 ### Step 1 — Discover the project
 
@@ -1083,24 +1111,23 @@ Use semantic search, grep, and file reads. Every path in the output must exist i
 
 ### Step 2 — Read existing context
 
-- If **`reference.mdc`** exists at project root → read it and **merge/update** (preserve valid sections, replace outdated paths)
+- If **`.fxmind/reference.md`** exists → read it and **merge/update** (preserve valid sections, replace outdated paths)
 - Read **`.fxmind/reference.template.mdc`** for section structure (installed by fxmind)
 - Read **`.fxmind/reference.example.mdc`** for format/depth only (fictional sample — do not copy its paths)
 
-### Step 3 — Write `reference.mdc`
+### Step 3 — Write `.fxmind/reference.md`
 
 Use this frontmatter:
 
 ```yaml
 ---
 description: <ProjectName> — referência rápida FiveM (<framework>)
-alwaysApply: true
 ---
 ```
 
 Required sections (adapt titles to what exists in **this** project):
 
-1. **Manutenção desta rule** — update when new patterns appear
+1. **Manutenção desta referência** — update when new patterns appear
 2. **Framework / grupos / permissões** — how auth works in this codebase
 3. **Itens / inventário** — registration files, use handlers, naming conventions
 4. **Economia / lojas / webhooks** — shop configs, webhook paths
@@ -1120,6 +1147,7 @@ After writing the file, reply with:
 - Framework detected
 - Sections documented
 - Paths that need manual review (if any)
+- File created: `.fxmind/reference.md`
 
 ### Rules
 
@@ -1153,7 +1181,7 @@ You are a FiveM development expert. Help the user with their FiveM scripting que
    - Implement, fix, refactor, add/remove code → suggest **`/fxmind task <request>`**
    - Recurring project flow (craft, item, loja, NUI) → read `.fxmind/memory/<topic>.md` if exists; else suggest `/fxmind learn <topic>`
    - Architecture / cross-topic flow → suggest `/fxmind query "<question>"` if `knowledge-graph.json` exists
-   - Project conventions → Read **`reference.mdc`** at project root if it exists
+   - Project conventions → Read **`.fxmind/reference.md`** at project root if it exists
 
 2. **Read the relevant skill** from **`.fxmind/skills/<name>/`** (see `.fxmind/skills/_index.md`)
 

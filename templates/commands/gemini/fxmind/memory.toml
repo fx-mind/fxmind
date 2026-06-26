@@ -11,7 +11,7 @@ Parse (case-insensitive):
 - `health <topic>` → check one topic
 - `health <topic> fix` → check + fix one topic
 
-**Do NOT edit Lua/JS** — only markdown: memories, `_index.md`, `reference.mdc` links, health report.
+**Do NOT edit Lua/JS** — only markdown: memories, `_index.md`, `.fxmind/reference.md` links, health report.
 
 ## Load
 
@@ -20,7 +20,7 @@ Parse (case-insensitive):
 - `.fxmind/memory/_index.md`
 - `.fxmind/topic-catalog.md`
 - `.fxmind/knowledge-graph.json` — if present (graph drift)
-- `reference.mdc` at project root (section `## Memórias por tópico`)
+- `.fxmind/reference.md` at project root (section `## Memórias por tópico`)
 - All `.fxmind/memory/*.md` except `_index.md` (or single topic if scoped)
 
 ## Verify each memory
@@ -44,7 +44,7 @@ Without inventing APIs:
 1. Remove/replace lines referencing missing paths/events (grep-confirmed)
 2. Rewrite memory to compact English per `memory.template.md`; refresh frontmatter arrays from surviving evidence
 3. Re-scan repo for that topic to fill gaps
-4. Sync `_index.md` and `reference.mdc` rows
+4. Sync `_index.md` and `.fxmind/reference.md` rows
 5. If mostly stale → recommend `/fxmind:learn <topic>`
 
 Reply in **user's language**: summary table, report path, auto-fixed list, re-learn list, suggest `/fxmind:graph` if memories changed.

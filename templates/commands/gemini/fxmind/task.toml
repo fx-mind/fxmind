@@ -6,11 +6,11 @@ prompt = """
 **Task text:** {{args}}
 (Everything after `task` — goal, scope hints, `@` mentions.)
 
-> **Do not edit code until Gates A and B are complete.**
+> **🛑 HARD STOP: You MUST NOT read, open, or edit any code file until both Gate A and Gate B output markers are visible in this conversation. This is a blocking requirement, not a suggestion.**
 
 ## Gate A — show analysis in chat (before any edit)
 
-Post a short block:
+Post a block with ALL 5 items below. Do not skip any item.
 
 1. **Goal** — what the user wants
 2. **Scope** — resource/files (from args, `@`, open files)
@@ -18,21 +18,33 @@ Post a short block:
 4. **Risks** — if any (permissions, client/server, destructive)
 5. **Memory plan** — candidate topics from index/graph, or "no index match"
 
+**Output:**
+```
+🛑 GATE A COMPLETE — GOAL: <one-line summary>, SCOPE: <files/resources>, TOPICS: <list>, RISKS: <list or none>
+DO NOT proceed to Gate B until this marker is visible.
+```
+
 ## Gate B — load memory (before any edit)
 
 1. Read **`.fxmind/memory/_index.md`** (required every Task)
 2. If **`.fxmind/knowledge-graph.json`** exists → graph-router (keywords → BFS depth 3, ~1500 token budget)
 3. Else → **`.fxmind/topic-catalog.md`** + index row matching
 4. Load **3–5** relevant **`.fxmind/memory/<topic>.md`** files (or state none matched)
-5. Read **`reference.mdc`** if present
+5. Read **`.fxmind/reference.md`** if present (skip if absent)
 6. Read pack skills from **`.fxmind/skills/`** when domain knowledge is needed (NUI → `fivem-react-nui`, framework → detected skill)
 
-Only after Gates A + B → read task code files and implement.
+**Output:**
+```
+🛑 GATE B COMPLETE — MEMORIES LOADED: <list topics or "none">, REFERENCE: <loaded/absent>, GRAPH: <used/fallback>
+DO NOT proceed to implementation until this marker is visible.
+```
+
+Only after Gate A marker + Gate B marker → read task code files and implement.
 
 ## Step 4 — Implement
 
 1. Read real code files for the task
-2. Follow loaded memories + `reference.mdc` + skills
+2. Follow loaded memories + `.fxmind/reference.md` + skills
 3. Edit only what the task requires
 4. Validate with focused lint/test/grep where practical
 5. Do **not** edit memory files during implementation
@@ -48,9 +60,27 @@ After implementation:
 
 Do **not** create memory for: tiny text/UI toggles, one-off bugs without reusable flow, guesses, generic FiveM advice.
 
+**Output:**
+```
+🛑 GATE C COMPLETE — LEARNING: <memory created: path / memory updated: path / none — mudança pontual>
+```
+
 ## Reply
 
 Reply in the user's language: implementation summary, validation, memories loaded, learn outcome (path or "none").
+
+**Compliance checklist (mandatory in every task reply):**
+
+```
+## Compliance
+- [x] Gate A: analysis shown before any edit — `🛑 GATE A COMPLETE`
+- [x] Gate B: _index.md read, 3-5 memories loaded — `🛑 GATE B COMPLETE`
+- [x] Gate C: post-task review completed — `🛑 GATE C COMPLETE`
+- [x] Memories loaded: <list>
+- [x] Learning outcome: <created/updated/none>
+```
+
+If any gate was skipped, mark it `[ ] SKIPPED` and explain why. Never mark a gate as complete if the marker was not output.
 
 Never invent paths, events, APIs, or permissions.
 """

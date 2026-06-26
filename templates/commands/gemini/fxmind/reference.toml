@@ -1,22 +1,21 @@
-description = "Map project and generate reference.mdc at project root"
+description = "Map project and generate .fxmind/reference.md"
 
 prompt = """
-Generate or update **`reference.mdc` in the project root** (same level as `resources/`, `server.cfg`, or main `fxmanifest.lua`).
+Generate or update **`.fxmind/reference.md`** — the project map with paths, flows, and anti-bug notes for all agents.
 
 Read structure from `.fxmind/reference.template.mdc` and depth from `.fxmind/reference.example.mdc`.
 Read pack skills from `.fxmind/skills/` when needed.
-If `reference.mdc` already exists, merge/update — do not duplicate valid sections.
+If `.fxmind/reference.md` already exists, merge/update — do not duplicate valid sections.
 
 Frontmatter:
 
 ---
 description: <ProjectName> — referência rápida FiveM (<framework>)
-alwaysApply: true
 ---
 
 Discover framework, item paths, shops/webhooks, custom systems, cacheaside, cerberus (load balance + SafeEvent + SetCooldown), NUI build paths, git/submodules.
 Every path must exist in the repo — never invent.
 Write in Portuguese if the codebase is PT-BR.
 
-After writing, reply with: framework detected, sections documented, paths needing manual review.
+After writing, reply with: framework detected, sections documented, paths needing manual review, file path: `.fxmind/reference.md`.
 """

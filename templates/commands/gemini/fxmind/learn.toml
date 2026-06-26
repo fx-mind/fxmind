@@ -15,7 +15,7 @@ Generate or update a **topic memory** at **`.fxmind/memory/<topic>.md`**.
 - Framework skill if detected
 - `.fxmind/topic-catalog.md` — search hints
 - `.fxmind/memory.template.md` — output skeleton
-- `reference.mdc` at project root if present
+- `.fxmind/reference.md` at project root if present
 - Existing `.fxmind/memory/<topic>.md` — merge if present
 
 ## Scan
@@ -32,7 +32,7 @@ Extract config paths, handlers, events, exports, symbols, resource names, one re
    - No prose; keep repo literals verbatim (paths, events, ids)
    - **Do not** write memory in Portuguese — shared project memory (`lang: en-compact`) only
 2. Update `.fxmind/memory/_index.md` (create from template if missing)
-3. If `reference.mdc` exists → add/update row in `## Memórias por tópico` (one line per topic; keep reference lean)
+3. If `.fxmind/reference.md` exists → add/update row in `## Memórias por tópico` (one line per topic; keep reference lean)
 
 Reply in the **user's language** (summary bullets, memory path, suggest `/fxmind:graph` after learn).
 Never invent paths or APIs.

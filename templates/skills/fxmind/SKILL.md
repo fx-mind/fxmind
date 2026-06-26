@@ -15,12 +15,16 @@ You are the **fxmind** skill — the only skill that should live in the agent sk
 
 When the user runs **`task`** or asks to **change code/config**, follow this pipeline. **Skipping steps = failed task.**
 
-| Phase | Required action | Before |
-|-------|-----------------|--------|
-| **Gate A** | Show goal, scope, topics, memory plan in chat | Any file edit |
-| **Gate B** | Read `_index.md`; load **3–5** `memory/<topic>.md` | Any file edit |
-| **Implement** | Edit code using memories + `reference.mdc` + skills | — |
-| **Gate C** | Post-task learn — update memory or state "no reusable knowledge" | Final reply |
+**HARD STOP:** You MUST NOT read, open, or edit any code file until both Gate A and Gate B output markers are visible in this conversation. This is a blocking requirement, not a suggestion.
+
+| Phase | Required action | Output marker | Before |
+|-------|-----------------|---------------|--------|
+| **Gate A** | Show goal, scope, topics, risks, memory plan in chat | `🛑 GATE A COMPLETE` | Any file edit |
+| **Gate B** | Read `_index.md`; load **3–5** `memory/<topic>.md`; read `.fxmind/reference.md` | `🛑 GATE B COMPLETE` | Any file edit |
+| **Implement** | Edit code using memories + `.fxmind/reference.md` + skills | — | — |
+| **Gate C** | Post-task learn — update memory or state "no reusable knowledge" | `🛑 GATE C COMPLETE` | Final reply |
+
+Each gate MUST end with its marker. Do NOT proceed to the next phase without the previous marker being visible.
 
 Full steps: **`.fxmind/fxmind.md`** → Mode: Task. Other modes: `audit`, `learn`, `graph`, `query`, …
 
@@ -55,6 +59,7 @@ Only read skills listed in `.fxmind/skills/_index.md` — skip missing paths.
 | `.fxmind/audits/<resource>.md` | Audit reports (**never** `.fxmind/audit-*.md` at root) |
 | `.fxmind/knowledge-graph.json` | Graph for query/path/explain |
 | `.fxmind/topic-catalog.md` | Learn search hints |
+| `.fxmind/reference.md` | Project map — paths, flows, anti-bug notes (all agents) |
 | `.fxmind/store.json` | Global store pointer when enabled |
 | `.fxmind/packs.json` | Installed packs + `storage: global|local` |
 
