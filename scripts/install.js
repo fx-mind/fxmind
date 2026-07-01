@@ -870,6 +870,9 @@ function installProjectMcp(targetRoot, agents) {
       if (result.entry.args?.length) {
         console.log(`  args: ${result.entry.args.join(" ")}`);
       }
+      if (result.entry.cwd) {
+        console.log(`  cwd: ${result.entry.cwd}`);
+      }
       console.log(`  FXMIND_TARGET: ${result.entry.env.FXMIND_TARGET}`);
     }
     console.log("  Restart your agent client (MCP settings) to connect fxmind tools.");

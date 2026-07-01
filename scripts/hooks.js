@@ -457,6 +457,7 @@ function runHooksCli(argv = []) {
       console.log(`    installed: ${agent.installed ? "yes" : "no"}`);
       if (agent.entry) {
         console.log(`    command: ${agent.entry.command}`);
+        console.log(`    cwd: ${agent.entry.cwd || "(unset)"}`);
         console.log(`    FXMIND_TARGET: ${agent.entry.env?.FXMIND_TARGET || "(unset)"}`);
       }
     }

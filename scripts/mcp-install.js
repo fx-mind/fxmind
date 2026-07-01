@@ -4,9 +4,12 @@
 
 const fs = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
 
 const { PACKAGE_ROOT } = require("./resolve-packs");
+const { GITHUB_PKG } = require("./constants");
+
+/** Resolved at runtime by Cursor / Claude Code (not a literal path). */
+const WORKSPACE_ROOT = "${workspaceFolder}";
 
 const MCP_SERVER_KEY = "fxmind";
 const MANIFEST_REL = path.join(".fxmind", "packs.json");
@@ -57,37 +60,22 @@ function writeJson(filePath, data) {
   fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
-function fxmindMcpOnPath() {
-  try {
-    if (process.platform === "win32") {
-      execSync("where fxmind-mcp", { stdio: "pipe" });
-    } else {
-      execSync("command -v fxmind-mcp", { stdio: "pipe", shell: true });
-    }
-    return true;
-  } catch {
-    return false;
-  }
+function resolveMcpLaunch() {
+  // Portable for committed .cursor/mcp.json — no global install or machine-specific paths.
+  return {
+    command: "npx",
+    args: ["-y", "-p", GITHUB_PKG, "fxmind-mcp"],
+  };
 }
 
-function resolveMcpLaunch(packageRoot = PACKAGE_ROOT) {
-  if (fxmindMcpOnPath()) {
-    return { command: "fxmind-mcp", args: [] };
-  }
-  const script = path.join(packageRoot, "scripts", "mcp-server.js");
-  if (!fs.existsSync(script)) {
-    throw new Error(`MCP server script not found: ${script}`);
-  }
-  return { command: process.execPath, args: [script] };
-}
-
-function buildFxmindMcpEntry(projectRoot, packageRoot = PACKAGE_ROOT) {
-  const launch = resolveMcpLaunch(packageRoot);
+function buildFxmindMcpEntry(_projectRoot, _packageRoot = PACKAGE_ROOT) {
+  const launch = resolveMcpLaunch();
   return {
     command: launch.command,
     args: launch.args,
+    cwd: WORKSPACE_ROOT,
     env: {
-      FXMIND_TARGET: path.resolve(projectRoot),
+      FXMIND_TARGET: WORKSPACE_ROOT,
     },
   };
 }
@@ -177,6 +165,9 @@ function buildCodexMcpToml(entry) {
   if (entry.args?.length) {
     lines.push(`args = ${tomlInlineArray(entry.args)}`);
   }
+  if (entry.cwd) {
+    lines.push(`cwd = ${tomlString(entry.cwd)}`);
+  }
   lines.push("", "[mcp_servers.fxmind.env]");
   for (const [key, value] of Object.entries(entry.env || {})) {
     lines.push(`${key} = ${tomlString(value)}`);
@@ -235,6 +226,7 @@ function installOpenCodeMcp(configPath, entry) {
   existing.mcp[MCP_SERVER_KEY] = {
     type: "local",
     command: [entry.command, ...(entry.args || [])],
+    cwd: entry.cwd,
     environment: entry.env,
     enabled: true,
   };
@@ -268,6 +260,7 @@ function mcpStatusOpenCode(configPath) {
     ? {
         command: raw.command?.[0] || null,
         args: raw.command?.slice(1) || [],
+        cwd: raw.cwd || null,
         env: raw.environment || {},
       }
     : null;
