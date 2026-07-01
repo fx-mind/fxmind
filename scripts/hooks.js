@@ -22,6 +22,7 @@ const { SHARED_DIR } = require("./global-store");
 const tools = require("./fxmind-tools");
 const { buildGraphData, writeGraph, openGraphInBrowser } = require("./build-graph");
 const { driftForStagedFiles } = require("./lib/memory-drift");
+const { installMcp, uninstallMcp, mcpStatus, resolveMcpAgentIds } = require("./mcp-install");
 
 const HOOKS_DIR_REL = path.join(".cursor", "hooks");
 const HOOKS_JSON_REL = path.join(".cursor", "hooks.json");
@@ -310,11 +311,12 @@ function printHooksHelp() {
   console.log(`fxmind hooks — manage Cursor hooks + run fxmind tooling from the terminal.
 
 Usage:
-  fxmind hooks install [--target <dir>] [--no-git-hook]   Install Cursor hooks + optional git pre-commit
+  fxmind hooks install [--target <dir>] [--no-git-hook]   Install Cursor hooks + MCP + optional git pre-commit
   fxmind hooks install-git [--target <dir>]               Install git pre-commit only (.git/hooks/pre-commit)
   fxmind hooks uninstall [--target <dir>]                 Remove Cursor hook scripts and entries
+  fxmind hooks uninstall-mcp [--target <dir>]             Remove fxmind MCP entries for installed agents
   fxmind hooks uninstall-git [--target <dir>]             Remove fxmind block from git pre-commit
-  fxmind hooks status [--target <dir>]                    Show what is installed
+  fxmind hooks status [--target <dir>]                    Show hooks + MCP install status
   fxmind hooks pre-commit [--strict]                      Run pre-commit drift check on staged files
   fxmind hooks drift-check <file>                         Check memories referencing <file>
   fxmind hooks graph [--no-open]                          Rebuild knowledge graph
@@ -367,15 +369,26 @@ function runHooksCli(argv = []) {
   if (sub === "install") {
     const options = parseHookCliArgs(rest);
     const result = installHooks(options.target, { gitHook: options.gitHook });
+    let mcpResult = null;
+    try {
+      mcpResult = installMcp(options.target);
+    } catch (error) {
+      console.error(`MCP install failed: ${error.message}`);
+    }
     console.log(`Installed fxmind hooks → ${options.target}`);
     for (const p of result.installed) console.log(`  ✓ ${p}`);
     console.log(`  ✓ ${result.hooksJson}`);
+    if (mcpResult) {
+      for (const item of mcpResult.installed) {
+        console.log(`  ✓ ${item.label}: ${item.configRel} → MCP server "${item.server}"`);
+      }
+    }
     if (result.gitHook && typeof result.gitHook === "string") {
       console.log(`  ✓ git pre-commit → ${result.gitHook}`);
     } else if (result.gitHook && result.gitHook.error) {
       console.log(`  ⚠ git pre-commit skipped: ${result.gitHook.error}`);
     }
-    console.log("Restart Cursor (or reload hooks) for changes to take effect.");
+    console.log("Restart Cursor (reload hooks + MCP) for changes to take effect.");
     return 0;
   }
 
@@ -398,6 +411,18 @@ function runHooksCli(argv = []) {
     const result = uninstallHooks(options.target);
     console.log(`Uninstalled fxmind hooks → ${options.target}`);
     for (const p of result.removed) console.log(`  ✓ removed ${p}`);
+    return 0;
+  }
+
+  if (sub === "uninstall-mcp") {
+    const options = parseHookCliArgs(rest);
+    const result = uninstallMcp(options.target);
+    console.log(`Uninstalled fxmind MCP → ${options.target}`);
+    for (const configRel of result.removed) console.log(`  ✓ removed ${configRel}`);
+    if (result.removed.length === 0) {
+      const agentIds = resolveMcpAgentIds(options.target);
+      console.log(`  (fxmind MCP entry not found for: ${agentIds.join(", ")})`);
+    }
     return 0;
   }
 
@@ -426,6 +451,15 @@ function runHooksCli(argv = []) {
     console.log(
       `  git pre-commit: ${isGitHookInstalled(options.target) ? "installed" : "not installed"}`,
     );
+    const mcp = mcpStatus(options.target);
+    for (const agent of mcp.agents) {
+      console.log(`  MCP ${agent.label}: ${agent.configRel}`);
+      console.log(`    installed: ${agent.installed ? "yes" : "no"}`);
+      if (agent.entry) {
+        console.log(`    command: ${agent.entry.command}`);
+        console.log(`    FXMIND_TARGET: ${agent.entry.env?.FXMIND_TARGET || "(unset)"}`);
+      }
+    }
     return 0;
   }
 

@@ -99,7 +99,7 @@ Hooks add **rework avoidance**: `gate-guard` blocks code edits before Gates A/B 
 | Graph build wall-clock | **minutes → seconds** | Always when using CLI/MCP |
 | Query / drift wall-clock | **80–95%** | Best with MCP server registered |
 
-**Caveats:** savings scale with memory count — a fresh project with no `/fxmind learn` topics gets mostly router savings (~25–60%). MCP and auto-rebuild require the MCP server registered and Cursor hooks installed respectively.
+**Caveats:** savings scale with memory count — a fresh project with no `/fxmind learn` topics gets mostly router savings (~25–60%). MCP auto-wires on `fxmind -y` for each selected agent (`--no-mcp` to skip); restart the agent client after install. Auto-rebuild requires Cursor hooks installed.
 
 ### Complementary tools
 
@@ -179,6 +179,7 @@ After install/update, restart the agent IDE/CLI (Gemini: `/commands reload`) and
 | `fxmind --target <dir> -y` | Install into another project root |
 | `fxmind --target <dir> --update -y` | Update a specific project |
 | `fxmind --no-command -y` | Skip `/fxmind` helper (pack skills only) |
+| `fxmind --replace-agents --opencode -y` | Install only OpenCode; remove fxmind from other agents |
 | `fxmind -h` / `--help` | Show all options |
 
 **Agent selection** (default `-y` installs for Cursor only):
@@ -191,7 +192,7 @@ After install/update, restart the agent IDE/CLI (Gemini: `/commands reload`) and
 | Gemini CLI | `--gemini` | `.gemini/skills/fxmind/` | `.gemini/commands/fxmind/` |
 | OpenCode | `--opencode` | `.opencode/skills/fxmind/` | `.opencode/commands/fxmind.md` |
 
-Combine agents with `--agent cursor,claude,gemini -y` (alias `-a`). Shared `.fxmind/` is the same for all agents — install once per project even with multiple agent flags.
+Combine agents with `--agent cursor,claude,gemini -y` (alias `-a`). Installing for one agent **adds** to agents already in the project (reads `.fxmind/packs.json` + existing skill folders) — it does not remove Cursor when you run `--opencode -y`. Use `--replace-agents` only when you want to drop agents not selected in this run.
 
 **What `--update` changes:** `.fxmind/skills/`, pack templates, `knowledge-graph.html` shell, `.fxmind/fxmind.md` (slim router), `.fxmind/modes/*.md`, fxmind agent skill + commands.
 **What `--update` keeps:** `.fxmind/memory/*`, `knowledge-graph.json`, learned graph data.
@@ -239,9 +240,12 @@ Agent paths stay `.fxmind/memory/` — symlinks keep compatibility. `/fxmind que
 |---------|--------|
 | `fxmind --hooks -y` | Install Cursor hooks during install |
 | `fxmind --no-hooks -y` | Skip hooks even when Cursor is selected |
-| `fxmind hooks install` | Install/update Cursor hooks + git pre-commit (when `.git/` exists) |
+| `fxmind --mcp -y` | Install MCP configs for selected agents during install |
+| `fxmind --no-mcp -y` | Skip MCP wiring even when agents are selected |
+| `fxmind hooks install` | Install/update Cursor hooks + MCP + git pre-commit (when `.git/` exists) |
 | `fxmind hooks install-git` | Install git pre-commit drift check only |
 | `fxmind hooks uninstall` | Remove Cursor hooks |
+| `fxmind hooks uninstall-mcp` | Remove fxmind MCP entries for installed agents |
 | `fxmind hooks uninstall-git` | Remove fxmind block from `.git/hooks/pre-commit` |
 | `fxmind hooks status` | Show installed hooks |
 | `fxmind hooks drift-check <file>` | Check memories referencing a file |
@@ -312,7 +316,7 @@ Each Gate writes a marker to `.fxmind-gates.json` (directly or via the MCP `fxmi
 
 ## Hooks (Cursor)
 
-Optional **project hooks** that turn the fxmind Gates and memory hygiene from prompt instructions into deterministic behavior. Installed by default when Cursor is selected; opt out with `--no-hooks`.
+Optional **project hooks** that turn the fxmind Gates and memory hygiene from prompt instructions into deterministic behavior. Installed by default when Cursor is selected; opt out with `--no-hooks`. The **MCP server** is wired automatically for each selected agent on the same conditions as install; opt out with `--no-mcp`.
 
 ```bash
 fxmind hooks install     # install/update hook scripts + .cursor/hooks.json
@@ -356,9 +360,23 @@ git commit --no-verify         # bypass hook when intentional
 
 Expose fxmind operations as MCP tools so any MCP-speaking agent can call them programmatically instead of parsing markdown.
 
+**Installed automatically** when you run `fxmind -y` with any selected agent (same default as MCP when `/fxmind` command is installed). Writes the `fxmind` server entry with `FXMIND_TARGET` set to your project root:
+
+| Agent | Config file |
+|-------|-------------|
+| Cursor | `.cursor/mcp.json` |
+| Claude Code | `.mcp.json` |
+| Gemini CLI | `.gemini/settings.json` |
+| OpenCode | `opencode.json` |
+| Codex | `.codex/config.toml` |
+
+Opt out with `--no-mcp`. Re-run `fxmind hooks install` or `fxmind --update -y` to refresh entries after moving the project or changing the global `fxmind-mcp` binary.
+
 ```bash
-fxmind-mcp                  # stdio MCP server (target = cwd)
+fxmind-mcp                  # stdio MCP server (target = cwd) — manual run / debug
 FXMIND_TARGET=/path fxmind-mcp
+fxmind hooks status         # shows MCP wired state
+fxmind hooks uninstall-mcp  # remove fxmind MCP entries for installed agents
 ```
 
 | Tool | Action |
@@ -370,7 +388,7 @@ FXMIND_TARGET=/path fxmind-mcp
 | `fxmind_gate_status` | Read Gate A/B/C status |
 | `fxmind_record_gate` | Record a Gate marker |
 
-Wire into an MCP client with command `fxmind-mcp` (or `node <path>/scripts/mcp-server.js`). The server is dependency-free and reads `.fxmind/` from the working directory (or `FXMIND_TARGET`).
+Wire into an MCP client with command `fxmind-mcp` (or `node <path>/scripts/mcp-server.js`). After `fxmind -y`, each agent reads its config automatically — restart the client (MCP settings) to connect.
 
 ---
 
@@ -460,6 +478,7 @@ fxmind/
 │   ├── build-graph.js  # knowledge graph builder + `fxmind graph`
 │   ├── global-store.js # multi-project global store
 │   ├── hooks.js        # install/manage Cursor + git hooks + CLI tooling wrappers
+│   ├── mcp-install.js  # install/manage MCP configs for all supported agents
 │   ├── mcp-server.js   # stdio MCP server
 │   ├── fxmind-tools.js # shared logic: drift, graph, query, gates (MCP + hooks CLI)
 │   ├── lockfile.js     # packs.lock.json

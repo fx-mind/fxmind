@@ -24,6 +24,7 @@ const {
 } = require("./global-store");
 const { writeLockfile, readLockfile, diffLockfiles, printLockSummary } = require("./lockfile");
 const { installHooks, uninstallHooks, hooksStatus, runHooksCli, FXMIND_COMMANDS } = require("./hooks");
+const { installMcp } = require("./mcp-install");
 const { createPackScaffold, runPackCli } = require("./pack-new");
 
 let SKILL_SOURCES = new Map();
@@ -156,8 +157,9 @@ Without global install:
   ${npxInstall("--global-store -y")} Install with global store (~/.fxmind/projects/<id>/)
   ${npxInstall("migrate")}            Move legacy audit-*.md → audits/
   ${npxInstall("global list")}       List projects in global store
-  ${npxInstall("hooks install")}      Install Cursor hooks (gate-guard, drift-watcher, learn-prompt)
+  ${npxInstall("hooks install")}      Install Cursor hooks + MCP (gate-guard, drift-watcher, learn-prompt)
   ${npxInstall("hooks install-git")}  Install git pre-commit drift check only
+  ${npxInstall("hooks uninstall-mcp")} Remove fxmind MCP entries for installed agents
   ${npxInstall("hooks status")}       Show installed hooks
   ${npxInstall("pack new <id>")}      Scaffold a new knowledge pack under packs/<id>/
   fxmind-mcp                          Run the fxmind MCP server (stdio) for agent tool access
@@ -172,6 +174,9 @@ Options:
   --update           Refresh packs/skills/commands/modes from .fxmind/packs.json (keeps memories)
   --hooks            Install Cursor hooks (gate-guard, drift-watcher, learn-prompt)
   --no-hooks         Skip hook installation even when Cursor is selected
+  --mcp              Install MCP server configs for selected agents (fxmind-mcp)
+  --no-mcp           Skip MCP wiring even when agents are selected
+  --replace-agents   Replace agent set (remove fxmind from agents not selected this run)
   --target <dir>     Project root (default: current directory)
   --pack <id>        Knowledge pack to install (e.g. fivem)
   --packs <list>     Comma-separated packs (e.g. fivem)
@@ -219,6 +224,7 @@ function parseArgs(argv) {
     update: false,
     globalStore: false,
     hooks: null,
+    replaceAgents: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -303,6 +309,21 @@ function parseArgs(argv) {
 
     if (arg === "--no-hooks") {
       options.hooks = false;
+      continue;
+    }
+
+    if (arg === "--mcp") {
+      options.mcp = true;
+      continue;
+    }
+
+    if (arg === "--no-mcp") {
+      options.mcp = false;
+      continue;
+    }
+
+    if (arg === "--replace-agents") {
+      options.replaceAgents = true;
       continue;
     }
 
@@ -788,6 +809,12 @@ function shouldInstallHooks(options, agents) {
   return Boolean(cursorSelected && options.command);
 }
 
+function shouldInstallMcp(options, agents) {
+  if (options.mcp === false) return false;
+  if (options.mcp === true) return true;
+  return Boolean(agents.length > 0 && options.command);
+}
+
 function installProjectHooks(targetRoot) {
   try {
     const result = installHooks(targetRoot, { gitHook: true });
@@ -804,6 +831,36 @@ function installProjectHooks(targetRoot) {
     );
   } catch (error) {
     console.log(`[Hooks] skipped: ${error.message}`);
+  }
+}
+
+function installProjectMcp(targetRoot, agents) {
+  try {
+    const agentIds = agents.map((agent) => agent.id);
+    const result = installMcp(targetRoot, { agentIds });
+    console.log("[MCP]");
+    for (const item of result.installed) {
+      console.log(`  ✓ ${item.label}: ${item.configRel} → server "${item.server}"`);
+    }
+    if (result.entry) {
+      console.log(`  command: ${result.entry.command}`);
+      if (result.entry.args?.length) {
+        console.log(`  args: ${result.entry.args.join(" ")}`);
+      }
+      console.log(`  FXMIND_TARGET: ${result.entry.env.FXMIND_TARGET}`);
+    }
+    console.log("  Restart your agent client (MCP settings) to connect fxmind tools.");
+  } catch (error) {
+    console.log(`[MCP] skipped: ${error.message}`);
+  }
+}
+
+function installProjectCursorIntegration(targetRoot, options, agents) {
+  if (shouldInstallHooks(options, agents)) {
+    installProjectHooks(targetRoot);
+  }
+  if (shouldInstallMcp(options, agents)) {
+    installProjectMcp(targetRoot, agents);
   }
 }
 
@@ -1376,11 +1433,53 @@ function hasAgentInstall(targetRoot, agent) {
 }
 
 function detectInstalledAgents(targetRoot) {
-  const found = Object.entries(AGENTS)
-    .filter(([, agent]) => hasAgentInstall(targetRoot, agent))
-    .map(([agentId]) => agentId);
-
+  const found = listInstalledAgentIds(targetRoot);
   return found.length ? found : [...DEFAULT_AGENTS];
+}
+
+function listInstalledAgentIds(targetRoot) {
+  return Object.keys(AGENTS).filter((agentId) => hasAgentInstall(targetRoot, AGENTS[agentId]));
+}
+
+function readManifestAgentIds(targetRoot) {
+  const manifestPath = path.join(targetRoot, SHARED_DIR, "packs.json");
+  if (!fs.existsSync(manifestPath)) {
+    return [];
+  }
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    if (!Array.isArray(manifest.agents)) {
+      return [];
+    }
+    return manifest.agents.filter((agentId) => AGENTS[agentId]);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Merge newly requested agents with those already installed (manifest + disk).
+ * Unless --replace-agents, never drop an agent the project already has.
+ */
+function resolveInstallAgentIds(targetRoot, options) {
+  const requested =
+    options.agents && options.agents.length ? options.agents : [...DEFAULT_AGENTS];
+
+  if (options.replaceAgents) {
+    options.agents = [...new Set(requested.filter((id) => AGENTS[id]))];
+    return options.agents;
+  }
+
+  const merged = [
+    ...new Set([
+      ...readManifestAgentIds(targetRoot),
+      ...listInstalledAgentIds(targetRoot),
+      ...requested,
+    ]),
+  ].filter((id) => AGENTS[id]);
+
+  options.agents = merged.length ? merged : requested;
+  return options.agents;
 }
 
 function detectInstalledSkills(targetRoot) {
@@ -2209,8 +2308,8 @@ async function main() {
       console.log("");
     }
 
-    if (shouldInstallHooks(options, agents)) {
-      installProjectHooks(options.target);
+    if (shouldInstallHooks(options, agents) || shouldInstallMcp(options, agents)) {
+      installProjectCursorIntegration(options.target, options, agents);
     }
 
     console.log("Update complete.");
@@ -2262,6 +2361,8 @@ async function main() {
 
   const skills = options.skills;
   const packs = options.packs;
+
+  resolveInstallAgentIds(options.target, options);
   const agents = resolveAgents(options.agents);
   const managedSkills = getManagedSkillNames(skills, options.command);
 
@@ -2270,11 +2371,13 @@ async function main() {
     process.exit(1);
   }
 
-  cleanUnselectedAgents(
-    options.target,
-    agents.map((agent) => agent.id),
-    managedSkills,
-  );
+  if (options.replaceAgents) {
+    cleanUnselectedAgents(
+      options.target,
+      agents.map((agent) => agent.id),
+      managedSkills,
+    );
+  }
 
   console.log(`\nInstalling to: ${options.target}`);
   if (packs.length > 0) {
@@ -2400,8 +2503,8 @@ async function main() {
     console.log("");
   }
 
-  if (shouldInstallHooks(options, agents)) {
-    installProjectHooks(options.target);
+  if (shouldInstallHooks(options, agents) || shouldInstallMcp(options, agents)) {
+    installProjectCursorIntegration(options.target, options, agents);
   }
 
   console.log("Done.");
