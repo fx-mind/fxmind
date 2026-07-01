@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "node .cursor/hooks/gate-guard.js",
+        "timeout": 10
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "node .cursor/hooks/drift-watcher.js",
+        "timeout": 15
+      }
+    ],
+    "stop": [
+      {
+        "command": "node .cursor/hooks/learn-prompt.js",
+        "timeout": 10
+      }
+    ]
+  }
+}

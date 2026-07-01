@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "Project memory and knowledge packs for AI agents — install domain skills, shared .fxmind/ memory, and /fxmind commands",
   "bin": {
-    "fxmind": "./scripts/install.js"
+    "fxmind": "./scripts/install.js",
+    "fxmind-mcp": "./scripts/mcp-server.js"
   },
   "files": [
     "scripts",
@@ -32,6 +33,9 @@
     "url": "git+https://github.com/fx-mind/fxmind.git"
   },
   "engines": {
-    "node": ">=16.7.0"
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "test": "node --test scripts/test/*.test.js"
   }
 }

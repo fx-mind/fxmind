@@ -49,11 +49,21 @@ Only after Gate A marker + Gate B marker → read task code files and implement.
 4. Validate with focused lint/test/grep where practical
 5. Do **not** edit memory files during implementation
 
+## User corrections — ask to save (mandatory)
+
+When the user **corrects** your work (wrong resource/file, event, client/server, permissions, approach, or "não é assim"), apply the fix then **ask if they want to save it** to project memory:
+
+- **Salvar em Pitfalls** → append to `.fxmind/memory/<topic>.md`
+- **Salvar como tópico novo** → create/update a memory file
+- **Não salvar** → one-off, no reusable knowledge
+
+Summarize in one line what would be saved and suggest the topic slug. If they choose save, write it at Gate C (Pitfalls section, compact English). Skip the prompt for trivial typos/formatting or when the user already asked to save.
+
 ## Gate C — post-task learning (before final reply)
 
 After implementation:
 
-1. Review whether reusable project knowledge was learned (flows, events, menu structure, conventions)
+1. Review whether reusable project knowledge was learned (flows, events, menu structure, conventions) — **including corrections the user approved saving**
 2. If yes → update/create **`.fxmind/memory/<topic>.md`** + **`_index.md`** (use `.fxmind/memory.template.md`, `lang: en-compact`, grep-confirmed frontmatter only)
 3. If no → state explicitly (e.g. "Nenhuma memória nova — mudança pontual")
 4. If memory changed → suggest **`/fxmind:graph`**

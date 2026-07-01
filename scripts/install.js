@@ -22,6 +22,9 @@ const {
   resolveSkillsRoot,
   GLOBAL_SHARED_SKILLS,
 } = require("./global-store");
+const { writeLockfile, readLockfile, diffLockfiles, printLockSummary } = require("./lockfile");
+const { installHooks, uninstallHooks, hooksStatus, runHooksCli, FXMIND_COMMANDS } = require("./hooks");
+const { createPackScaffold, runPackCli } = require("./pack-new");
 
 let SKILL_SOURCES = new Map();
 
@@ -43,6 +46,7 @@ const CORE_TEMPLATE_FILES = [
   "memory.template.md",
   "memory-index.template.md",
   "memory-health.template.md",
+  "audit-procedure.md",
   "knowledge-graph.html",
 ];
 const LEGACY_TEMPLATE_FILES = [
@@ -152,6 +156,11 @@ Without global install:
   ${npxInstall("--global-store -y")} Install with global store (~/.fxmind/projects/<id>/)
   ${npxInstall("migrate")}            Move legacy audit-*.md → audits/
   ${npxInstall("global list")}       List projects in global store
+  ${npxInstall("hooks install")}      Install Cursor hooks (gate-guard, drift-watcher, learn-prompt)
+  ${npxInstall("hooks install-git")}  Install git pre-commit drift check only
+  ${npxInstall("hooks status")}       Show installed hooks
+  ${npxInstall("pack new <id>")}      Scaffold a new knowledge pack under packs/<id>/
+  fxmind-mcp                          Run the fxmind MCP server (stdio) for agent tool access
 
 Local dev (monorepo):
   node scripts/install.js --target ./my-project --pack fivem -y
@@ -160,7 +169,9 @@ Local dev (monorepo):
 
 Options:
   --global-store     Store memories/graph in ~/.fxmind/projects/<id>/ (shared pack skills)
-  --update           Refresh packs/skills/commands from .fxmind/packs.json (keeps memories)
+  --update           Refresh packs/skills/commands/modes from .fxmind/packs.json (keeps memories)
+  --hooks            Install Cursor hooks (gate-guard, drift-watcher, learn-prompt)
+  --no-hooks         Skip hook installation even when Cursor is selected
   --target <dir>     Project root (default: current directory)
   --pack <id>        Knowledge pack to install (e.g. fivem)
   --packs <list>     Comma-separated packs (e.g. fivem)
@@ -207,6 +218,7 @@ function parseArgs(argv) {
     explicitPacks: false,
     update: false,
     globalStore: false,
+    hooks: null,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -281,6 +293,16 @@ function parseArgs(argv) {
 
     if (arg === "--global-store") {
       options.globalStore = true;
+      continue;
+    }
+
+    if (arg === "--hooks") {
+      options.hooks = true;
+      continue;
+    }
+
+    if (arg === "--no-hooks") {
+      options.hooks = false;
       continue;
     }
 
@@ -711,6 +733,78 @@ function applyGlobalStore(targetRoot, packs, enabled) {
   }
 
   return result;
+}
+
+function printGlobalStoreWarnings(result) {
+  if (!result || !Array.isArray(result.copyFallbacks) || result.copyFallbacks.length === 0) {
+    return;
+  }
+  console.log("[global] WARNING: symlinks unavailable — fell back to copies for:");
+  for (const name of result.copyFallbacks) {
+    console.log(`  • ${name}`);
+  }
+  console.log(
+    "  Copies are NOT live: edits under .fxmind/ will not sync back to ~/.fxmind/.",
+  );
+  console.log(
+    "  Enable Windows Developer Mode (Settings → For developers) for real symlinks,",
+  );
+  console.log("  then re-run: fxmind --global-store --update -y");
+}
+
+function writeProjectLockfile(targetRoot, packs, options = {}) {
+  if (packs.length === 0) {
+    return null;
+  }
+  const prev = readLockfile(targetRoot);
+  const { data } = writeLockfile(targetRoot, packs, {
+    packSkillsDirs: options.packSkillsDirs,
+  });
+  if (prev) {
+    const changes = diffLockfiles(prev, data);
+    if (changes.length > 0) {
+      console.log("[Lockfile] changes since last install:");
+      for (const change of changes) {
+        if (change.type === "commit") {
+          console.log(`  • ${change.id}: ${change.from} → ${change.to}`);
+        } else if (change.type === "skill-added") {
+          console.log(`  • ${change.id}: +skill ${change.skill}`);
+        } else if (change.type === "skill-removed") {
+          console.log(`  • ${change.id}: -skill ${change.skill}`);
+        } else {
+          console.log(`  • ${change.id}: ${change.type}`);
+        }
+      }
+    }
+  }
+  return data;
+}
+
+function shouldInstallHooks(options, agents) {
+  if (options.hooks === false) return false;
+  const cursorSelected = agents.some((agent) => agent.id === "cursor");
+  if (options.hooks === true) return true;
+  // default: install hooks when Cursor is selected and the /fxmind helper is on
+  return Boolean(cursorSelected && options.command);
+}
+
+function installProjectHooks(targetRoot) {
+  try {
+    const result = installHooks(targetRoot, { gitHook: true });
+    console.log("[Hooks]");
+    for (const p of result.installed) console.log(`  ✓ ${p}`);
+    console.log(`  ✓ ${result.hooksJson}`);
+    if (result.gitHook && typeof result.gitHook === "string") {
+      console.log(`  ✓ git pre-commit → ${result.gitHook}`);
+    } else if (result.gitHook && result.gitHook.error) {
+      console.log(`  ⚠ git pre-commit skipped: ${result.gitHook.error}`);
+    }
+    console.log(
+      "  Restart Cursor (or reload hooks) to activate gate-guard / drift-watcher / learn-prompt.",
+    );
+  } catch (error) {
+    console.log(`[Hooks] skipped: ${error.message}`);
+  }
 }
 
 function removePackSkillsFromAgentDirs(targetRoot, packSkillNames) {
@@ -1560,7 +1654,12 @@ function migrateAuditReports(targetRoot) {
   fs.mkdirSync(auditsDir, { recursive: true });
 
   for (const name of fs.readdirSync(fxmindDir)) {
-    if (!name.startsWith("audit-") || !name.endsWith(".md") || name === "audit.template.md") {
+    if (
+      !name.startsWith("audit-") ||
+      !name.endsWith(".md") ||
+      name === "audit.template.md" ||
+      name === "audit-procedure.md"
+    ) {
       continue;
     }
 
@@ -1647,6 +1746,8 @@ function installSharedFxmind(targetRoot, packIds, installOptions = {}) {
 
     installed.push(path.relative(targetRoot, dest));
   }
+
+  installed.push(...installModeFiles(targetRoot, relativeDestDir, preserveUserData));
 
   const memoryIndex = seedMemoryIndex(targetRoot, relativeDestDir);
   if (memoryIndex) {
@@ -1738,6 +1839,56 @@ function getAllTemplateFileNames(packIds) {
     }
   }
   return [...names];
+}
+
+function listModeTemplateFiles() {
+  const srcDir = path.join(PACKAGE_ROOT, FXMIND_TEMPLATES_DIR, "modes");
+  if (!fs.existsSync(srcDir)) {
+    return [];
+  }
+  return fs
+    .readdirSync(srcDir)
+    .filter((name) => name.endsWith(".md"))
+    .sort();
+}
+
+function installModeFiles(targetRoot, relativeDestDir, preserveUserData) {
+  const srcDir = path.join(PACKAGE_ROOT, FXMIND_TEMPLATES_DIR, "modes");
+  const destDir = path.join(targetRoot, relativeDestDir, "modes");
+  const installed = [];
+
+  if (!fs.existsSync(srcDir)) {
+    return installed;
+  }
+
+  fs.mkdirSync(destDir, { recursive: true });
+
+  const sourceFiles = listModeTemplateFiles();
+  const sourceSet = new Set(sourceFiles);
+
+  for (const fileName of sourceFiles) {
+    const src = path.join(srcDir, fileName);
+    const dest = path.join(destDir, fileName);
+    fs.copyFileSync(src, dest);
+    installed.push(path.relative(targetRoot, dest));
+  }
+
+  if (preserveUserData) {
+    return installed;
+  }
+
+  for (const existing of fs.existsSync(destDir)
+    ? fs.readdirSync(destDir)
+    : []) {
+    if (!existing.endsWith(".md")) {
+      continue;
+    }
+    if (!sourceSet.has(existing)) {
+      fs.unlinkSync(path.join(destDir, existing));
+    }
+  }
+
+  return installed;
 }
 
 function cleanLegacyAgentFivemTemplates(targetRoot, packIds) {
@@ -1927,6 +2078,14 @@ async function main() {
     process.exit(runGlobalCli(argv.slice(1)));
   }
 
+  if (argv[0] === "hooks") {
+    process.exit(runHooksCli(argv.slice(1)));
+  }
+
+  if (argv[0] === "pack") {
+    process.exit(runPackCli(argv.slice(1)));
+  }
+
   if (argv[0] === "migrate") {
     process.exit(runMigrateCli(argv.slice(1)));
   }
@@ -1997,6 +2156,11 @@ async function main() {
         console.log(`  ✓ template → ${dest}`);
       }
 
+      const lockData = writeProjectLockfile(options.target, packs);
+      if (lockData) {
+        printLockSummary(lockData);
+      }
+
       const packSkills = installPackSkillsLayer(
         options.target,
         skills,
@@ -2022,6 +2186,7 @@ async function main() {
         console.log(`  ✓ global   → ${globalStore.globalProjectDir}`);
         console.log(`  ✓ shared   → ${globalStore.sharedSkills}`);
       }
+      printGlobalStoreWarnings(globalStore);
       console.log("");
     } else {
       writePacksManifest(options.target, packs, manifestMeta);
@@ -2042,6 +2207,10 @@ async function main() {
     }
     if (lastAgentLabel) {
       console.log("");
+    }
+
+    if (shouldInstallHooks(options, agents)) {
+      installProjectHooks(options.target);
     }
 
     console.log("Update complete.");
@@ -2149,6 +2318,11 @@ async function main() {
       console.log(`  ✓ template → ${dest}`);
     }
 
+    const lockData = writeProjectLockfile(options.target, packs);
+    if (lockData) {
+      printLockSummary(lockData);
+    }
+
     const migration = migrateLegacyMemories(options.target);
     for (const action of migration.actions) {
       if (action.type === "migrated") {
@@ -2204,6 +2378,7 @@ async function main() {
       console.log(`  ✓ global   → ${globalStore.globalProjectDir}`);
       console.log(`  ✓ shared   → ${globalStore.sharedSkills}`);
     }
+    printGlobalStoreWarnings(globalStore);
 
     console.log("");
   }
@@ -2223,6 +2398,10 @@ async function main() {
   }
   if (lastAgentLabel) {
     console.log("");
+  }
+
+  if (shouldInstallHooks(options, agents)) {
+    installProjectHooks(options.target);
   }
 
   console.log("Done.");

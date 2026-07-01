@@ -9,13 +9,24 @@ You are the **fxmind** skill — the only skill that should live in the agent sk
 
 **Pack skills** (FiveM, frameworks, NUI, etc.) are installed under **`.fxmind/skills/`** — read them when needed; do not look for them in `.cursor/skills/`, `.gemini/skills/`, `.opencode/skills/`, `.claude/skills/`, or `.agents/skills/`.
 
-## Task mode — `/fxmind task <request>`
+## Routing (lean)
 
-**Primary entry:** `/fxmind task desative garagem no admin_f` — not bare `/fxmind desative...` (legacy still works).
+The full `/fxmind` command body is a slim router — read **`.fxmind/fxmind.md`** for the routing table. Each mode's full spec lives in **`.fxmind/modes/<mode>.md`** — read **only the matched mode file** before acting (keeps context lean).
 
-When the user runs **`task`** or asks to **change code/config**, follow this pipeline. **Skipping steps = failed task.**
+1. **Task** (`/fxmind task <request>`) → read **`.fxmind/modes/task.md`** (preferred for any code/config change).
+2. **Other modes** (`learn`, `audit`, `graph`, `query`, `path`, `explain`, `reference`, `memory health`, `update`, `help`) → read **`.fxmind/modes/<mode>.md`**.
+3. **Graph** → just run `fxmind graph` (builds + opens `.fxmind/knowledge-graph.html`).
+4. **Project memories** → `.fxmind/memory/_index.md` then relevant `memory/<topic>.md`.
+5. **Installed pack skills** → `.fxmind/skills/_index.md` and `.fxmind/packs.json`.
+6. **Global store** → if `.fxmind/store.json` has `mode: global`, memories live in `~/.fxmind/projects/<id>/` (paths via symlink). Cross-project memories may appear in graph/query links.
 
-**HARD STOP:** You MUST NOT read, open, or edit any code file until both Gate A and Gate B output markers are visible in this conversation. This is a blocking requirement, not a suggestion.
+## MCP fast path
+
+If the fxmind MCP server is registered, prefer its tools over manual mode specs — they run in Node (faster, cheaper): `fxmind_list_memories`, `fxmind_query`, `fxmind_graph`, `fxmind_drift_check`, `fxmind_gate_status`, `fxmind_record_gate`.
+
+## Task mode — Gates (enforced by hooks)
+
+When the user runs **`task`** or asks to **change code/config**, follow the pipeline in `.fxmind/modes/task.md`. Summary:
 
 | Phase | Required action | Output marker | Before |
 |-------|-----------------|---------------|--------|
@@ -24,18 +35,22 @@ When the user runs **`task`** or asks to **change code/config**, follow this pip
 | **Implement** | Edit code using memories + `.fxmind/reference.md` + skills | — | — |
 | **Gate C** | Post-task learn — update memory or state "no reusable knowledge" | `🛑 GATE C COMPLETE` | Final reply |
 
+**User corrections:** when the user fixes your mistake (wrong resource, API, approach), apply the fix then **ask if they want to save it** to `.fxmind/memory/` (AskQuestion in Cursor: Pitfalls / new topic / não salvar). See `.fxmind/modes/task.md` → *User corrections*.
+
 Each gate MUST end with its marker. Do NOT proceed to the next phase without the previous marker being visible.
 
-Full steps: **`.fxmind/fxmind.md`** → Mode: Task. Other modes: `audit`, `learn`, `graph`, `query`, …
+**Gate file (enforced by hooks):** after each marker, record it in **`.fxmind-gates.json`** at the project root so the Cursor `gate-guard` hook can enforce it:
 
-## Routing
+```json
+{ "taskActive": true, "gates": { "A": { "complete": true }, "B": { "complete": true } } }
+```
 
-1. **Task** → `/fxmind task <request>` or read **Mode: Task** in `.fxmind/fxmind.md`
-2. **Other modes** (`learn`, `audit`, `graph`, `query`, …) → **`.fxmind/fxmind.md`**
-2. **Graph (CLI)** → `fxmind graph` builds + opens `.fxmind/knowledge-graph.html`
-3. **Project memories** → **`.fxmind/memory/_index.md`** then relevant `memory/<topic>.md`
-4. **Installed pack skills** → **`.fxmind/skills/_index.md`** and **`.fxmind/packs.json`**
-5. **Global store** → if `.fxmind/store.json` has `mode: global`, memories live in `~/.fxmind/projects/<id>/` (paths via symlink). Cross-project memories may appear in graph/query links.
+- At task start → set `taskActive: true`, `gates: {}`.
+- After Gate A marker → set `gates.A.complete = true`.
+- After Gate B marker → set `gates.B.complete = true` (the hook now allows code edits).
+- After Gate C marker → set `gates.C.complete = true` and `taskActive: false`.
+
+Write the file directly, or call the fxmind MCP tool `fxmind_record_gate` if the fxmind MCP server is registered. If no hooks are installed, the markers in chat are still the source of truth for the user.
 
 ## Pack skills (on demand)
 

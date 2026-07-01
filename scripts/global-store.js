@@ -143,6 +143,7 @@ function linkOrMirror(target, linkPath, type = "dir") {
   try {
     if (type === "dir") {
       if (process.platform === "win32") {
+        // junctions don't require Developer Mode/admin on Windows
         fs.symlinkSync(absTarget, linkPath, "junction");
       } else {
         fs.symlinkSync(absTarget, linkPath, "dir");
@@ -154,6 +155,10 @@ function linkOrMirror(target, linkPath, type = "dir") {
     }
     return "symlink";
   } catch {
+    // Fallback (common on Windows without Developer Mode): mirror by copy.
+    // NOTE: copies are not live — edits in .fxmind/memory/ will NOT flow back
+    // to ~/.fxmind/projects/<id>/memory/. Run `fxmind --update -y` to re-sync,
+    // or enable Windows Developer Mode for real symlinks.
     if (type === "dir") {
       fs.cpSync(absTarget, linkPath, { recursive: true, force: true });
     } else {
@@ -164,7 +169,7 @@ function linkOrMirror(target, linkPath, type = "dir") {
 }
 
 function createSymlink(target, linkPath, type = "dir") {
-  linkOrMirror(target, linkPath, type);
+  return linkOrMirror(target, linkPath, type);
 }
 
 function migrateLocalDataToGlobal(localFxmind, globalProjectDir) {
@@ -202,13 +207,15 @@ function wireProjectLinks(projectRoot, globalProjectDir) {
   fs.mkdirSync(localFxmind, { recursive: true });
   fs.mkdirSync(globalProjectDir, { recursive: true });
 
+  const linkModes = {};
+
   for (const name of PROJECT_DATA_LINKS) {
     const globalPath = path.join(globalProjectDir, name);
     const localPath = path.join(localFxmind, name);
 
     if (name === "memory" || name === "audits") {
       fs.mkdirSync(globalPath, { recursive: true });
-      createSymlink(globalPath, localPath, "dir");
+      linkModes[name] = createSymlink(globalPath, localPath, "dir");
       continue;
     }
 
@@ -231,13 +238,15 @@ function wireProjectLinks(projectRoot, globalProjectDir) {
     }
 
     if (fs.existsSync(globalPath)) {
-      createSymlink(globalPath, localPath, "file");
+      linkModes[name] = createSymlink(globalPath, localPath, "file");
     }
   }
 
   const sharedSkillsLink = path.join(localFxmind, "skills");
   fs.mkdirSync(GLOBAL_SHARED_SKILLS, { recursive: true });
-  createSymlink(GLOBAL_SHARED_SKILLS, sharedSkillsLink, "dir");
+  linkModes["skills"] = createSymlink(GLOBAL_SHARED_SKILLS, sharedSkillsLink, "dir");
+
+  return linkModes;
 }
 
 function resolveDataRoot(projectRoot) {
@@ -273,13 +282,17 @@ function setupGlobalStore(projectRoot, meta = {}) {
   migrateLocalDataToGlobal(localFxmind, globalProjectDir);
   registerProject(resolvedRoot, meta);
   writeProjectStore(resolvedRoot, projectId, globalProjectDir);
-  wireProjectLinks(resolvedRoot, globalProjectDir);
+  const linkModes = wireProjectLinks(resolvedRoot, globalProjectDir);
+  const copyFallbacks = Object.entries(linkModes)
+    .filter(([, mode]) => mode === "copy")
+    .map(([name]) => name);
 
   writeJson(path.join(globalProjectDir, "project.json"), {
     version: 1,
     projectId,
     name: meta.name || projectNameFromRoot(resolvedRoot),
     root: resolvedRoot.replace(/\\/g, "/"),
+    linkModes,
     updatedAt: new Date().toISOString(),
   });
 
@@ -288,6 +301,8 @@ function setupGlobalStore(projectRoot, meta = {}) {
     globalProjectDir,
     sharedSkills: GLOBAL_SHARED_SKILLS,
     registryPath: REGISTRY_PATH,
+    linkModes,
+    copyFallbacks,
   };
 }
 
