@@ -169,7 +169,8 @@ After install/update, restart the agent IDE/CLI (Gemini: `/commands reload`) and
 |---------|--------|
 | `fxmind -y` | Install default: Cursor + `fivem` pack + `/fxmind` helper |
 | `fxmind -i` | Interactive — pick packs, agents, skills |
-| `fxmind --update -y` | Refresh from `.fxmind/packs.json` (keeps memories) |
+| `fxmind --update -y` | Update global fxmind (GitHub) + refresh project from `.fxmind/packs.json` (keeps memories) |
+| `fxmind --update -y --no-self-update` | Refresh project only — skip `npm install -g` |
 | `fxmind --no-packs -y` | Core only — `.fxmind/` + `/fxmind`, no domain skills |
 | `fxmind --pack fivem -y` | Explicit knowledge pack |
 | `fxmind --packs fivem,… -y` | Multiple packs (comma-separated) |
@@ -194,7 +195,7 @@ After install/update, restart the agent IDE/CLI (Gemini: `/commands reload`) and
 
 Combine agents with `--agent cursor,claude,gemini -y` (alias `-a`). Installing for one agent **adds** to agents already in the project (reads `.fxmind/packs.json` + existing skill folders) — it does not remove Cursor when you run `--opencode -y`. Use `--replace-agents` only when you want to drop agents not selected in this run.
 
-**What `--update` changes:** `.fxmind/skills/`, pack templates, `knowledge-graph.html` shell, `.fxmind/fxmind.md` (slim router), `.fxmind/modes/*.md`, fxmind agent skill + commands.
+**What `--update` changes:** global `fxmind` CLI (unless `--no-self-update` or local dev install), `.fxmind/skills/`, pack templates, `knowledge-graph.html` shell, `.fxmind/fxmind.md` (slim router), `.fxmind/modes/*.md`, fxmind agent skill + commands, Cursor hooks, MCP configs for all installed agents.
 **What `--update` keeps:** `.fxmind/memory/*`, `knowledge-graph.json`, learned graph data.
 
 ### Knowledge graph

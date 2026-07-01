@@ -25,6 +25,7 @@ const {
 const { writeLockfile, readLockfile, diffLockfiles, printLockSummary } = require("./lockfile");
 const { installHooks, uninstallHooks, hooksStatus, runHooksCli, FXMIND_COMMANDS } = require("./hooks");
 const { installMcp } = require("./mcp-install");
+const { maybeSelfUpdateAndReexec } = require("./self-update");
 const { createPackScaffold, runPackCli } = require("./pack-new");
 
 let SKILL_SOURCES = new Map();
@@ -152,7 +153,7 @@ Without global install:
   ${npxInstall("--pack fivem -y")}   Explicit fivem knowledge pack
   ${npxInstall("--all-packs -y")}    Every available pack
   ${npxInstall("--all -y")}          All skills from selected pack(s)
-  ${npxInstall("--update -y")}       Refresh installed packs, skills, and templates
+  ${npxInstall("--update -y")}       Refresh global fxmind + project (packs, skills, hooks, MCP)
   ${npxInstall("graph")}             Build graph from .fxmind/memory/ + open browser
   ${npxInstall("--global-store -y")} Install with global store (~/.fxmind/projects/<id>/)
   ${npxInstall("migrate")}            Move legacy audit-*.md → audits/
@@ -171,7 +172,8 @@ Local dev (monorepo):
 
 Options:
   --global-store     Store memories/graph in ~/.fxmind/projects/<id>/ (shared pack skills)
-  --update           Refresh packs/skills/commands/modes from .fxmind/packs.json (keeps memories)
+  --update           Refresh global fxmind (GitHub) + project files from .fxmind/packs.json (keeps memories)
+  --no-self-update   With --update, skip npm install -g github:fx-mind/fxmind
   --hooks            Install Cursor hooks (gate-guard, drift-watcher, learn-prompt)
   --no-hooks         Skip hook installation even when Cursor is selected
   --mcp              Install MCP server configs for selected agents (fxmind-mcp)
@@ -204,6 +206,16 @@ Interactive mode (default in terminal):
 `);
 }
 
+function pushRequestedAgent(options, agentId) {
+  if (!options.agents) {
+    options.agents = [];
+  }
+  if (!options.agents.includes(agentId)) {
+    options.agents.push(agentId);
+  }
+  options.explicitAgents = true;
+}
+
 function parseArgs(argv) {
   const options = {
     target: process.cwd(),
@@ -225,6 +237,7 @@ function parseArgs(argv) {
     globalStore: false,
     hooks: null,
     replaceAgents: false,
+    noSelfUpdate: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -257,32 +270,27 @@ function parseArgs(argv) {
     }
 
     if (arg === "--cursor") {
-      options.agents = ["cursor"];
-      options.explicitAgents = true;
+      pushRequestedAgent(options, "cursor");
       continue;
     }
 
     if (arg === "--claude") {
-      options.agents = ["claude"];
-      options.explicitAgents = true;
+      pushRequestedAgent(options, "claude");
       continue;
     }
 
     if (arg === "--codex") {
-      options.agents = ["codex"];
-      options.explicitAgents = true;
+      pushRequestedAgent(options, "codex");
       continue;
     }
 
     if (arg === "--gemini") {
-      options.agents = ["gemini"];
-      options.explicitAgents = true;
+      pushRequestedAgent(options, "gemini");
       continue;
     }
 
     if (arg === "--opencode") {
-      options.agents = ["opencode"];
-      options.explicitAgents = true;
+      pushRequestedAgent(options, "opencode");
       continue;
     }
 
@@ -324,6 +332,11 @@ function parseArgs(argv) {
 
     if (arg === "--replace-agents") {
       options.replaceAgents = true;
+      continue;
+    }
+
+    if (arg === "--no-self-update") {
+      options.noSelfUpdate = true;
       continue;
     }
 
@@ -801,17 +814,27 @@ function writeProjectLockfile(targetRoot, packs, options = {}) {
   return data;
 }
 
+function cursorHooksPresent(targetRoot) {
+  return fs.existsSync(path.join(path.resolve(targetRoot), ".cursor", "hooks.json"));
+}
+
 function shouldInstallHooks(options, agents) {
   if (options.hooks === false) return false;
-  const cursorSelected = agents.some((agent) => agent.id === "cursor");
   if (options.hooks === true) return true;
-  // default: install hooks when Cursor is selected and the /fxmind helper is on
+  const cursorSelected = agents.some((agent) => agent.id === "cursor");
+  const hasCursorHooks = cursorHooksPresent(options.target);
+  if (options.update && options.command && (cursorSelected || hasCursorHooks)) {
+    return true;
+  }
   return Boolean(cursorSelected && options.command);
 }
 
 function shouldInstallMcp(options, agents) {
   if (options.mcp === false) return false;
   if (options.mcp === true) return true;
+  if (options.update && options.command && agents.length > 0) {
+    return true;
+  }
   return Boolean(agents.length > 0 && options.command);
 }
 
@@ -1545,6 +1568,17 @@ function detectInstalledCommand(targetRoot, agentIds) {
   });
 }
 
+function resolveUpdateAgentIds(targetRoot, manifest) {
+  const fromManifest = Array.isArray(manifest.agents)
+    ? manifest.agents.filter((agentId) => AGENTS[agentId])
+    : [];
+  const merged = [...new Set([...fromManifest, ...listInstalledAgentIds(targetRoot)])];
+  if (merged.length) {
+    return merged;
+  }
+  return detectInstalledAgents(targetRoot);
+}
+
 function resolveUpdateOptions(options) {
   const manifest = readInstalledManifest(options.target);
   const packIds = (manifest.packs || []).map((pack) => pack.id).filter(Boolean);
@@ -1558,12 +1592,7 @@ function resolveUpdateOptions(options) {
   validatePackIds(packIds);
   options.packs = packIds;
 
-  const agentIds =
-    Array.isArray(manifest.agents) && manifest.agents.length > 0
-      ? manifest.agents.filter((agentId) => AGENTS[agentId])
-      : detectInstalledAgents(options.target);
-
-  options.agents = agentIds.length ? agentIds : [...DEFAULT_AGENTS];
+  options.agents = resolveUpdateAgentIds(options.target, manifest);
 
   refreshPackSkillsCaches(packIds, options);
   SKILL_SOURCES = buildSkillSources(packIds, options);
@@ -2202,6 +2231,8 @@ async function main() {
   }
 
   if (options.update) {
+    maybeSelfUpdateAndReexec(argv, options);
+
     if (options.interactive || options.allPacks || options.noPacks || options.explicitPacks) {
       console.error("Error: --update cannot be combined with pack selection flags.");
       process.exit(1);
@@ -2313,6 +2344,7 @@ async function main() {
     }
 
     console.log("Update complete.");
+    console.log("Refreshed: templates, skills, agent commands, hooks (Cursor), MCP (all agents).");
     printLegacyAuditLayoutWarning(options.target);
     console.log("Restart your agent IDE/CLI or open a new session.");
     console.log(`Refresh again anytime: ${npxInstall("--update -y")}`);
