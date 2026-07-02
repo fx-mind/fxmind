@@ -6,7 +6,6 @@ const fs = require("fs");
 const path = require("path");
 
 const { PACKAGE_ROOT } = require("./resolve-packs");
-const { GITHUB_PKG } = require("./constants");
 
 /** Resolved at runtime by Cursor / Claude Code (not a literal path). */
 const WORKSPACE_ROOT = "${workspaceFolder}";
@@ -43,6 +42,7 @@ const MCP_AGENT_TARGETS = {
 };
 
 const MCP_JSON_REL = MCP_AGENT_TARGETS.cursor.configRel;
+const MCP_LAUNCHER_REL = path.join(".fxmind", "mcp-launch.js");
 
 function readJson(filePath, fallback = null) {
   if (!filePath || !fs.existsSync(filePath)) {
@@ -60,15 +60,27 @@ function writeJson(filePath, data) {
   fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
+function installMcpLauncher(projectRoot, packageRoot = PACKAGE_ROOT) {
+  const src = path.join(packageRoot, "scripts", "mcp-launch.js");
+  const dest = path.join(path.resolve(projectRoot), MCP_LAUNCHER_REL);
+  if (!fs.existsSync(src)) {
+    throw new Error(`MCP launcher template missing: ${src}`);
+  }
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(src, dest);
+  return MCP_LAUNCHER_REL.replace(/\\/g, "/");
+}
+
 function resolveMcpLaunch() {
-  // Portable for committed .cursor/mcp.json — no global install or machine-specific paths.
+  // Portable + MSYS2-safe: `node` + project launcher (no npx.cmd → cmd.exe on Windows).
   return {
-    command: "npx",
-    args: ["-y", "-p", GITHUB_PKG, "fxmind-mcp"],
+    command: "node",
+    args: [".fxmind/mcp-launch.js"],
   };
 }
 
-function buildFxmindMcpEntry(_projectRoot, _packageRoot = PACKAGE_ROOT) {
+function buildFxmindMcpEntry(projectRoot, packageRoot = PACKAGE_ROOT) {
+  installMcpLauncher(projectRoot, packageRoot);
   const launch = resolveMcpLaunch();
   return {
     command: launch.command,
@@ -479,6 +491,7 @@ function mcpStatus(targetRoot, options = {}) {
 
 module.exports = {
   MCP_JSON_REL,
+  MCP_LAUNCHER_REL,
   MCP_SERVER_KEY,
   MCP_AGENT_TARGETS,
   installMcp,
@@ -489,5 +502,6 @@ module.exports = {
   mcpStatusForAgent,
   resolveMcpAgentIds,
   buildFxmindMcpEntry,
+  installMcpLauncher,
   resolveMcpLaunch,
 };

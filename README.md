@@ -132,8 +132,8 @@ Wired automatically into `.cursor/mcp.json` (and agent equivalents). **Portable*
 {
   "mcpServers": {
     "fxmind": {
-      "command": "npx",
-      "args": ["-y", "-p", "github:fx-mind/fxmind", "fxmind-mcp"],
+      "command": "node",
+      "args": [".fxmind/mcp-launch.js"],
       "cwd": "${workspaceFolder}",
       "env": { "FXMIND_TARGET": "${workspaceFolder}" }
     }
@@ -141,7 +141,7 @@ Wired automatically into `.cursor/mcp.json` (and agent equivalents). **Portable*
 }
 ```
 
-`${workspaceFolder}` is expanded by Cursor / Claude Code to each developer's project root. No global `npm install -g` required.
+`${workspaceFolder}` is expanded by Cursor / Claude Code to each developer's project root. The launcher (`.fxmind/mcp-launch.js`) avoids `npx.cmd` on Windows, which breaks MCP spawn under Git Bash / MSYS2 (OpenCode). No global `npm install -g` required.
 
 | MCP tool | Action |
 |----------|--------|
