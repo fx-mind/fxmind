@@ -2,7 +2,7 @@
 /**
  * fxmind learn-prompt — Cursor stop hook.
  *
- * If a fxmind task is active (`.fxmind-gates.json` taskActive=true) and Gates
+ * If a fxmind task is active (`.fxmind/fxmind-gates.json` taskActive=true) and Gates
  * A & B are complete but Gate C is not, emit a follow-up message reminding the
  * agent to finish post-task learning (Gate C) and suggest /fxmind graph.
  *
@@ -12,10 +12,21 @@ const fs = require("fs");
 const path = require("path");
 
 const PROJECT_ROOT = process.cwd();
-const GATES_FILE = path.join(PROJECT_ROOT, ".fxmind-gates.json");
+const GATES_FILE = path.join(PROJECT_ROOT, ".fxmind", "fxmind-gates.json");
+const LEGACY_GATES_FILE = path.join(PROJECT_ROOT, ".fxmind-gates.json");
+
+function migrateLegacyGates() {
+  if (fs.existsSync(GATES_FILE) || !fs.existsSync(LEGACY_GATES_FILE)) {
+    return;
+  }
+  fs.mkdirSync(path.dirname(GATES_FILE), { recursive: true });
+  fs.copyFileSync(LEGACY_GATES_FILE, GATES_FILE);
+  fs.unlinkSync(LEGACY_GATES_FILE);
+}
 
 function readGates() {
   try {
+    migrateLegacyGates();
     if (!fs.existsSync(GATES_FILE)) return null;
     return JSON.parse(fs.readFileSync(GATES_FILE, "utf8"));
   } catch {
@@ -52,7 +63,7 @@ function main() {
   }
 
   followup(
-    "fxmind: Gate C (post-task learning) is still pending. If the user corrected your work during this task, you should have asked whether to save that correction to memory (Pitfalls / new topic / skip). Decide whether the work produced reusable knowledge: if yes, create/update the relevant .fxmind/memory/<topic>.md via /fxmind learn <topic> and record Gate C; if not, state \"mudança pontual\" and record Gate C. Then suggest /fxmind graph if memory changed. Finally, clear taskActive in .fxmind-gates.json.",
+    "fxmind: Gate C (post-task learning) is still pending. If the user corrected your work during this task, you should have asked whether to save that correction to memory (Pitfalls / new topic / skip). Decide whether the work produced reusable knowledge: if yes, create/update the relevant .fxmind/memory/<topic>.md via /fxmind learn <topic> and record Gate C; if not, state \"mudança pontual\" and record Gate C. Then suggest /fxmind graph if memory changed. Finally, clear taskActive in .fxmind/fxmind-gates.json.",
   );
 }
 

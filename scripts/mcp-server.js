@@ -73,7 +73,7 @@ const TOOL_DEFS = [
   },
   {
     name: "fxmind_gate_status",
-    description: "Read fxmind Task-mode Gate A/B/C markers from .fxmind-gates.json.",
+    description: "Read fxmind Task-mode Gate A/B/C markers from .fxmind/fxmind-gates.json.",
     inputSchema: { type: "object", properties: {} },
   },
   {

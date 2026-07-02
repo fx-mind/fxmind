@@ -4,7 +4,7 @@
  *
  * Enforces fxmind Task-mode Gates A & B before code edits.
  *
- * Source of truth: .fxmind-gates.json at project root:
+ * Source of truth: .fxmind/fxmind-gates.json:
  *   { "taskActive": true, "gates": { "A": {"complete": true}, "B": {...}, "C": {...} } }
  *
  * The /fxmind task flow (or fxmind_record_gate MCP tool) writes this file.
@@ -18,7 +18,8 @@ const fs = require("fs");
 const path = require("path");
 
 const PROJECT_ROOT = process.cwd();
-const GATES_FILE = path.join(PROJECT_ROOT, ".fxmind-gates.json");
+const GATES_FILE = path.join(PROJECT_ROOT, ".fxmind", "fxmind-gates.json");
+const LEGACY_GATES_FILE = path.join(PROJECT_ROOT, ".fxmind-gates.json");
 
 const ALLOW_PREFIXES = [
   ".fxmind/",
@@ -32,7 +33,6 @@ const ALLOW_PREFIXES = [
 ];
 
 const ALLOW_EXACT = new Set([
-  ".fxmind-gates.json",
   "reference.mdc",
   ".gitignore",
   "package.json",
@@ -56,8 +56,18 @@ function readStdin() {
   });
 }
 
+function migrateLegacyGates() {
+  if (fs.existsSync(GATES_FILE) || !fs.existsSync(LEGACY_GATES_FILE)) {
+    return;
+  }
+  fs.mkdirSync(path.dirname(GATES_FILE), { recursive: true });
+  fs.copyFileSync(LEGACY_GATES_FILE, GATES_FILE);
+  fs.unlinkSync(LEGACY_GATES_FILE);
+}
+
 function readGates() {
   try {
+    migrateLegacyGates();
     if (!fs.existsSync(GATES_FILE)) return null;
     return JSON.parse(fs.readFileSync(GATES_FILE, "utf8"));
   } catch {
@@ -141,7 +151,7 @@ async function main() {
 
   ask(
     `fxmind: code edit blocked — Gate${missing.length > 1 ? "s" : ""} ${missing.join(" & ")} not recorded. Complete the analysis + memory load (🛑 GATE ${missing.join(" / ")} COMPLETE) before editing code.`,
-    `A fxmind task is active but Gate ${missing.join(" and ")} marker${missing.length > 1 ? "s are" : " is"} not in .fxmind-gates.json. Run the Gate ${missing.join(" then ")} step of /fxmind task (output the 🛑 GATE marker and record it via fxmind_record_gate or by writing .fxmind-gates.json) before editing ${filePath || "code"}.`,
+    `A fxmind task is active but Gate ${missing.join(" and ")} marker${missing.length > 1 ? "s are" : " is"} not in .fxmind/fxmind-gates.json. Run the Gate ${missing.join(" then ")} step of /fxmind task (output the 🛑 GATE marker and record it via fxmind_record_gate or by writing .fxmind/fxmind-gates.json) before editing ${filePath || "code"}.`,
   );
 }
 

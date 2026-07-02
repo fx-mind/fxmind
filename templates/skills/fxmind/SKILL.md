@@ -39,7 +39,7 @@ When the user runs **`task`** or asks to **change code/config**, follow the pipe
 
 Each gate MUST end with its marker. Do NOT proceed to the next phase without the previous marker being visible.
 
-**Gate file (enforced by hooks):** after each marker, record it in **`.fxmind-gates.json`** at the project root so the Cursor `gate-guard` hook can enforce it:
+**Gate file (enforced by hooks):** after each marker, record it in **`.fxmind/fxmind-gates.json`** so the Cursor `gate-guard` hook can enforce it:
 
 ```json
 { "taskActive": true, "gates": { "A": { "complete": true }, "B": { "complete": true } } }

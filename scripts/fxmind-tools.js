@@ -17,7 +17,9 @@ const path = require("path");
 const { SHARED_DIR } = require("./global-store");
 const { buildGraphData, writeGraph } = require("./build-graph");
 
-const GATES_FILE = ".fxmind-gates.json";
+const GATES_FILE = "fxmind-gates.json";
+const GATES_REL = path.join(SHARED_DIR, GATES_FILE);
+const LEGACY_GATES_REL = ".fxmind-gates.json";
 
 function readJson(filePath, fallback = null) {
   if (!filePath || !fs.existsSync(filePath)) {
@@ -291,14 +293,32 @@ function queryGraph(targetRoot, question, options = {}) {
 }
 
 function gatesPath(targetRoot) {
-  return path.join(path.resolve(targetRoot), GATES_FILE);
+  return path.join(fxmindDir(targetRoot), GATES_FILE);
+}
+
+function legacyGatesPath(targetRoot) {
+  return path.join(path.resolve(targetRoot), LEGACY_GATES_REL);
+}
+
+function migrateLegacyGates(targetRoot) {
+  const next = gatesPath(targetRoot);
+  const legacy = legacyGatesPath(targetRoot);
+  if (fs.existsSync(next) || !fs.existsSync(legacy)) {
+    return false;
+  }
+  fs.mkdirSync(path.dirname(next), { recursive: true });
+  fs.copyFileSync(legacy, next);
+  fs.unlinkSync(legacy);
+  return true;
 }
 
 function gateStatus(targetRoot) {
+  migrateLegacyGates(targetRoot);
   return readJson(gatesPath(targetRoot), { gates: {} });
 }
 
 function recordGate(targetRoot, gate, value = true, extra = {}) {
+  migrateLegacyGates(targetRoot);
   const data = gateStatus(targetRoot);
   data.gates = data.gates || {};
   data.gates[gate] = {
@@ -311,11 +331,14 @@ function recordGate(targetRoot, gate, value = true, extra = {}) {
 }
 
 function resetGates(targetRoot) {
+  migrateLegacyGates(targetRoot);
   writeJson(gatesPath(targetRoot), { gates: {}, session: new Date().toISOString() });
 }
 
 module.exports = {
   GATES_FILE,
+  GATES_REL,
+  LEGACY_GATES_REL,
   fxmindDir,
   memoryDir,
   listMemories,

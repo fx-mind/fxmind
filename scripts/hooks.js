@@ -320,7 +320,7 @@ Usage:
   fxmind hooks pre-commit [--strict]                      Run pre-commit drift check on staged files
   fxmind hooks drift-check <file>                         Check memories referencing <file>
   fxmind hooks graph [--no-open]                          Rebuild knowledge graph
-  fxmind hooks gates                                      Show Gate A/B/C status from .fxmind-gates.json
+  fxmind hooks gates                                      Show Gate A/B/C status from .fxmind/fxmind-gates.json
   fxmind hooks -h                                         This help
 
 Cursor hooks:

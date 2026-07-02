@@ -100,7 +100,7 @@ Use `/fxmind task` for code changes. With Cursor hooks installed, three gates ap
 2. **Gate B** — load 3–5 relevant memories
 3. **Gate C** — review whether new knowledge should be learned
 
-Markers live in `.fxmind-gates.json`. The `gate-guard` hook blocks edits until A/B are complete.
+Markers live in `.fxmind/fxmind-gates.json`. The `gate-guard` hook blocks edits until A/B are complete.
 
 ---
 

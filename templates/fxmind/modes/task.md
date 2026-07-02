@@ -4,7 +4,7 @@
 
 Use Task mode when the user asks to **make, create, implement, fix, adjust, refactor, add, remove, wire, migrate, or change code/config**. Load only the memory needed, then learn from the completed work.
 
-> **Gates are enforced by the Cursor `gate-guard` hook via `.fxmind-gates.json`.** Output the markers below; the hook blocks code edits until A & B are recorded. If hooks are not installed, the chat markers are the source of truth.
+> **Gates are enforced by the Cursor `gate-guard` hook via `.fxmind/fxmind-gates.json`.** Output the markers below; the hook blocks code edits until A & B are recorded. If hooks are not installed, the chat markers are the source of truth.
 
 ## Gate A — show analysis (before any edit)
 
@@ -14,7 +14,7 @@ Output:
 ```
 🛑 GATE A COMPLETE — GOAL: <one-line>, SCOPE: <files>, TOPICS: <list>, RISKS: <list or none>
 ```
-Then record `gates.A.complete = true` in `.fxmind-gates.json` (or call `fxmind_record_gate` MCP tool).
+Then record `gates.A.complete = true` in `.fxmind/fxmind-gates.json` (or call `fxmind_record_gate` MCP tool).
 
 ## Gate B — load memory (before any edit)
 
@@ -71,7 +71,7 @@ Output:
 ```
 🛑 GATE C COMPLETE — LEARNING: <memory created: path / updated: path / none — mudança pontual>
 ```
-Then record `gates.C.complete = true` and set `taskActive: false` in `.fxmind-gates.json`. If memory changed, suggest `/fxmind graph`.
+Then record `gates.C.complete = true` and set `taskActive: false` in `.fxmind/fxmind-gates.json`. If memory changed, suggest `/fxmind graph`.
 
 ## Memory write rules (only when Gate C qualifies)
 
