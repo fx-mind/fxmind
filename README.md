@@ -126,22 +126,41 @@ Useful env vars: `FXMIND_GATE_WARN=1` (warn only, don't block), `FXMIND_GRAPH_NO
 
 ## MCP server
 
+Install globally once (all agents use the `fxmind-mcp` binary on `PATH`):
+
+```bash
+npm install -g github:fx-mind/fxmind
+```
+
 Wired automatically into `.cursor/mcp.json` (and agent equivalents). **Portable** config — safe to commit:
+
+**Cursor / Claude / Gemini** (`.cursor/mcp.json`, etc.):
 
 ```json
 {
   "mcpServers": {
     "fxmind": {
-      "command": "node",
-      "args": [".fxmind/mcp-launch.js"],
-      "cwd": "${workspaceFolder}",
-      "env": { "FXMIND_TARGET": "${workspaceFolder}" }
+      "command": "fxmind-mcp"
     }
   }
 }
 ```
 
-`${workspaceFolder}` is expanded by Cursor / Claude Code to each developer's project root. The launcher (`.fxmind/mcp-launch.js`) avoids `npx.cmd` on Windows, which breaks MCP spawn under Git Bash / MSYS2 (OpenCode). No global `npm install -g` required.
+**OpenCode** (`opencode.json` at project root):
+
+```json
+{
+  "mcp": {
+    "fxmind": {
+      "type": "local",
+      "command": ["fxmind-mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP spawn under Git Bash / MSYS2.
 
 | MCP tool | Action |
 |----------|--------|

@@ -5,12 +5,8 @@
 const fs = require("fs");
 const path = require("path");
 
-const { PACKAGE_ROOT } = require("./resolve-packs");
-
-/** Resolved at runtime by Cursor / Claude Code (not a literal path). */
-const WORKSPACE_ROOT = "${workspaceFolder}";
-
 const MCP_SERVER_KEY = "fxmind";
+const FXMIND_MCP_COMMAND = "fxmind-mcp";
 const MANIFEST_REL = path.join(".fxmind", "packs.json");
 
 const MCP_AGENT_TARGETS = {
@@ -42,7 +38,6 @@ const MCP_AGENT_TARGETS = {
 };
 
 const MCP_JSON_REL = MCP_AGENT_TARGETS.cursor.configRel;
-const MCP_LAUNCHER_REL = path.join(".fxmind", "mcp-launch.js");
 
 function readJson(filePath, fallback = null) {
   if (!filePath || !fs.existsSync(filePath)) {
@@ -60,44 +55,16 @@ function writeJson(filePath, data) {
   fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
-function installMcpLauncher(projectRoot, packageRoot = PACKAGE_ROOT) {
-  const src = path.join(packageRoot, "scripts", "mcp-launch.js");
-  const dest = path.join(path.resolve(projectRoot), MCP_LAUNCHER_REL);
-  if (!fs.existsSync(src)) {
-    throw new Error(`MCP launcher template missing: ${src}`);
-  }
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.copyFileSync(src, dest);
-  return MCP_LAUNCHER_REL.replace(/\\/g, "/");
-}
-
-function resolveMcpLaunch() {
-  // Portable + MSYS2-safe: `node` + project launcher (no npx.cmd → cmd.exe on Windows).
+function buildFxmindMcpEntry() {
+  // Global binary on PATH — avoids npx.cmd → cmd.exe on Windows (MSYS2/Git Bash).
+  // Requires: npm install -g github:fx-mind/fxmind
   return {
-    command: "node",
-    args: [".fxmind/mcp-launch.js"],
-  };
-}
-
-function buildFxmindMcpEntry(projectRoot, packageRoot = PACKAGE_ROOT) {
-  installMcpLauncher(projectRoot, packageRoot);
-  const launch = resolveMcpLaunch();
-  return {
-    command: launch.command,
-    args: launch.args,
-    cwd: WORKSPACE_ROOT,
-    env: {
-      FXMIND_TARGET: WORKSPACE_ROOT,
-    },
+    command: FXMIND_MCP_COMMAND,
   };
 }
 
 function tomlString(value) {
   return JSON.stringify(String(value));
-}
-
-function tomlInlineArray(values) {
-  return `[${values.map((value) => tomlString(value)).join(", ")}]`;
 }
 
 function normalizeAgentIds(agentIds) {
@@ -173,19 +140,7 @@ function resolveMcpAgentIds(targetRoot, agentIds) {
 }
 
 function buildCodexMcpToml(entry) {
-  const lines = ["", "[mcp_servers.fxmind]", `command = ${tomlString(entry.command)}`];
-  if (entry.args?.length) {
-    lines.push(`args = ${tomlInlineArray(entry.args)}`);
-  }
-  if (entry.cwd) {
-    lines.push(`cwd = ${tomlString(entry.cwd)}`);
-  }
-  lines.push("", "[mcp_servers.fxmind.env]");
-  for (const [key, value] of Object.entries(entry.env || {})) {
-    lines.push(`${key} = ${tomlString(value)}`);
-  }
-  lines.push("");
-  return lines.join("\n");
+  return `\n[mcp_servers.fxmind]\ncommand = ${tomlString(entry.command)}\n`;
 }
 
 function removeCodexMcpSection(content) {
@@ -229,20 +184,54 @@ function mcpStatusMcpServersJson(configPath) {
   };
 }
 
-function installOpenCodeMcp(configPath, entry) {
+function resolveOpenCodeMcpLaunch() {
+  return {
+    type: "local",
+    command: [FXMIND_MCP_COMMAND],
+    enabled: true,
+  };
+}
+
+function installOpenCodeMcp(configPath) {
   const existing = readJson(configPath, {
     $schema: "https://opencode.ai/config.json",
     mcp: {},
   });
   existing.mcp = existing.mcp || {};
-  existing.mcp[MCP_SERVER_KEY] = {
-    type: "local",
-    command: [entry.command, ...(entry.args || [])],
-    cwd: entry.cwd,
-    environment: entry.env,
-    enabled: true,
-  };
+  existing.mcp[MCP_SERVER_KEY] = resolveOpenCodeMcpLaunch();
   writeJson(configPath, existing);
+}
+
+function removeLegacyOpenCodeMcpJson(projectRoot) {
+  const legacyPath = path.join(path.resolve(projectRoot), ".opencode", "mcp.json");
+  if (!fs.existsSync(legacyPath)) {
+    return false;
+  }
+  const existing = readJson(legacyPath);
+  const hasFxmind =
+    existing?.servers?.[MCP_SERVER_KEY] || existing?.mcp?.[MCP_SERVER_KEY];
+  if (!hasFxmind) {
+    return false;
+  }
+  if (existing.servers?.[MCP_SERVER_KEY]) {
+    delete existing.servers[MCP_SERVER_KEY];
+    if (Object.keys(existing.servers).length === 0) {
+      delete existing.servers;
+    }
+  }
+  if (existing.mcp?.[MCP_SERVER_KEY]) {
+    delete existing.mcp[MCP_SERVER_KEY];
+    if (Object.keys(existing.mcp).length === 0) {
+      delete existing.mcp;
+    }
+  }
+  const remainingKeys = Object.keys(existing).filter((key) => key !== "$schema");
+  if (remainingKeys.length === 0) {
+    fs.unlinkSync(legacyPath);
+  } else {
+    writeJson(legacyPath, existing);
+  }
+  return true;
 }
 
 function uninstallOpenCodeMcp(configPath) {
@@ -375,14 +364,14 @@ function installMcpForAgent(targetRoot, agentId, options = {}) {
   }
 
   const projectRoot = path.resolve(targetRoot);
-  const packageRoot = options.packageRoot || PACKAGE_ROOT;
   const configPath = path.join(projectRoot, target.configRel);
-  const entry = buildFxmindMcpEntry(projectRoot, packageRoot);
+  const entry = buildFxmindMcpEntry();
 
-  if (target.format === "mcpServers-json") {
+  if (agentId === "opencode") {
+    installOpenCodeMcp(configPath);
+    removeLegacyOpenCodeMcpJson(projectRoot);
+  } else if (target.format === "mcpServers-json") {
     installMcpServersJson(configPath, entry);
-  } else if (target.format === "opencode-mcp") {
-    installOpenCodeMcp(configPath, entry);
   } else if (target.format === "codex-toml") {
     installCodexMcp(configPath, entry);
   } else {
@@ -491,8 +480,8 @@ function mcpStatus(targetRoot, options = {}) {
 
 module.exports = {
   MCP_JSON_REL,
-  MCP_LAUNCHER_REL,
   MCP_SERVER_KEY,
+  FXMIND_MCP_COMMAND,
   MCP_AGENT_TARGETS,
   installMcp,
   uninstallMcp,
@@ -502,6 +491,5 @@ module.exports = {
   mcpStatusForAgent,
   resolveMcpAgentIds,
   buildFxmindMcpEntry,
-  installMcpLauncher,
-  resolveMcpLaunch,
+  resolveOpenCodeMcpLaunch,
 };
