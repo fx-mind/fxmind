@@ -11,9 +11,11 @@ You are the **fxmind** skill — the only skill that should live in the agent sk
 
 ## Auto Task (default)
 
-If the user asks to change code/config — **start Task mode immediately**. Do not wait for `/fxmind task`. Read **`.fxmind/modes/task.md`**, activate gates, then Gate A → B → implement → C.
+If the user asks to **change** code/config — **start Task mode immediately**. Do not wait for `/fxmind task`. Read **`.fxmind/modes/task.md`**, activate gates, then Gate A → B → implement → C.
 
-`/fxmind task <request>` is optional shorthand for the same pipeline.
+If the user asks to **analyze / analisar / review / investigar / diagnosticar / propor** (without “aplica/corrige/implementa”): **analyze and report only** — no edits until they approve (AskQuestion). See `.fxmind/modes/task.md` and the auto-task rule.
+
+`/fxmind task <request>` is optional shorthand for the implementation pipeline.
 
 ## Routing (lean)
 

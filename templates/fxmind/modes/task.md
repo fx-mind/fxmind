@@ -7,6 +7,8 @@
 
 Use Task mode when the user asks to **make, create, implement, fix, adjust, refactor, add, remove, wire, migrate, or change code/config**. Load only the memory needed, then learn from the completed work.
 
+**Analyze-only:** if the user asks to **analyze / analisar / review / investigar / diagnosticar / propor / planear** (without also saying apply/fix/implement), do **not** enter Implement. Investigate, report findings + proposed plan, then **AskQuestion for approval**. Edit only after they approve. "Analisa e corrige" = full Task after a short analysis summary.
+
 > **Gates are session state enforced by Cursor `gate-guard`.** Record them **only** via MCP (`fxmind_start_task`, `fxmind_record_gate`). Never Write `.fxmind/fxmind-gates.json` — the hook blocks direct edits. On the first code edit without an active task, the hook auto-starts Task (disable with `FXMIND_AUTO_TASK=0`).
 >
 > **MCP required:** if the `fxmind` MCP server is disabled/unavailable, **STOP** — do not edit code or “aplicar correção sem MCP”. Tell the user: *Cursor → Settings → Tools & MCP → enable **fxmind*** (Windows: if it auto-disables, run `fxmind hooks install` so `.cursor/mcp.json` uses `node` + script). Retry after MCP tools appear.

@@ -14,6 +14,16 @@ If MCP tools are **missing / disabled / errored**:
 
 When the user asks to **make, create, implement, fix, adjust, refactor, add, remove, wire, migrate, disable, enable, or change code/config** — run the **fxmind Task pipeline automatically**. Do **not** wait for `/fxmind task`.
 
+## Analyze-only (no implement until approved)
+
+If the user asks to **analyze, analisar, review, investigar, diagnosticar, explicar o problema, propor, planear/planejar, or "só analisa"** — **do not edit code**.
+
+1. Investigate (read code/memories/MCP as needed).
+2. Report in the user's language: findings, root cause (if any), proposed change, risks, files/resources touched.
+3. **STOP** and ask for approval (Cursor: **AskQuestion** — e.g. *Implementar agora?* / *Só reportar*).
+4. Implement **only** after explicit approval ("sim", "implementa", "pode aplicar", option chosen).
+5. "Analisa e corrige" / "analisa e aplica" = analyze then implement (full Task). Ambiguous → treat as analyze-only and ask.
+
 ## Required flow (every implementation request)
 
 1. Confirm MCP **fxmind** tools are available (`fxmind_start_task`). If not → ask user to enable MCP **fxmind** and stop.
@@ -31,8 +41,9 @@ When the user asks to **make, create, implement, fix, adjust, refactor, add, rem
 ## Exceptions (skip Task)
 
 - Pure questions / explanations with no code change
+- **Analyze-only** requests (see above) — report + wait for approval; no Task implement until approved
 - Explicit modes: `/fxmind learn`, `audit`, `query`, `graph`, `memory health`, `reference`, `update`
-- Never skip Task just because the change looks “small” (salaries, config numbers, one-line fixes) — still run the pipeline
+- Never skip Task just because an *implementation* change looks “small” (salaries, config numbers, one-line fixes) — still run the pipeline
 
 ## Style (this repo)
 
