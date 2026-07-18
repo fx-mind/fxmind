@@ -63,7 +63,7 @@ function main() {
   }
 
   followup(
-    "fxmind: Gate C (post-task learning) is still pending. If the user corrected your work during this task, you should have asked whether to save that correction to memory (Pitfalls / new topic / skip). Decide whether the work produced reusable knowledge: if yes, create/update the relevant .fxmind/memory/<topic>.md via /fxmind learn <topic> and record Gate C; if not, state \"mudança pontual\" and record Gate C. Then suggest /fxmind graph if memory changed. Finally, clear taskActive in .fxmind/fxmind-gates.json.",
+    "fxmind: Gate C (post-task learning) is still pending. If the user corrected your work, ask (AskQuestion) whether to save: memory Pitfalls, skill correction (.fxmind/corrections via fxmind_record_correction), both, or neither. Decide reusable knowledge: if yes, update .fxmind/memory/<topic>.md then call fxmind_validate_memories and fxmind_record_gate gate=C; if not, state \"mudança pontual\" and call fxmind_record_gate gate=C. Never Write the gates JSON. Suggest fxmind_graph if memory changed.",
   );
 }
 

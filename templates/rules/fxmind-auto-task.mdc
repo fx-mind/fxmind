@@ -1,0 +1,30 @@
+---
+description: Auto-run fxmind Task pipeline for any code/config change (no /fxmind task required)
+alwaysApply: true
+---
+
+# fxmind — auto Task
+
+When the user asks to **make, create, implement, fix, adjust, refactor, add, remove, wire, migrate, disable, enable, or change code/config** — run the **fxmind Task pipeline automatically**. Do **not** wait for `/fxmind task`.
+
+## Required flow (every implementation request)
+
+1. Read **`.fxmind/modes/task.md`** and follow it.
+2. Call MCP **`fxmind_start_task`** (never Write the gates JSON).
+3. **Gate A** → analysis in chat → **`fxmind_record_gate`** `A`.
+4. **Gate B** → load memories (`fxmind_query` preferred) → **`fxmind_record_gate`** `B`.
+5. **Implement** the change.
+6. **Gate C** → post-task learn → **`fxmind_record_gate`** `C` (clears task). After memory writes, call **`fxmind_validate_memories`**.
+7. If the user corrected a mistake → AskQuestion: Pitfalls / **`fxmind_record_correction`** / both / neither (see `.fxmind/modes/task.md`).
+
+## Exceptions (skip Task)
+
+- Pure questions / explanations with no code change
+- Explicit modes: `/fxmind learn`, `audit`, `query`, `graph`, `memory health`, `reference`, `update`
+- Trivial single-file typo the user scoped as "just fix the typo" — still prefer Task if unsure
+
+## Style (this repo)
+
+Match senior Lua / FiveM house style: **monolith-first**, few files, almost no comments, Tunnel/`return` for queries (not event roundtrips). Read `.fxmind/memory/lua-style.md` and `lua-scope.md` when editing Lua. Skill backlog lives in `.fxmind/corrections/` (not memory).
+
+`/fxmind task <request>` remains valid; it is optional when this rule applies.

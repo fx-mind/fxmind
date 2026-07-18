@@ -16,7 +16,7 @@ Read from `.fxmind/skills/`:
 
 | File | Purpose |
 |------|---------|
-| `fivem-development/best-practices.md` | Patterns, anti-bugs |
+| `fivem-development/` (`communication`…`security`) | Patterns, anti-bugs |
 | Framework skill (`vrp-framework`, etc.) | If detected |
 | `.fxmind/topic-catalog.md` | Search hints for known topics |
 | `.fxmind/memory.template.md` | Output skeleton |
@@ -34,16 +34,20 @@ Read from `.fxmind/skills/`:
 
 Save to `.fxmind/memory/<topic>.md` using `memory.template.md` structure (**~25–60 lines**, token-efficient):
 
-- Frontmatter: `topic`, `updated`, `framework`, `lang: en-compact`, `confidence: extracted`.
-- Structured arrays (grep-confirmed): `resources`, `paths`, `events`, `exports`, `symbols`, `triggers`.
+- Frontmatter **required**: `topic`, `updated`, `lang: en-compact`.
+- Frontmatter **required for routing**: non-empty `paths[]` **or** `triggers[]` (preferably both).
+- Also set: `framework`, `confidence: extracted`, `resources`, `events`, `exports`, `symbols`.
 - Sections: `Files`, `Recipe`, `Example`, `Pitfalls`, `Skills` — **compact technical English only**.
 - No prose, no tables unless essential; bullet lists and short imperative lines.
 - Keep repo literals verbatim: paths, events, item ids, permissions, resource names.
 - **Do not** write memory in Portuguese — memory is shared project context (`lang: en-compact`).
+- **One slug = one file** — update existing `memory/<slug>.md`; do not create `admin2.md` / `admin-fix.md`.
 
-## Step 5 — Update index
+## Step 5 — Validate + update index
 
-Update `.fxmind/memory/_index.md` — table row: topic | file | triggers | last updated. Create from `memory-index.template.md` if missing.
+1. Call MCP **`fxmind_validate_memories`** (or note to run `fxmind memory validate`) and fix any errors before finishing.
+2. Update `.fxmind/memory/_index.md` — table row: topic | file | triggers | last updated. Create from `memory-index.template.md` if missing.
+3. Suggest `/fxmind graph` (writes `knowledge-graph.json` + `memory-index.json`).
 
 ## Step 6 — Update .fxmind/reference.md
 
@@ -51,7 +55,7 @@ If `.fxmind/reference.md` exists: ensure section `## Memórias por tópico` exis
 
 ## Step 7 — Reply
 
-Reply in **their language** (usually PT-BR): summary of what was learned (3–5 bullets), path `.fxmind/memory/<topic>.md`, suggest `/fxmind graph` to refresh the 3D knowledge map.
+Reply in **their language** (usually PT-BR): summary of what was learned (3–5 bullets), path `.fxmind/memory/<topic>.md`, suggest `/fxmind graph` to refresh the knowledge map + `memory-index.json`.
 
 ## Learn rules
 

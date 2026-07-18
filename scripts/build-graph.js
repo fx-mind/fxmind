@@ -612,6 +612,7 @@ function buildGraphData(projectRoot) {
     nodes: allNodes,
     links,
     meta: {
+      schemaVersion: 1,
       generatedAt: new Date().toISOString(),
       agent: "shared",
       fxmindDir: SHARED_DIR,
@@ -638,10 +639,19 @@ function writeGraph(projectRoot, graphData) {
   fs.writeFileSync(jsonPath, `${JSON.stringify(graphData, null, 2)}\n`, "utf8");
   syncKnowledgeGraphHtml(projectRoot, graphData);
 
+  let memoryIndex = null;
+  try {
+    const { writeMemoryIndex } = require("./fxmind-tools");
+    memoryIndex = writeMemoryIndex(projectRoot);
+  } catch {
+    // optional — fxmind-tools may not be available in odd load orders
+  }
+
   return {
     jsonPath: path.relative(projectRoot, jsonPath),
     htmlPath: path.relative(projectRoot, localHtml),
     absoluteHtmlPath: fs.existsSync(localHtml) ? localHtml : path.join(dataRoot, "knowledge-graph.html"),
+    memoryIndex,
   };
 }
 
@@ -666,6 +676,7 @@ Reads:
 Writes:
   .fxmind/knowledge-graph.json
   .fxmind/knowledge-graph.html
+  .fxmind/memory-index.json
 `);
 }
 
@@ -718,6 +729,11 @@ function runGraphCli(argv = process.argv.slice(3)) {
     console.log(`  tokens   → ~${graphData.meta.counts.tokens.toLocaleString("en-US")}`);
     console.log(`  json     → ${paths.jsonPath}`);
     console.log(`  html     → ${paths.htmlPath}`);
+    if (paths.memoryIndex) {
+      console.log(
+        `  index    → ${paths.memoryIndex.path} (${paths.memoryIndex.count} memories)`,
+      );
+    }
 
     if (options.open) {
       openGraphInBrowser(paths.absoluteHtmlPath);

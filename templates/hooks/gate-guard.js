@@ -3,16 +3,13 @@
  * fxmind gate-guard — Cursor preToolUse hook.
  *
  * Enforces fxmind Task-mode Gates A & B before code edits.
+ * Gates are session state — agents must use MCP fxmind_record_gate / fxmind_start_task
+ * (never Write the gates JSON directly).
  *
- * Source of truth: .fxmind/fxmind-gates.json:
- *   { "taskActive": true, "gates": { "A": {"complete": true}, "B": {...}, "C": {...} } }
+ * Auto-start (default): first code edit without an active task starts Task mode.
+ * Disable with FXMIND_AUTO_TASK=0.
  *
- * The /fxmind task flow (or fxmind_record_gate MCP tool) writes this file.
- * When taskActive is false, the hook allows everything (no fxmind task running).
- * When taskActive is true, code edits (files outside the fxmind/config allowlist)
- * require Gates A and B to be complete; otherwise it asks the user to confirm.
- *
- * Fail-open: any parse/IO error → allow (returns permission allow).
+ * Fail-open: any parse/IO error → allow.
  */
 const fs = require("fs");
 const path = require("path");
@@ -75,9 +72,35 @@ function readGates() {
   }
 }
 
+function writeGates(data) {
+  fs.mkdirSync(path.dirname(GATES_FILE), { recursive: true });
+  fs.writeFileSync(GATES_FILE, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
+
+function autoTaskEnabled() {
+  const value = process.env.FXMIND_AUTO_TASK;
+  if (value === undefined || value === "") return true;
+  return value !== "0" && value.toLowerCase() !== "false" && value.toLowerCase() !== "off";
+}
+
+function toRel(filePath) {
+  if (!filePath) return "";
+  return path.relative(PROJECT_ROOT, path.resolve(PROJECT_ROOT, filePath)).replace(/\\/g, "/");
+}
+
+function isGatesFile(filePath) {
+  const rel = toRel(filePath);
+  return (
+    rel === ".fxmind/fxmind-gates.json" ||
+    rel === ".fxmind-gates.json" ||
+    rel.endsWith("/fxmind-gates.json")
+  );
+}
+
 function isCodeFile(filePath) {
   if (!filePath) return false;
-  const rel = path.relative(PROJECT_ROOT, path.resolve(PROJECT_ROOT, filePath)).replace(/\\/g, "/");
+  const rel = toRel(filePath);
+  if (isGatesFile(filePath)) return false;
   if (ALLOW_EXACT.has(rel)) return false;
   for (const prefix of ALLOW_PREFIXES) {
     if (rel === prefix.slice(0, -1) || rel.startsWith(prefix)) return false;
@@ -101,6 +124,19 @@ function ask(userMessage, agentMessage) {
   process.exit(0);
 }
 
+function startAutoTask() {
+  const payload = {
+    schemaVersion: 1,
+    taskActive: true,
+    autoStarted: true,
+    session: new Date().toISOString(),
+    startedAt: new Date().toISOString(),
+    gates: {},
+  };
+  writeGates(payload);
+  return payload;
+}
+
 async function main() {
   const raw = await readStdin();
   let input = {};
@@ -114,20 +150,37 @@ async function main() {
   const toolInput = input.tool_input || input.input || {};
   const filePath = toolInput.file_path || toolInput.path || toolInput.filePath || "";
 
-  // Only gate file-writing tools. Everything else allowed.
   const editTools = /^(Edit|Write|StrReplace|FileEdit|MultiEdit|NotebookEdit)$/i;
   if (!editTools.test(toolName)) {
     allow();
   }
 
-  // Non-code files (memories, config, gates file) are always allowed.
+  // Gates JSON is MCP/CLI-only — block agent Write/Edit.
+  if (isGatesFile(filePath)) {
+    ask(
+      "fxmind: do not edit fxmind-gates.json directly — use the MCP tool fxmind_record_gate.",
+      "Blocked: gates are session state managed by Node. Call MCP fxmind_start_task (or fxmind_record_gate with gate=START) then fxmind_record_gate for A/B/C. Do not Write/Edit .fxmind/fxmind-gates.json.",
+    );
+  }
+
   if (!isCodeFile(filePath)) {
     allow();
   }
 
-  const gates = readGates();
+  let gates = readGates();
   if (!gates || !gates.taskActive) {
-    allow();
+    if (!autoTaskEnabled()) {
+      allow();
+    }
+    try {
+      gates = startAutoTask();
+    } catch {
+      allow();
+    }
+    ask(
+      "fxmind: Task auto-started — complete Gates A & B via MCP before editing code.",
+      `Code edit blocked: Task mode auto-started for ${filePath || "this file"}. Read .fxmind/modes/task.md. Call fxmind_record_gate (A then B) — never write the gates JSON. Then retry the edit.`,
+    );
   }
 
   const a = gates.gates && gates.gates.A && gates.gates.A.complete;
@@ -144,14 +197,14 @@ async function main() {
   const warnOnly = process.env.FXMIND_GATE_WARN;
   if (warnOnly && warnOnly !== "0" && warnOnly.toLowerCase() !== "false") {
     process.stderr.write(
-      `fxmind gate-guard (warn-only): code edit before Gate${missing.length > 1 ? "s" : ""} ${missing.join(" & ")} — complete the /fxmind task Gate ${missing.join(" then ")} step. Edit allowed under FXMIND_GATE_WARN.\n`,
+      `fxmind gate-guard (warn-only): code edit before Gate${missing.length > 1 ? "s" : ""} ${missing.join(" & ")}. Edit allowed under FXMIND_GATE_WARN.\n`,
     );
     allow();
   }
 
   ask(
-    `fxmind: code edit blocked — Gate${missing.length > 1 ? "s" : ""} ${missing.join(" & ")} not recorded. Complete the analysis + memory load (🛑 GATE ${missing.join(" / ")} COMPLETE) before editing code.`,
-    `A fxmind task is active but Gate ${missing.join(" and ")} marker${missing.length > 1 ? "s are" : " is"} not in .fxmind/fxmind-gates.json. Run the Gate ${missing.join(" then ")} step of /fxmind task (output the 🛑 GATE marker and record it via fxmind_record_gate or by writing .fxmind/fxmind-gates.json) before editing ${filePath || "code"}.`,
+    `fxmind: code edit blocked — Gate${missing.length > 1 ? "s" : ""} ${missing.join(" & ")} not recorded. Use MCP fxmind_record_gate.`,
+    `Task active but Gate ${missing.join(" and ")} missing. Call fxmind_record_gate with gate="${missing[0]}"${missing[1] ? ` then gate="${missing[1]}"` : ""} (output 🛑 GATE markers in chat too). Do not Write .fxmind/fxmind-gates.json. Then retry editing ${filePath || "code"}.`,
   );
 }
 

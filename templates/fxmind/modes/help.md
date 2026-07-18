@@ -17,7 +17,7 @@ You are a FiveM development expert. Help the user with their FiveM scripting que
    - ox_lib → Fetch from https://overextended.dev/ox_lib
    - Asset (prop, vehicle, ped) → Read skill `fivem-development` (`asset-discovery.md`) + PlebMasters
    - NUI/React UI → Read skill `fivem-react-nui`
-   - Patterns/best practices → Read skill `fivem-development` (`best-practices.md`)
+   - Patterns/best practices → Read skill `fivem-development` (`SKILL.md` router → topic files)
    - Code audit → suggest `/fxmind audit [scope]`
    - Implement, fix, refactor, add/remove code → suggest **`/fxmind task <request>`**
    - Recurring project flow (craft, item, loja, NUI) → read `.fxmind/memory/<topic>.md` if exists; else suggest `/fxmind learn <topic>`

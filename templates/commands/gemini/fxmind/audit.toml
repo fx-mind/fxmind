@@ -8,7 +8,7 @@ If empty, use @ mention, open files, or ask which resource to audit.
 
 ## Load standards
 
-Read `.fxmind/skills/fivem-development/best-practices.md` (§1–5, §3.5–3.10), framework skill from `.fxmind/skills/` if detected, `fivem-react-nui` if NUI in scope.
+Read `.fxmind/skills/fivem-development/SKILL.md` then on demand: `communication.md`, `performance.md` (§2.4–§2.5), `architecture.md` (§3.5–3.6), `security.md` (§5.1). Framework skill from `.fxmind/skills/` if detected; `fivem-react-nui` if NUI in scope.
 Read `.fxmind/audit.template.md` for report structure.
 Read `.fxmind/reference.md` at project root if present.
 

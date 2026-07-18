@@ -26,6 +26,8 @@ const { installMcp, uninstallMcp, mcpStatus, resolveMcpAgentIds } = require("./m
 
 const HOOKS_DIR_REL = path.join(".cursor", "hooks");
 const HOOKS_JSON_REL = path.join(".cursor", "hooks.json");
+const RULES_DIR_REL = path.join(".cursor", "rules");
+const AUTO_TASK_RULE = "fxmind-auto-task.mdc";
 const GIT_HOOK_MARKER = "# --- fxmind pre-commit ---";
 
 const HOOK_SCRIPTS = [
@@ -59,6 +61,31 @@ function writeJson(filePath, data) {
 
 function templateHooksDir() {
   return path.join(__dirname, "..", "templates", "hooks");
+}
+
+function templateRulesDir() {
+  return path.join(__dirname, "..", "templates", "rules");
+}
+
+function installAutoTaskRule(projectRoot) {
+  const src = path.join(templateRulesDir(), AUTO_TASK_RULE);
+  if (!fs.existsSync(src)) {
+    return null;
+  }
+  const rulesDir = path.join(projectRoot, RULES_DIR_REL);
+  fs.mkdirSync(rulesDir, { recursive: true });
+  const dest = path.join(rulesDir, AUTO_TASK_RULE);
+  fs.copyFileSync(src, dest);
+  return path.relative(projectRoot, dest).replace(/\\/g, "/");
+}
+
+function uninstallAutoTaskRule(projectRoot) {
+  const dest = path.join(projectRoot, RULES_DIR_REL, AUTO_TASK_RULE);
+  if (!fs.existsSync(dest)) {
+    return null;
+  }
+  fs.unlinkSync(dest);
+  return path.relative(projectRoot, dest).replace(/\\/g, "/");
 }
 
 function hookLibDir() {
@@ -207,6 +234,21 @@ function installHooks(targetRoot, options = {}) {
   const projectRoot = path.resolve(targetRoot);
   const { installed } = copyHookBundle(projectRoot);
 
+  const autoTaskRule = installAutoTaskRule(projectRoot);
+  if (autoTaskRule) {
+    installed.push(autoTaskRule);
+  }
+
+  let gitignore = null;
+  try {
+    gitignore = tools.ensureProjectGitignore(projectRoot);
+    if (gitignore?.added?.length) {
+      installed.push(`.gitignore (+${gitignore.added.join(", ")})`);
+    }
+  } catch {
+    // optional
+  }
+
   const hooksJsonPath = path.join(projectRoot, HOOKS_JSON_REL);
   const existing = readJson(hooksJsonPath, { version: 1, hooks: {} });
   existing.version = existing.version || 1;
@@ -260,6 +302,11 @@ function uninstallHooks(targetRoot) {
     }
   }
 
+  const autoTaskRemoved = uninstallAutoTaskRule(projectRoot);
+  if (autoTaskRemoved) {
+    removed.push(autoTaskRemoved);
+  }
+
   const hooksJsonPath = path.join(projectRoot, HOOKS_JSON_REL);
   const existing = readJson(hooksJsonPath);
   if (existing && existing.hooks) {
@@ -298,7 +345,13 @@ function hooksStatus(targetRoot) {
         existing.hooks[event].some((e) => e?.command === command),
     );
   }
-  return { present, wired, hooksJsonExists: fs.existsSync(hooksJsonPath) };
+  const autoTaskRule = fs.existsSync(path.join(projectRoot, RULES_DIR_REL, AUTO_TASK_RULE));
+  return {
+    present,
+    wired,
+    hooksJsonExists: fs.existsSync(hooksJsonPath),
+    autoTaskRule,
+  };
 }
 
 function isGitHookInstalled(targetRoot) {
@@ -321,16 +374,21 @@ Usage:
   fxmind hooks drift-check <file>                         Check memories referencing <file>
   fxmind hooks graph [--no-open]                          Rebuild knowledge graph
   fxmind hooks gates                                      Show Gate A/B/C status from .fxmind/fxmind-gates.json
+  fxmind hooks validate-memories [--strict]               Validate memory frontmatter + duplicates
   fxmind hooks -h                                         This help
 
 Cursor hooks:
-  preToolUse  → .cursor/hooks/gate-guard.js     (enforce Gates A/B before code edits)
+  preToolUse  → .cursor/hooks/gate-guard.js     (auto-start Task + enforce Gates A/B; block Write to gates JSON)
   postToolUse → .cursor/hooks/drift-watcher.js  (memory drift + graph-pending flag)
   stop        → .cursor/hooks/learn-prompt.js   (remind to finish Gate C)
 
 Git pre-commit:
   Blocks commit when staged code files break topic memories (paths[] → missing file).
-  Warnings only for stale-candidate; use --strict or FXMIND_PRECOMMIT_STRICT=1 to block those too.`);
+  Warnings only for stale-candidate; use --strict or FXMIND_PRECOMMIT_STRICT=1 to block those too.
+
+Env:
+  FXMIND_AUTO_TASK=0   disable gate-guard auto-start
+  FXMIND_GATE_WARN=1   warn-only (allow edits without gates)`);
 }
 
 function parseHookCliArgs(argv) {
@@ -442,6 +500,9 @@ function runHooksCli(argv = []) {
     const status = hooksStatus(options.target);
     console.log(`fxmind hooks status → ${options.target}`);
     console.log(`  hooks.json: ${status.hooksJsonExists ? "present" : "missing"}`);
+    console.log(
+      `  auto-task rule: ${status.autoTaskRule ? `.cursor/rules/${AUTO_TASK_RULE}` : "missing"}`,
+    );
     for (const [name, present] of Object.entries(status.present)) {
       console.log(`  script ${name}: ${present ? "present" : "missing"}`);
     }
@@ -484,6 +545,31 @@ function runHooksCli(argv = []) {
     const result = tools.driftCheck(options.target, options.file);
     console.log(JSON.stringify(result, null, 2));
     return result.hits.length > 0 ? 0 : 0;
+  }
+
+  if (sub === "validate-memories" || sub === "validate") {
+    const options = parseHookCliArgs(rest);
+    const validation = tools.validateMemories(options.target, { checkPaths: true });
+    const duplicates = tools.findMemoryDuplicates(options.target);
+    console.log(`fxmind memory validation → ${options.target}`);
+    console.log(`  checked: ${validation.checked}`);
+    console.log(`  failed:  ${validation.failed}`);
+    console.log(`  warned:  ${validation.warned}`);
+    console.log(`  dupes:   ${duplicates.length}`);
+    for (const r of validation.results) {
+      if (!r.ok || r.warnings.length) {
+        console.log(`  • ${r.slug || r.file}`);
+        for (const e of r.errors) console.log(`      ERROR: ${e}`);
+        for (const w of r.warnings) console.log(`      warn:  ${w}`);
+      }
+    }
+    for (const d of duplicates.slice(0, 20)) {
+      console.log(`  • duplicate ${d.type} "${d.value}" → ${d.slugs.join(", ")}`);
+    }
+    if (options.blockStale || rest.includes("--strict")) {
+      return validation.ok ? 0 : 1;
+    }
+    return 0;
   }
 
   if (sub === "graph") {

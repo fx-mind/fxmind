@@ -36,7 +36,7 @@ Restart your agent IDE/CLI after install or update.
 | Feature | Description |
 |---------|-------------|
 | **Memory** (`.fxmind/memory/`) | Topic memories in compact English, shared across all agents |
-| **`/fxmind`** | Chat command: learn, audit, query the graph, run tasks |
+| **`/fxmind`** | Chat command + **auto Task** for code changes (no slash required) |
 | **Packs** | Domain skills under `.fxmind/skills/` (e.g. FiveM) |
 | **3D graph** | Visual topic map (`fxmind graph`) |
 | **Hooks** (Cursor) | Task gates + stale-memory detection |
@@ -52,7 +52,7 @@ Restart your agent IDE/CLI after install or update.
 
 | Command | Purpose |
 |---------|---------|
-| `/fxmind task <request>` | **Main workflow** — analyze, load memories, implement, post-task learn |
+| `/fxmind task <request>` | Explicit Task shortcut (optional — natural language also auto-runs Task) |
 | `/fxmind learn <topic>` | Save or update a topic memory |
 | `/fxmind query "…"` | Search the knowledge graph |
 | `/fxmind audit [scope]` | Code audit → `.fxmind/audits/` |
@@ -82,7 +82,8 @@ fxmind -h                  # all options
 
 ```
 .fxmind/
-├── memory/              # topic memories
+├── memory/              # topic memories (source of truth)
+├── memory-index.json    # compiled frontmatter index (from fxmind graph)
 ├── skills/              # pack skills
 ├── modes/               # /fxmind mode specs (loaded on demand)
 ├── knowledge-graph.json # graph for query/path/explain
@@ -90,37 +91,69 @@ fxmind -h                  # all options
 └── fxmind.md            # /fxmind command router
 ```
 
+Session-only (gitignored): `fxmind-gates.json`, `metrics.jsonl`.
+
+**Corrections backlog** (commit these — skill feed): `.fxmind/corrections/` — human fixes of agent mistakes, separate from topic memories. Export with `fxmind corrections export` → edit the matching `fivem-development/<category>.md`.
 ---
 
 ## Task mode & Gates
 
-Use `/fxmind task` for code changes. With Cursor hooks installed, three gates apply:
+Just ask for the change in natural language — Task mode runs **automatically** (no `/fxmind task` required). With Cursor hooks installed:
 
-1. **Gate A** — plan (scope, risks, memories) before editing
-2. **Gate B** — load 3–5 relevant memories
-3. **Gate C** — review whether new knowledge should be learned
+1. **Start** — MCP `fxmind_start_task`
+2. **Gate A** — plan (scope, risks, memories) before editing → `fxmind_record_gate` A
+3. **Gate B** — load memories (`fxmind_query`) → `fxmind_record_gate` B
+4. **Gate C** — post-task learn → `fxmind_record_gate` C (clears session)
 
-Markers live in `.fxmind/fxmind-gates.json`. The `gate-guard` hook blocks edits until A/B are complete.
+**Gates are session state (MCP only).** Agents must not Write `.fxmind/fxmind-gates.json` — `gate-guard` blocks it. The file is gitignored (ephemeral).
 
+`/fxmind task <request>` still works as an explicit shortcut.
+
+---
+
+## Memory quality
+
+Memories stay as **Markdown** (source of truth, git-friendly). The graph build also writes a compiled index:
+
+| File | Role |
+|------|------|
+| `.fxmind/memory/*.md` | Topic knowledge (edit / review in PRs) |
+| `.fxmind/knowledge-graph.json` | Query graph |
+| `.fxmind/memory-index.json` | Fast frontmatter index + validation summary |
+
+```bash
+fxmind memory validate          # schema + missing paths + duplicates
+fxmind memory validate --strict # exit 1 on errors (CI-friendly)
+fxmind graph                    # rebuild graph + memory-index.json
+fxmind corrections list         # skill-improvement backlog
+fxmind corrections export       # markdown digest → edit fivem-development/<category>.md
+fxmind corrections promote <id> # mark as applied to the skill
+```
+
+Required frontmatter: `topic`, `updated`, `lang: en-compact`, plus non-empty `paths[]` or `triggers[]`.
+
+**Best-practices layout:** one skill (`fivem-development`) + split refs (`communication.md`, `performance.md`, `architecture.md`, `style.md`, `security.md`, `api.md`) routed from `SKILL.md`. Index with stable § links: `best-practices.md`. Corrections categories map 1:1 to those files — do not create separate Cursor skills per topic.
 ---
 
 ## Hooks (Cursor)
 
 Installed automatically with `fxmind -y` for Cursor. Skip with `--no-hooks`.
 
+Also installs `.cursor/rules/fxmind-auto-task.mdc` (`alwaysApply`) and adds session paths to `.gitignore`.
+
 | Hook | Role |
 |------|------|
-| `gate-guard` | Blocks edits without Gates A/B |
-| `drift-watcher` | Detects stale memories; rebuilds graph after `/fxmind learn` |
-| `learn-prompt` | Reminds to finish Gate C at end of task |
+| `gate-guard` | Auto-starts Task; blocks edits until A/B; blocks Write to gates JSON |
+| `drift-watcher` | Detects stale memories; rebuilds graph after learn |
+| `learn-prompt` | Reminds to finish Gate C |
 | `pre-commit` (git) | Blocks commit when a memory references a deleted file |
 
 ```bash
-fxmind hooks install       # install/update hooks + MCP
-fxmind hooks uninstall     # remove hooks
+fxmind hooks install       # hooks + MCP + auto-task rule + gitignore
+fxmind hooks uninstall
 ```
 
-Useful env vars: `FXMIND_GATE_WARN=1` (warn only, don't block), `FXMIND_GRAPH_NO_AUTO=1` (disable auto graph rebuild).
+Useful env vars: `FXMIND_AUTO_TASK=0`, `FXMIND_GATE_WARN=1`, `FXMIND_GRAPH_NO_AUTO=1`.
 
 ---
 
@@ -165,10 +198,13 @@ The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP sp
 | MCP tool | Action |
 |----------|--------|
 | `fxmind_query` | Graph search with token budget |
-| `fxmind_graph` | Rebuild the graph |
+| `fxmind_graph` | Rebuild graph + `memory-index.json` |
 | `fxmind_list_memories` | List topic memories |
+| `fxmind_validate_memories` | Schema + path checks + duplicates |
 | `fxmind_drift_check` | Memories referencing a file |
-| `fxmind_gate_status` / `fxmind_record_gate` | Gates A/B/C |
+| `fxmind_start_task` | Begin Task session |
+| `fxmind_gate_status` / `fxmind_record_gate` | Gates START/A/B/C (session only) |
+| `fxmind_record_correction` / `fxmind_list_corrections` | Skill-improvement backlog |
 
 Skip with `--no-mcp`. Refresh with `fxmind hooks install` or `fxmind --update -y`. Restart the MCP client after changes.
 

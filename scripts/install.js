@@ -126,6 +126,21 @@ const AGENTS = {
   },
 };
 
+function getPackageVersion() {
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf8"),
+    );
+    return pkg.version || "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
+function printVersion() {
+  console.log(`fxmind ${getPackageVersion()}`);
+}
+
 function printHelp() {
   console.log(`
 Install fxmind — project memory and knowledge packs for AI agents (Cursor, Claude Code, Codex, Gemini CLI, OpenCode).
@@ -138,6 +153,7 @@ Recommended (install once globally, then use short command):
   fxmind --update -y
   fxmind graph               Build 3D knowledge graph + open browser
   fxmind graph --no-open     Build graph files only
+  fxmind -v                  Show version
   fxmind -h
 
 Without global install:
@@ -162,6 +178,9 @@ Without global install:
   ${npxInstall("hooks install-git")}  Install git pre-commit drift check only
   ${npxInstall("hooks uninstall-mcp")} Remove fxmind MCP entries for installed agents
   ${npxInstall("hooks status")}       Show installed hooks
+  ${npxInstall("memory validate")}    Validate memory frontmatter + duplicates
+  ${npxInstall("corrections list")}   List skill-improvement corrections backlog
+  ${npxInstall("corrections export")} Export open corrections for editing best-practices
   ${npxInstall("pack new <id>")}      Scaffold a new knowledge pack under packs/<id>/
   fxmind-mcp                          Run the fxmind MCP server (stdio) for agent tool access
 
@@ -197,6 +216,7 @@ Options:
   -i, --interactive  Force interactive mode
   -y, --yes          Skip prompts, use defaults
   -h, --help         Show this help
+  -v, --version      Show fxmind version
 
 Interactive mode (default in terminal):
   1. Select knowledge packs (fivem, …)
@@ -228,6 +248,7 @@ function parseArgs(argv) {
     noPacks: false,
     command: true,
     help: false,
+    version: false,
     yes: false,
     interactive: false,
     explicitSkills: false,
@@ -245,6 +266,11 @@ function parseArgs(argv) {
 
     if (arg === "-h" || arg === "--help") {
       options.help = true;
+      continue;
+    }
+
+    if (arg === "-v" || arg === "--version") {
+      options.version = true;
       continue;
     }
 
@@ -1658,6 +1684,7 @@ function listLegacyAuditReportsAtRoot(targetRoot) {
 function refreshSharedAuditLayout(targetRoot) {
   const installed = [];
   installed.push(installAuditsDir(targetRoot));
+  installed.push(installCorrectionsDir(targetRoot));
 
   const guideSrc = path.join(PACKAGE_ROOT, COMMAND_TEMPLATE);
   const guideDest = path.join(targetRoot, SHARED_DIR, "fxmind.md");
@@ -1709,6 +1736,149 @@ function installAuditsDir(targetRoot) {
   }
 
   return AUDITS_DIR.replace(/\\/g, "/");
+}
+
+function installCorrectionsDir(targetRoot) {
+  const {
+    ensureCorrectionsDir,
+    CORRECTIONS_DIR,
+  } = require("./fxmind-tools");
+  ensureCorrectionsDir(targetRoot);
+  const destDir = path.join(targetRoot, SHARED_DIR, CORRECTIONS_DIR);
+  for (const name of ["README.md", "correction.template.md", "_index.md"]) {
+    const src = path.join(PACKAGE_ROOT, FXMIND_TEMPLATES_DIR, "corrections", name);
+    const dest = path.join(destDir, name);
+    if (!fs.existsSync(src)) continue;
+    if (name === "_index.md" && fs.existsSync(dest)) continue;
+    fs.copyFileSync(src, dest);
+  }
+  return path.join(SHARED_DIR, CORRECTIONS_DIR).replace(/\\/g, "/");
+}
+
+function runCorrectionsCli(argv = []) {
+  const tools = require("./fxmind-tools");
+  const sub = argv[0] || "list";
+  const options = {
+    target: process.cwd(),
+    status: null,
+    category: null,
+    format: "md",
+    title: null,
+    bad: null,
+    good: null,
+    rule: null,
+    notes: null,
+    commit: null,
+    severity: "high",
+    help: false,
+  };
+
+  for (let i = 1; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "-h" || arg === "--help") options.help = true;
+    else if (arg === "--target") options.target = path.resolve(argv[++i] || "");
+    else if (arg === "--status") options.status = argv[++i] || null;
+    else if (arg === "--category") options.category = argv[++i] || null;
+    else if (arg === "--format") options.format = argv[++i] || "md";
+    else if (arg === "--title") options.title = argv[++i] || "";
+    else if (arg === "--bad") options.bad = argv[++i] || "";
+    else if (arg === "--good") options.good = argv[++i] || "";
+    else if (arg === "--rule") options.rule = argv[++i] || "";
+    else if (arg === "--notes") options.notes = argv[++i] || "";
+    else if (arg === "--commit") options.commit = argv[++i] || "";
+    else if (arg === "--severity") options.severity = argv[++i] || "high";
+    else if (!arg.startsWith("-") && (sub === "promote" || sub === "show")) {
+      options.id = options.id || arg;
+    }
+  }
+
+  if (options.help || sub === "-h" || sub === "--help") {
+    console.log(`
+fxmind corrections — skill-improvement backlog (separate from topic memories).
+
+Usage:
+  fxmind corrections list [--status open|promoted] [--category architecture|…]
+  fxmind corrections add --title "…" --category style --bad "…" --good "…" [--rule "…"] [--commit sha]
+  fxmind corrections export [--status open] [--format md|json]
+  fxmind corrections promote <id>
+  fxmind corrections show <id>
+
+Categories: ${tools.CORRECTION_CATEGORIES.join(", ")}
+`);
+    return 0;
+  }
+
+  try {
+    if (sub === "list") {
+      const items = tools.listCorrections(options.target, {
+        status: options.status || undefined,
+        category: options.category || undefined,
+      });
+      console.log(`corrections → ${options.target} (${items.length})`);
+      for (const item of items) {
+        console.log(
+          `  [${item.status}] ${item.id}  (${item.category})  ${item.title}`,
+        );
+      }
+      return 0;
+    }
+
+    if (sub === "add") {
+      if (!options.title || !options.bad || !options.good || !options.category) {
+        console.error(
+          "Error: add requires --title --category --bad --good",
+        );
+        return 1;
+      }
+      const result = tools.recordCorrection(options.target, options);
+      console.log(`recorded → ${result.file}`);
+      return 0;
+    }
+
+    if (sub === "export") {
+      const result = tools.exportCorrections(options.target, {
+        status: options.status || "open",
+        category: options.category || null,
+        format: options.format,
+      });
+      if (result.format === "json") {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(result.markdown);
+      }
+      return 0;
+    }
+
+    if (sub === "promote") {
+      if (!options.id) {
+        console.error("Error: promote requires <id>");
+        return 1;
+      }
+      const result = tools.promoteCorrection(options.target, options.id);
+      console.log(`promoted → ${result.id} (${result.promoted_at})`);
+      return 0;
+    }
+
+    if (sub === "show") {
+      if (!options.id) {
+        console.error("Error: show requires <id>");
+        return 1;
+      }
+      const item = tools.listCorrections(options.target).find((c) => c.id === options.id);
+      if (!item) {
+        console.error(`Error: not found: ${options.id}`);
+        return 1;
+      }
+      console.log(item.content);
+      return 0;
+    }
+
+    console.error(`Unknown corrections subcommand: ${sub}`);
+    return 1;
+  } catch (error) {
+    console.error(`Error: ${error.message}`);
+    return 1;
+  }
 }
 
 function runMigrateCli(argv) {
@@ -1912,6 +2082,7 @@ function installSharedFxmind(targetRoot, packIds, installOptions = {}) {
 
   fs.mkdirSync(path.join(targetRoot, AUDITS_DIR), { recursive: true });
   installed.push(installAuditsDir(targetRoot));
+  installed.push(installCorrectionsDir(targetRoot));
   for (const dest of migrateAuditReports(targetRoot)) {
     installed.push(dest);
   }
@@ -2199,6 +2370,14 @@ function resolvePackOptions(options) {
 async function main() {
   const argv = process.argv.slice(2);
 
+  if (
+    argv.length === 1 &&
+    (argv[0] === "-v" || argv[0] === "--version" || argv[0] === "version")
+  ) {
+    printVersion();
+    process.exit(0);
+  }
+
   if (argv[0] === "graph") {
     const { runGraphCli } = require("./build-graph");
     process.exit(runGraphCli(argv.slice(1)));
@@ -2213,6 +2392,20 @@ async function main() {
     process.exit(runHooksCli(argv.slice(1)));
   }
 
+  if (argv[0] === "memory") {
+    const sub = argv[1] || "validate";
+    if (sub === "validate" || sub === "validate-memories") {
+      process.exit(runHooksCli(["validate-memories", ...argv.slice(2)]));
+    }
+    console.error(`Unknown memory subcommand: ${sub}`);
+    console.error("Usage: fxmind memory validate [--target <dir>] [--strict]");
+    process.exit(1);
+  }
+
+  if (argv[0] === "corrections" || argv[0] === "correction") {
+    process.exit(runCorrectionsCli(argv.slice(1)));
+  }
+
   if (argv[0] === "pack") {
     process.exit(runPackCli(argv.slice(1)));
   }
@@ -2222,6 +2415,11 @@ async function main() {
   }
 
   const options = parseArgs(argv);
+
+  if (options.version) {
+    printVersion();
+    process.exit(0);
+  }
 
   if (options.help) {
     printHelp();

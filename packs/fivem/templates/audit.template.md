@@ -178,7 +178,7 @@ exports["cerberus"]:SendFullSync(source, "garages:fullSync", SanitizedGarageCach
 
 ## Skills Referenced
 
-- **fivem-skill** → `.fxmind/skills/fivem-development/best-practices.md` (§1.6.1, §2.2–**§2.5**, §3.6, §4.2, §5.1)
+- **fivem-skill** → `.fxmind/skills/fivem-development/` — `performance.md` §1.6.1 · §2.2–**§2.5**/§4.2 · `architecture.md` §3.6 · `security.md` §5.1 · `communication.md` §1.1
 - Framework skill: `{{FRAMEWORK_SKILL}}`
 
 **Repo split:** patterns live in [fivem-skill](https://github.com/proelias7/fivem-skill); audit workflow lives in [fxmind](https://github.com/fx-mind/fxmind).

@@ -11,7 +11,7 @@ Generate or update a **topic memory** at **`.fxmind/memory/<topic>.md`**.
 
 ## Load
 
-- `.fxmind/skills/fivem-development/best-practices.md`
+- `.fxmind/skills/fivem-development/SKILL.md` (+ topic refs as needed)
 - Framework skill if detected
 - `.fxmind/topic-catalog.md` — search hints
 - `.fxmind/memory.template.md` — output skeleton

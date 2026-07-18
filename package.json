@@ -1,6 +1,6 @@
 {
   "name": "fxmind",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Project memory and knowledge packs for AI agents — install domain skills, shared .fxmind/ memory, and /fxmind commands",
   "bin": {
     "fxmind": "./scripts/install.js",
@@ -36,6 +36,6 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "node --test scripts/test/*.test.js"
+    "test": "node --test scripts/*.test.js"
   }
 }

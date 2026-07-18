@@ -9,7 +9,7 @@ argument-hint: "task <implementation> | reference | audit [scope] | learn <topic
 
 ## Routing
 
-Parse `$ARGUMENTS` (trim, case-insensitive). **Prefer `task` for any code/config change.** Each mode's full spec lives in **`.fxmind/modes/<mode>.md`** — read only the matched mode file before acting (keeps context lean).
+Parse `$ARGUMENTS` (trim, case-insensitive). **Prefer Task for any code/config change** — also auto-runs from natural language (no slash command required when the Cursor auto-task rule / skill is installed). Each mode's full spec lives in **`.fxmind/modes/<mode>.md`** — read only the matched mode file before acting (keeps context lean).
 
 | Input | Mode file |
 |-------|-----------|
@@ -23,7 +23,7 @@ Parse `$ARGUMENTS` (trim, case-insensitive). **Prefer `task` for any code/config
 | `path <topic-a> <topic-b>` | `.fxmind/modes/path.md` |
 | `explain <topic>` | `.fxmind/modes/explain.md` |
 | `update` | `.fxmind/modes/update.md` |
-| implementation request without `task` | `task.md` (legacy) — suggest `/fxmind task` next time |
+| implementation request without `task` | `task.md` — same as Task (auto) |
 | empty or conceptual question | `.fxmind/modes/help.md` |
 
 **Task text:** when input starts with `task`, strip that keyword — the rest is the implementation request (e.g. `task desative garagem no admin_f` → goal = desative garagem no admin_f).
@@ -37,13 +37,15 @@ If the fxmind MCP server is registered, prefer these tools over the manual mode 
 | Operation | MCP tool |
 |-----------|----------|
 | List memories | `fxmind_list_memories` |
+| Validate memories | `fxmind_validate_memories` |
 | Query graph (BFS/DFS, budget-aware) | `fxmind_query` |
-| Rebuild graph | `fxmind_graph` |
+| Rebuild graph + memory-index | `fxmind_graph` |
 | Drift check for a file | `fxmind_drift_check` |
+| Start Task session | `fxmind_start_task` |
 | Read Gate A/B/C status | `fxmind_gate_status` |
-| Record a Gate marker | `fxmind_record_gate` |
+| Record a Gate marker (START/A/B/C) | `fxmind_record_gate` |
 
-For Task mode, `fxmind_query` replaces the graph-router step (Gate B) and `fxmind_record_gate` records each Gate. For `graph`, `fxmind_graph` replaces the CLI shell-out.
+For Task mode, use **`fxmind_start_task`** then **`fxmind_record_gate`** for each gate — never Write `.fxmind/fxmind-gates.json`. `fxmind_query` replaces the graph-router step (Gate B). For `graph`, `fxmind_graph` replaces the CLI shell-out.
 
 ## Shared memory (`.fxmind/`)
 
