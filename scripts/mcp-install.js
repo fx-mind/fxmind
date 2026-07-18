@@ -56,11 +56,42 @@ function writeJson(filePath, data) {
 }
 
 function buildFxmindMcpEntry() {
-  // Global binary on PATH — avoids npx.cmd → cmd.exe on Windows (MSYS2/Git Bash).
   // Requires: npm install -g github:fx-mind/fxmind
-  return {
-    command: FXMIND_MCP_COMMAND,
+  //
+  // Windows/Cursor: Electron spawn(shell:false) cannot run npm shims
+  // (`fxmind-mcp` / `.cmd`) → ENOENT → Cursor marks the server disabled.
+  // Use `node` + the global script via APPDATA interpolation instead.
+  const entry = {
+    type: "stdio",
+    env: {
+      FXMIND_TARGET: "${workspaceFolder}",
+    },
   };
+
+  if (process.platform === "win32") {
+    entry.command = "node";
+    entry.args = [
+      "${env:APPDATA}/npm/node_modules/fxmind/scripts/mcp-server.js",
+    ];
+  } else {
+    entry.command = FXMIND_MCP_COMMAND;
+  }
+
+  // Optional local FXServer RCON (IDE task). Set password in project mcp.json or env.
+  if (process.env.FXMIND_RCON_PASSWORD) {
+    entry.env.FXMIND_RCON_PASSWORD = process.env.FXMIND_RCON_PASSWORD;
+  }
+  if (process.env.FXMIND_RCON_HOST) {
+    entry.env.FXMIND_RCON_HOST = process.env.FXMIND_RCON_HOST;
+  }
+  if (process.env.FXMIND_RCON_PORT) {
+    entry.env.FXMIND_RCON_PORT = process.env.FXMIND_RCON_PORT;
+  }
+  if (process.env.FXMIND_FIVEM_LOG) {
+    entry.env.FXMIND_FIVEM_LOG = process.env.FXMIND_FIVEM_LOG;
+  }
+
+  return entry;
 }
 
 function tomlString(value) {

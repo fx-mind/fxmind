@@ -924,6 +924,8 @@ const PROJECT_GITIGNORE_LINES = [
   ".fxmind/fxmind-gates.json",
   ".fxmind-gates.json",
   ".fxmind/metrics.jsonl",
+  ".fxmind/fivem-console.log",
+  ".fxmind/rcon.json",
 ];
 
 function ensureProjectGitignore(targetRoot) {

@@ -1,0 +1,383 @@
+/**
+ * FiveM local RCON — Quake3-style **UDP** (FXServer docs: "FXServer RCon uses UDP").
+ *
+ * Packet: 0xFF 0xFF 0xFF 0xFF + "rcon <password> <command>"
+ *
+ * Env (optional — password can also come from server.cfg / dev.cfg):
+ *   FXMIND_TARGET / CLAUDE_PROJECT_DIR / cwd  project root
+ *   FXMIND_RCON_HOST       default 127.0.0.1
+ *   FXMIND_RCON_PORT       default from endpoint_add_udp/tcp or 30120
+ *   FXMIND_RCON_PASSWORD   overrides cfg
+ *   FXMIND_FIVEM_LOG       default .fxmind/fivem-console.log
+ *   FXMIND_RCON_TIMEOUT_MS default 3000
+ */
+
+const dgram = require("dgram");
+const fs = require("fs");
+const path = require("path");
+
+const ALLOWED_COMMANDS = new Set([
+  "ensure",
+  "start",
+  "stop",
+  "restart",
+  "refresh",
+  "status",
+  "resmon",
+]);
+
+const RESOURCE_RE = /^[a-zA-Z0-9_\[\]\-]+$/;
+
+const CFG_CANDIDATES = [
+  "dev/dev.cfg",
+  "server.cfg",
+  "cfg/server.cfg",
+  "dev.cfg",
+];
+
+const UDP_HEADER = Buffer.from([0xff, 0xff, 0xff, 0xff]);
+
+function projectRoot(overrides = {}) {
+  return path.resolve(
+    overrides.root ||
+      process.env.FXMIND_TARGET ||
+      process.env.CLAUDE_PROJECT_DIR ||
+      process.cwd(),
+  );
+}
+
+function readPasswordFromCfgFile(filePath) {
+  if (!fs.existsSync(filePath)) return null;
+  const text = fs.readFileSync(filePath, "utf8");
+  // set rcon_password "secret" | rcon_password 'secret' | rcon_password secret
+  const match = text.match(
+    /^\s*(?:set\s+)?rcon_password\s+(?:"([^"]*)"|'([^']*)'|(\S+))\s*$/im,
+  );
+  if (!match) return null;
+  return match[1] ?? match[2] ?? match[3] ?? null;
+}
+
+function readPortFromCfgFile(filePath) {
+  if (!fs.existsSync(filePath)) return null;
+  const text = fs.readFileSync(filePath, "utf8");
+  const udp = text.match(/endpoint_add_udp\s+"[^"]*:(\d+)"/i);
+  if (udp) return Number(udp[1]);
+  const tcp = text.match(/endpoint_add_tcp\s+"[^"]*:(\d+)"/i);
+  if (tcp) return Number(tcp[1]);
+  return null;
+}
+
+function resolveFromProjectCfg(root) {
+  let password = null;
+  let port = null;
+  let source = null;
+  for (const rel of CFG_CANDIDATES) {
+    const abs = path.join(root, rel);
+    if (!password) {
+      const pw = readPasswordFromCfgFile(abs);
+      if (pw) {
+        password = pw;
+        source = rel;
+      }
+    }
+    if (!port) {
+      const p = readPortFromCfgFile(abs);
+      if (p) port = p;
+    }
+  }
+  // Optional local override file (gitignored)
+  const localJson = path.join(root, ".fxmind", "rcon.json");
+  if (fs.existsSync(localJson)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(localJson, "utf8"));
+      if (data.password) {
+        password = String(data.password);
+        source = ".fxmind/rcon.json";
+      }
+      if (data.port) port = Number(data.port);
+      if (data.host) {
+        return { password, port, host: String(data.host), source };
+      }
+    } catch {
+      // ignore invalid json
+    }
+  }
+  return { password, port, host: null, source };
+}
+
+function rconConfig(overrides = {}) {
+  const root = projectRoot(overrides);
+  const fromCfg = resolveFromProjectCfg(root);
+
+  const host = String(
+    overrides.host || process.env.FXMIND_RCON_HOST || fromCfg.host || "127.0.0.1",
+  ).trim();
+
+  const port = Number(
+    overrides.port ||
+      process.env.FXMIND_RCON_PORT ||
+      fromCfg.port ||
+      30120,
+  );
+
+  const password = String(
+    overrides.password !== undefined
+      ? overrides.password
+      : process.env.FXMIND_RCON_PASSWORD || fromCfg.password || "",
+  );
+
+  const timeoutMs = Number(overrides.timeoutMs || process.env.FXMIND_RCON_TIMEOUT_MS || 3000);
+  let logPath = String(
+    overrides.logPath || process.env.FXMIND_FIVEM_LOG || "",
+  ).trim();
+  if (!logPath) {
+    logPath = path.join(root, ".fxmind", "fivem-console.log");
+  }
+  return {
+    host,
+    port,
+    password,
+    timeoutMs,
+    logPath,
+    root,
+    passwordSource: password
+      ? process.env.FXMIND_RCON_PASSWORD
+        ? "env:FXMIND_RCON_PASSWORD"
+        : fromCfg.source || "override"
+      : null,
+  };
+}
+
+function isConfigured(config = rconConfig()) {
+  return Boolean(config.password);
+}
+
+/**
+ * Normalize and validate a console command. Returns { ok, command } or { ok:false, error }.
+ */
+function sanitizeCommand(raw) {
+  const text = String(raw || "").trim().replace(/\s+/g, " ");
+  if (!text) {
+    return { ok: false, error: "empty command" };
+  }
+  if (/[\r\n\0]/.test(text)) {
+    return { ok: false, error: "newlines not allowed" };
+  }
+  if (text.length > 200) {
+    return { ok: false, error: "command too long" };
+  }
+
+  const parts = text.split(" ");
+  const verb = parts[0].toLowerCase();
+  if (!ALLOWED_COMMANDS.has(verb)) {
+    return {
+      ok: false,
+      error: `command not allowed: ${parts[0]} — use: ${[...ALLOWED_COMMANDS].join(", ")}`,
+    };
+  }
+
+  if (verb === "refresh" || verb === "status" || verb === "resmon") {
+    if (parts.length > 1 && verb !== "resmon") {
+      return { ok: false, error: `${verb} takes no arguments` };
+    }
+    return { ok: true, command: verb === "resmon" && parts[1] ? `resmon ${parts[1]}` : verb };
+  }
+
+  if (parts.length < 2) {
+    return { ok: false, error: `${verb} requires a resource name` };
+  }
+  if (parts.length !== 2 || !RESOURCE_RE.test(parts[1]) || parts[1].includes("..")) {
+    return {
+      ok: false,
+      error: `invalid resource name — use one token like my_resource or [local]_foo`,
+    };
+  }
+  return { ok: true, command: `${verb} ${parts[1]}` };
+}
+
+function decodeUdpResponse(msg) {
+  let buf = Buffer.isBuffer(msg) ? msg : Buffer.from(msg);
+  if (buf.length >= 4 && buf[0] === 0xff && buf[1] === 0xff && buf[2] === 0xff && buf[3] === 0xff) {
+    buf = buf.slice(4);
+  }
+  let text = buf.toString("utf8");
+  text = text.replace(/^print\s*/i, "");
+  return text;
+}
+
+/**
+ * Execute one allowlisted command over FiveM UDP RCON (Quake3-style).
+ */
+function execRcon(command, overrides = {}) {
+  const config = rconConfig(overrides);
+  const sanitized = sanitizeCommand(command);
+  if (!sanitized.ok) {
+    return Promise.resolve({ ok: false, error: sanitized.error, config: publicConfig(config) });
+  }
+  if (!config.password) {
+    return Promise.resolve({
+      ok: false,
+      error:
+        "RCON password not found — set rcon_password in dev/dev.cfg (or server.cfg), or FXMIND_RCON_PASSWORD / .fxmind/rcon.json",
+      config: publicConfig(config),
+    });
+  }
+
+  return new Promise((resolve) => {
+    const socket = dgram.createSocket("udp4");
+    let settled = false;
+    const chunks = [];
+    let idleTimer = null;
+    let sent = false;
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      if (idleTimer) clearTimeout(idleTimer);
+      clearTimeout(hardTimer);
+      try {
+        socket.close();
+      } catch {
+        // ignore
+      }
+      resolve(result);
+    };
+
+    const armIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        const response = chunks.join("").trim();
+        const badAuth = /bad rcon|invalid rcon|rcon bad/i.test(response);
+        const unset =
+          /must set rcon_password|rcon_password to be able/i.test(response);
+        finish({
+          ok: !badAuth && !unset,
+          error: unset
+            ? "FXServer has no rcon_password loaded — restart the server after setting it in dev/dev.cfg"
+            : badAuth
+              ? "RCON auth failed — check rcon_password"
+              : undefined,
+          command: sanitized.command,
+          response,
+          transport: "udp",
+          config: publicConfig(config),
+        });
+      }, 200);
+    };
+
+    const hardTimer = setTimeout(() => {
+      if (!sent) {
+        finish({
+          ok: false,
+          error: `RCON UDP send timeout — is FXServer running on ${config.host}:${config.port}?`,
+          command: sanitized.command,
+          transport: "udp",
+          config: publicConfig(config),
+        });
+        return;
+      }
+      // Many ensure/restart commands return empty — treat send+silence as success
+      finish({
+        ok: true,
+        command: sanitized.command,
+        response: chunks.join("").trim(),
+        note: chunks.length ? undefined : "no UDP reply (common for ensure/restart) — check fxmind fivem tail",
+        transport: "udp",
+        config: publicConfig(config),
+      });
+    }, config.timeoutMs);
+
+    socket.on("message", (msg) => {
+      chunks.push(decodeUdpResponse(msg));
+      armIdle();
+    });
+
+    socket.on("error", (err) => {
+      finish({
+        ok: false,
+        error: `RCON UDP error: ${err.message}`,
+        command: sanitized.command,
+        transport: "udp",
+        config: publicConfig(config),
+      });
+    });
+
+    const body = Buffer.from(`rcon ${config.password} ${sanitized.command}`, "utf8");
+    const packet = Buffer.concat([UDP_HEADER, body]);
+
+    socket.send(packet, config.port, config.host, (err) => {
+      if (err) {
+        finish({
+          ok: false,
+          error: `RCON UDP send failed: ${err.message}`,
+          command: sanitized.command,
+          transport: "udp",
+          config: publicConfig(config),
+        });
+        return;
+      }
+      sent = true;
+    });
+  });
+}
+
+function publicConfig(config) {
+  return {
+    host: config.host,
+    port: config.port,
+    passwordSet: Boolean(config.password),
+    passwordSource: config.passwordSource || null,
+    logPath: config.logPath || null,
+    root: config.root || null,
+    transport: "udp",
+  };
+}
+
+/**
+ * Tail the FXServer console log (written by IDE task Tee-Object).
+ */
+function consoleTail(options = {}) {
+  const config = rconConfig(options);
+  const lines = Math.min(Math.max(Number(options.lines) || 80, 1), 500);
+  const logPath = path.resolve(config.logPath);
+
+  if (!fs.existsSync(logPath)) {
+    return {
+      ok: false,
+      error: `log file missing: ${logPath} — start FXServer with the fivem-start task (tees to .fxmind/fivem-console.log)`,
+      config: publicConfig(config),
+      path: logPath,
+    };
+  }
+
+  const content = fs.readFileSync(logPath, "utf8");
+  const all = content.split(/\r?\n/);
+  const slice = all.slice(-lines);
+  return {
+    ok: true,
+    path: logPath,
+    lines: slice.length,
+    content: slice.join("\n"),
+    config: publicConfig(config),
+  };
+}
+
+function status() {
+  const config = rconConfig();
+  return {
+    ok: true,
+    configured: isConfigured(config),
+    allowedCommands: [...ALLOWED_COMMANDS],
+    config: publicConfig(config),
+  };
+}
+
+module.exports = {
+  ALLOWED_COMMANDS,
+  rconConfig,
+  isConfigured,
+  sanitizeCommand,
+  execRcon,
+  consoleTail,
+  status,
+};

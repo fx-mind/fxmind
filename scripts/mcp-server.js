@@ -5,15 +5,18 @@
  * Tools:
  *   fxmind_list_memories / fxmind_validate_memories / fxmind_query / fxmind_graph
  *   fxmind_drift_check / fxmind_start_task / fxmind_gate_status / fxmind_record_gate
+ *   fxmind_record_correction / fxmind_list_corrections
+ *   fxmind_fivem_cmd / fxmind_fivem_console_tail / fxmind_fivem_status (local RCON)
  *
  * Gates are session state — use fxmind_start_task + fxmind_record_gate only.
  * Never Write .fxmind/fxmind-gates.json from the agent.
  */
 
 const tools = require("./fxmind-tools");
+const fivemRcon = require("./fivem-rcon");
 
 const PROTOCOL_VERSION = "2024-11-05";
-const SERVER_INFO = { name: "fxmind", version: "1.2.0" };
+const SERVER_INFO = { name: "fxmind", version: "1.3.0" };
 
 function targetRoot() {
   return (
@@ -150,6 +153,38 @@ const TOOL_DEFS = [
       },
     },
   },
+  {
+    name: "fxmind_fivem_status",
+    description:
+      "Check local FiveM RCON config (host/port/password/log). Dev-only — FXServer via IDE task, no txAdmin.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "fxmind_fivem_cmd",
+    description:
+      "Send an allowlisted FXServer console command over local RCON (ensure/start/stop/restart/refresh/status/resmon). After editing a resource in a task, call this yourself (ensure/restart) — do not ask the user. Then use fxmind_fivem_console_tail. Requires FXServer running and rcon_password / FXMIND_RCON_PASSWORD.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        command: {
+          type: "string",
+          description: 'e.g. "ensure my_resource", "restart vrp", "refresh"',
+        },
+      },
+      required: ["command"],
+    },
+  },
+  {
+    name: "fxmind_fivem_console_tail",
+    description:
+      "Read the last N lines of the FXServer console log (FXMIND_FIVEM_LOG / .fxmind/fivem-console.log). Use after ensure/restart and during live debug: after the user reproduces in-game, you read the log yourself — never ask them to paste console output.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        lines: { type: "number", description: "Lines to return (default 80, max 500)." },
+      },
+    },
+  },
 ];
 
 function dispatchTool(name, args) {
@@ -218,6 +253,15 @@ function dispatchTool(name, args) {
         }),
       };
 
+    case "fxmind_fivem_status":
+      return fivemRcon.status();
+
+    case "fxmind_fivem_cmd":
+      return fivemRcon.execRcon(args.command || "");
+
+    case "fxmind_fivem_console_tail":
+      return fivemRcon.consoleTail({ lines: args.lines });
+
     default:
       return { ok: false, error: `Unknown tool: ${name}` };
   }
@@ -263,26 +307,28 @@ function handleMessage(msg) {
   if (method === "tools/call") {
     const toolName = msg.params?.name;
     const args = msg.params?.arguments || {};
-    try {
-      const result = dispatchTool(toolName, args);
-      send({
-        jsonrpc: "2.0",
-        id,
-        result: {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          isError: result && result.ok === false,
-        },
+    Promise.resolve()
+      .then(() => dispatchTool(toolName, args))
+      .then((result) => {
+        send({
+          jsonrpc: "2.0",
+          id,
+          result: {
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+            isError: result && result.ok === false,
+          },
+        });
+      })
+      .catch((error) => {
+        send({
+          jsonrpc: "2.0",
+          id,
+          result: {
+            content: [{ type: "text", text: `Error: ${error.message}` }],
+            isError: true,
+          },
+        });
       });
-    } catch (error) {
-      send({
-        jsonrpc: "2.0",
-        id,
-        result: {
-          content: [{ type: "text", text: `Error: ${error.message}` }],
-          isError: true,
-        },
-      });
-    }
     return;
   }
 

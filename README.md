@@ -173,11 +173,24 @@ Wired automatically into `.cursor/mcp.json` (and agent equivalents). **Portable*
 {
   "mcpServers": {
     "fxmind": {
-      "command": "fxmind-mcp"
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${env:APPDATA}/npm/node_modules/fxmind/scripts/mcp-server.js"
+      ],
+      "env": {
+        "FXMIND_TARGET": "${workspaceFolder}"
+      }
     }
   }
 }
 ```
+
+On macOS/Linux the install writes `"command": "fxmind-mcp"` (no `args`) instead — npm shims work there.
+
+**Windows note:** do **not** use bare `fxmind-mcp` as `command` in Cursor — spawn fails with ENOENT and Cursor **auto-disables** the server. The `node` + script form above is required.
+
+**Important (Cursor):** after install, keep **fxmind** **enabled** under **Settings → Tools & MCP**. If the toggle flips off again, check MCP Logs (Output panel) — usually a spawn crash.
 
 **OpenCode** (`opencode.json` at project root):
 
@@ -205,8 +218,43 @@ The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP sp
 | `fxmind_start_task` | Begin Task session |
 | `fxmind_gate_status` / `fxmind_record_gate` | Gates START/A/B/C (session only) |
 | `fxmind_record_correction` / `fxmind_list_corrections` | Skill-improvement backlog |
+| `fxmind_fivem_status` / `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` | Local FXServer RCON + log tail (dev) |
 
 Skip with `--no-mcp`. Refresh with `fxmind hooks install` or `fxmind --update -y`. Restart the MCP client after changes.
+
+### Local FiveM RCON (dev, no txAdmin)
+
+FXServer RCON is **UDP** (Quake3-style), not Source TCP. For projects that start FXServer via an IDE task (e.g. `.vscode/tasks.json` → `artifacts/FXServer.exe`):
+
+1. Set in `server.cfg` / `dev/dev.cfg` (local only):
+
+```cfg
+rcon_password "fxmind-local-dev"
+```
+
+2. Wire MCP env in `.cursor/mcp.json`:
+
+```json
+"env": {
+  "FXMIND_TARGET": "${workspaceFolder}",
+  "FXMIND_RCON_HOST": "127.0.0.1",
+  "FXMIND_RCON_PORT": "30120",
+  "FXMIND_RCON_PASSWORD": "fxmind-local-dev",
+  "FXMIND_FIVEM_LOG": "${workspaceFolder}/.fxmind/fivem-console.log"
+}
+```
+
+3. Tee FXServer output to `.fxmind/fivem-console.log` from the IDE task (see project `.vscode/fivem-start.ps1`).
+
+4. Start the server task, enable MCP **fxmind**, then:
+
+```bash
+fxmind fivem status
+fxmind fivem ensure my_resource
+fxmind fivem tail
+```
+
+Allowlisted commands only: `ensure`, `start`, `stop`, `restart`, `refresh`, `status`, `resmon`.
 
 ---
 

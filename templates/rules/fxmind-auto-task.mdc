@@ -5,23 +5,33 @@ alwaysApply: true
 
 # fxmind — auto Task
 
+**Prerequisite:** MCP server **`fxmind` must be enabled and connected** (tools like `fxmind_start_task` visible).
+
+If MCP tools are **missing / disabled / errored**:
+1. **STOP immediately** — do **not** implement, edit code, or “aplicar a correção sem MCP”.
+2. Tell the user in their language: enable **fxmind** in Cursor → Settings → Tools & MCP, then retry.
+3. On Windows, if it keeps disabling itself, the project `.cursor/mcp.json` must use `node` + `mcp-server.js` (not bare `fxmind-mcp`). Suggest `fxmind --update -y` / `fxmind hooks install`.
+
 When the user asks to **make, create, implement, fix, adjust, refactor, add, remove, wire, migrate, disable, enable, or change code/config** — run the **fxmind Task pipeline automatically**. Do **not** wait for `/fxmind task`.
 
 ## Required flow (every implementation request)
 
-1. Read **`.fxmind/modes/task.md`** and follow it.
-2. Call MCP **`fxmind_start_task`** (never Write the gates JSON).
-3. **Gate A** → analysis in chat → **`fxmind_record_gate`** `A`.
-4. **Gate B** → load memories (`fxmind_query` preferred) → **`fxmind_record_gate`** `B`.
-5. **Implement** the change.
-6. **Gate C** → post-task learn → **`fxmind_record_gate`** `C` (clears task). After memory writes, call **`fxmind_validate_memories`**.
-7. If the user corrected a mistake → AskQuestion: Pitfalls / **`fxmind_record_correction`** / both / neither (see `.fxmind/modes/task.md`).
+1. Confirm MCP **fxmind** tools are available (`fxmind_start_task`). If not → ask user to enable MCP **fxmind** and stop.
+2. Read **`.fxmind/modes/task.md`** and follow it.
+3. Call MCP **`fxmind_start_task`** (never Write the gates JSON).
+4. **Gate A** → analysis in chat → **`fxmind_record_gate`** `A`.
+5. **Gate B** → load memories (`fxmind_query` preferred) → **`fxmind_record_gate`** `B`.
+6. **Implement** the change.
+7. **Reload FXServer yourself** when a resource changed: MCP **`fxmind_fivem_cmd`** (`ensure`/`restart`) → **`fxmind_fivem_console_tail`**. Never ask the user to run ensure.
+8. **Live debug** when needed: tagged prints → ensure → user reproduces in-game → you read **`fxmind_fivem_console_tail`** (never ask for pasted logs) → fix → remove prints.
+9. **Gate C** → post-task learn → **`fxmind_record_gate`** `C` (clears task). After memory writes, call **`fxmind_validate_memories`**.
+10. If the user corrected a mistake → AskQuestion: Pitfalls / **`fxmind_record_correction`** / both / neither (see `.fxmind/modes/task.md`).
 
 ## Exceptions (skip Task)
 
 - Pure questions / explanations with no code change
 - Explicit modes: `/fxmind learn`, `audit`, `query`, `graph`, `memory health`, `reference`, `update`
-- Trivial single-file typo the user scoped as "just fix the typo" — still prefer Task if unsure
+- Never skip Task just because the change looks “small” (salaries, config numbers, one-line fixes) — still run the pipeline
 
 ## Style (this repo)
 

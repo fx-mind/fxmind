@@ -178,8 +178,10 @@ async function main() {
       allow();
     }
     ask(
-      "fxmind: Task auto-started — complete Gates A & B via MCP before editing code.",
-      `Code edit blocked: Task mode auto-started for ${filePath || "this file"}. Read .fxmind/modes/task.md. Call fxmind_record_gate (A then B) — never write the gates JSON. Then retry the edit.`,
+      "fxmind: Task auto-started — enable MCP fxmind if needed, then complete Gates A & B before editing code.",
+      `Code edit blocked: Task mode auto-started for ${filePath || "this file"}. ` +
+        `If MCP tools are missing, tell the user to enable server "fxmind" (Cursor → Settings → Tools & MCP). ` +
+        `Read .fxmind/modes/task.md. Call fxmind_start_task / fxmind_record_gate (A then B) — never write the gates JSON. Then retry the edit.`,
     );
   }
 

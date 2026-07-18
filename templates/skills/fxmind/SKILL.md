@@ -28,7 +28,11 @@ The full `/fxmind` command body is a slim router — read **`.fxmind/fxmind.md`*
 
 ## MCP fast path
 
-If the fxmind MCP server is registered, prefer its tools over manual mode specs — they run in Node (faster, cheaper): `fxmind_list_memories`, `fxmind_validate_memories`, `fxmind_query`, `fxmind_graph`, `fxmind_drift_check`, `fxmind_start_task`, `fxmind_gate_status`, `fxmind_record_gate`, `fxmind_record_correction`, `fxmind_list_corrections`.
+If the fxmind MCP server is registered, prefer its tools over manual mode specs — they run in Node (faster, cheaper): `fxmind_list_memories`, `fxmind_validate_memories`, `fxmind_query`, `fxmind_graph`, `fxmind_drift_check`, `fxmind_start_task`, `fxmind_gate_status`, `fxmind_record_gate`, `fxmind_record_correction`, `fxmind_list_corrections`, `fxmind_fivem_cmd`, `fxmind_fivem_console_tail`, `fxmind_fivem_status`.
+
+**After editing a FiveM resource:** call `fxmind_fivem_cmd` (`ensure <resource>` or `restart`) yourself, then `fxmind_fivem_console_tail` to verify. **Do not ask the user** to run ensure/restart in the console. If RCON is down, say so once — do not invent other RCON clients.
+
+**Live debug:** add temporary tagged prints → ensure → ask the user only to reproduce in-game → you read `fxmind_fivem_console_tail` (never ask them to paste logs) → fix → remove prints when done.
 
 ## Task mode — Gates (enforced by hooks)
 

@@ -8,10 +8,12 @@
 Use Task mode when the user asks to **make, create, implement, fix, adjust, refactor, add, remove, wire, migrate, or change code/config**. Load only the memory needed, then learn from the completed work.
 
 > **Gates are session state enforced by Cursor `gate-guard`.** Record them **only** via MCP (`fxmind_start_task`, `fxmind_record_gate`). Never Write `.fxmind/fxmind-gates.json` — the hook blocks direct edits. On the first code edit without an active task, the hook auto-starts Task (disable with `FXMIND_AUTO_TASK=0`).
+>
+> **MCP required:** if the `fxmind` MCP server is disabled/unavailable, **STOP** — do not edit code or “aplicar correção sem MCP”. Tell the user: *Cursor → Settings → Tools & MCP → enable **fxmind*** (Windows: if it auto-disables, run `fxmind hooks install` so `.cursor/mcp.json` uses `node` + script). Retry after MCP tools appear.
 
 ## Start task
 
-Call MCP **`fxmind_start_task`** (or `fxmind_record_gate` with `gate: "START"`).
+Call MCP **`fxmind_start_task`** (or `fxmind_record_gate` with `gate: "START"`). If this tool is missing → MCP is off; ask the user to enable it.
 
 ## Gate A — show analysis (before any edit)
 
@@ -42,6 +44,16 @@ Then call **`fxmind_record_gate`** with `gate: "B"` and a short `note` listing m
 3. Edit only as required; prefer existing helpers/events/framework APIs.
 4. Validate with focused lints/grep where practical.
 5. Do not edit memory files during implementation.
+6. **Reload on FXServer yourself** (do not ask the user):
+   - After changing a FiveM resource that needs a console reload, call MCP **`fxmind_fivem_cmd`** with `ensure <resource>` (or `restart <resource>` / `refresh` when appropriate).
+   - Then call **`fxmind_fivem_console_tail`** and check for script errors.
+   - If RCON/status fails (`passwordSet: false`, timeout, server down): report once and continue — never tell the user to run `ensure` / `restart` manually when MCP tools exist.
+   - Skip only when the edit cannot affect a running resource (docs-only, memory-only, unused path).
+7. **Live debug loop** (when behavior is unclear or a fix needs runtime proof):
+   - Add temporary, tagged prints (`print` / `Citizen.Trace` / framework log) with a unique prefix, e.g. `[fxmind:shops]`.
+   - `ensure`/`restart` via **`fxmind_fivem_cmd`**, then ask the user **only** to reproduce the action in-game (what to click/do) — **never** ask them to paste console output or run ensure.
+   - When they confirm they tested (or after a short wait), call **`fxmind_fivem_console_tail`** yourself, filter by your tag, and diagnose from the log.
+   - Fix → ensure again → re-read tail as needed. Remove debug prints before finishing (or leave them only if the user wants them kept).
 
 **Ask when context is missing** (stop before editing): target resource when multiple matches, expected behavior, permission/job rules, client vs server vs NUI responsibility, destructive migrations, money/inventory/permission/vehicle/XP/ban behavior. Do not ask for trivial details resolvable from code/memories.
 
@@ -105,3 +117,5 @@ Reply in the user's language with the implementation summary and validation. If 
 - Memory writes only after code work is complete and only for verified reusable knowledge.
 - Preserve unrelated user changes in the working tree.
 - **Never Write `.fxmind/fxmind-gates.json`** — MCP only.
+- **Never ask the user to `ensure` / `restart` a resource** — use `fxmind_fivem_cmd` + `fxmind_fivem_console_tail`.
+- **Never ask the user to paste FXServer console logs** — read them with `fxmind_fivem_console_tail`. User role in debug = reproduce in-game only.

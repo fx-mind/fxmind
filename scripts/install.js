@@ -27,6 +27,7 @@ const { installHooks, uninstallHooks, hooksStatus, runHooksCli, FXMIND_COMMANDS 
 const { installMcp } = require("./mcp-install");
 const { maybeSelfUpdateAndReexec } = require("./self-update");
 const { createPackScaffold, runPackCli } = require("./pack-new");
+const fivemRcon = require("./fivem-rcon");
 
 let SKILL_SOURCES = new Map();
 
@@ -181,6 +182,9 @@ Without global install:
   ${npxInstall("memory validate")}    Validate memory frontmatter + duplicates
   ${npxInstall("corrections list")}   List skill-improvement corrections backlog
   ${npxInstall("corrections export")} Export open corrections for editing best-practices
+  ${npxInstall("fivem status")}       Local FXServer RCON status (dev)
+  ${npxInstall("fivem ensure <res>")} RCON ensure/stop/restart/refresh (allowlisted)
+  ${npxInstall("fivem tail")}         Tail .fxmind/fivem-console.log
   ${npxInstall("pack new <id>")}      Scaffold a new knowledge pack under packs/<id>/
   fxmind-mcp                          Run the fxmind MCP server (stdio) for agent tool access
 
@@ -1881,6 +1885,105 @@ Categories: ${tools.CORRECTION_CATEGORIES.join(", ")}
   }
 }
 
+function fivemAnsi(code, text) {
+  if (!process.stdout.isTTY || process.env.NO_COLOR) return text;
+  return `\x1b[${code}m${text}\x1b[0m`;
+}
+
+function printFivemCmdResult(result, { json = false } = {}) {
+  if (json || !result.ok) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  const cmd = result.command || "ok";
+  console.log(`${fivemAnsi("32", "✓")} ${fivemAnsi("1", cmd)}`);
+  const body = String(result.response || result.note || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  for (const line of body) {
+    console.log(`  ${fivemAnsi("2", line)}`);
+  }
+}
+
+async function runFivemCli(argv = []) {
+  const options = { help: false, json: false };
+  const rest = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "-h" || arg === "--help") {
+      options.help = true;
+    } else if (arg === "--json") {
+      options.json = true;
+    } else {
+      rest.push(arg);
+    }
+  }
+
+  if (options.help || rest.length === 0) {
+    console.log(`
+fxmind fivem — local FXServer RCON (dev; no txAdmin).
+
+  fxmind fivem status
+  fxmind fivem ensure <resource>
+  fxmind fivem stop <resource>
+  fxmind fivem restart <resource>
+  fxmind fivem start <resource>
+  fxmind fivem refresh
+  fxmind fivem cmd "ensure my_resource"
+  fxmind fivem tail [--lines 80]
+
+  --json   raw JSON output (default on errors)
+
+Env: FXMIND_RCON_HOST (127.0.0.1) FXMIND_RCON_PORT (30120)
+     FXMIND_RCON_PASSWORD (must match rcon_password in server.cfg)
+     FXMIND_FIVEM_LOG (e.g. .fxmind/fivem-console.log)
+`);
+    return rest.length === 0 && !options.help ? 1 : 0;
+  }
+
+  const sub = rest[0];
+  try {
+    if (sub === "status") {
+      console.log(JSON.stringify(fivemRcon.status(), null, 2));
+      return 0;
+    }
+    if (sub === "tail") {
+      let lines = 80;
+      for (let i = 1; i < rest.length; i += 1) {
+        if (rest[i] === "--lines" || rest[i] === "-n") {
+          lines = Number(rest[i + 1] || 80);
+          i += 1;
+        }
+      }
+      const result = fivemRcon.consoleTail({ lines });
+      if (!result.ok) {
+        console.error(result.error);
+        return 1;
+      }
+      console.log(result.content);
+      return 0;
+    }
+    if (sub === "cmd") {
+      const command = rest.slice(1).join(" ");
+      const result = await fivemRcon.execRcon(command);
+      printFivemCmdResult(result, { json: options.json });
+      return result.ok ? 0 : 1;
+    }
+    if (["ensure", "start", "stop", "restart", "refresh", "resmon"].includes(sub)) {
+      const command = rest.join(" ");
+      const result = await fivemRcon.execRcon(command);
+      printFivemCmdResult(result, { json: options.json });
+      return result.ok ? 0 : 1;
+    }
+    console.error(`Unknown fivem subcommand: ${sub}`);
+    return 1;
+  } catch (error) {
+    console.error(`Error: ${error.message}`);
+    return 1;
+  }
+}
+
 function runMigrateCli(argv) {
   const options = { target: process.cwd(), help: false };
 
@@ -2404,6 +2507,12 @@ async function main() {
 
   if (argv[0] === "corrections" || argv[0] === "correction") {
     process.exit(runCorrectionsCli(argv.slice(1)));
+  }
+
+  if (argv[0] === "fivem" || argv[0] === "rcon") {
+    process.exitCode = 0;
+    runFivemCli(argv.slice(1)).then((code) => process.exit(code));
+    return;
   }
 
   if (argv[0] === "pack") {
