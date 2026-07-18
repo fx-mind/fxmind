@@ -224,12 +224,19 @@ Skip with `--no-mcp`. Refresh with `fxmind hooks install` or `fxmind --update -y
 
 ### Local FiveM RCON (dev, no txAdmin)
 
-FXServer RCON is **UDP** (Quake3-style), not Source TCP.
+One-shot setup (agent or human):
+
+```bash
+fxmind fivem install
+```
+
+Writes `rcon_password` into cfg, `.vscode/fivem-start.ps1` (console tee), `tasks.json`, and gitignore. Idempotent. MCP: `fxmind_fivem_install`.
 
 | Need | How |
 |------|-----|
+| First-time / missing password | `fxmind fivem install` then restart **fivem-start** |
 | `ensure` / `restart` | UDP RCON (`fxmind fivem ensure` / MCP) |
-| Full terminal log for `tail` / MCP | IDE task **fivem-start** → `.vscode/fivem-start.ps1` runs FXServer **inside Cursor** and tees stdout to `.fxmind/fivem-console.log` |
+| Full terminal log for `tail` / MCP | Task **fivem-start** tees stdout → `.fxmind/fivem-console.log` |
 
 ```bash
 fxmind fivem ensure my_resource
@@ -238,7 +245,6 @@ fxmind fivem tail
 
 Allowlisted RCON: `ensure`, `start`, `stop`, `restart`, `refresh`, `status`, `resmon`.
 
-Local cfg: `set rcon_password "..."` (password also auto-read from `dev/dev.cfg`).
 
 ---
 

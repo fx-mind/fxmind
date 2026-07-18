@@ -45,9 +45,10 @@ Then call **`fxmind_record_gate`** with `gate: "B"` and a short `note` listing m
 4. Validate with focused lints/grep where practical.
 5. Do not edit memory files during implementation.
 6. **Reload on FXServer yourself** (do not ask the user):
+   - If RCON is not configured (`passwordSet: false`), call MCP **`fxmind_fivem_install`** (or `fxmind fivem install`) once, then ask the user to restart the **fivem-start** task.
    - After changing a FiveM resource that needs a console reload, call MCP **`fxmind_fivem_cmd`** with `ensure <resource>` (or `restart <resource>` / `refresh` when appropriate).
    - Then call **`fxmind_fivem_console_tail`** and check for script errors.
-   - If RCON/status fails (`passwordSet: false`, timeout, server down): report once and continue — never tell the user to run `ensure` / `restart` manually when MCP tools exist.
+   - If RCON/status fails after install (`timeout`, server down): report once and continue — never tell the user to run `ensure` / `restart` manually when MCP tools exist.
    - Skip only when the edit cannot affect a running resource (docs-only, memory-only, unused path).
 7. **Live debug loop** (when behavior is unclear or a fix needs runtime proof):
    - Add temporary tagged `print("[fxmind:shops]", ...)`.

@@ -438,6 +438,209 @@ function status() {
   };
 }
 
+const DEFAULT_LOCAL_PASSWORD = "fxmind-local-dev";
+const FIVEM_START_TASK_LABEL = "fivem-start";
+
+function detectExecCfg(root) {
+  for (const rel of CFG_CANDIDATES) {
+    if (fs.existsSync(path.join(root, rel))) return rel;
+  }
+  return "dev/dev.cfg";
+}
+
+function detectFxServer(root) {
+  const candidates = [
+    path.join(root, "artifacts", "FXServer.exe"),
+    path.join(root, "FXServer.exe"),
+    path.join(root, "artifacts", "FXServer"),
+    path.join(root, "FXServer"),
+  ];
+  for (const abs of candidates) {
+    if (fs.existsSync(abs)) {
+      return { found: true, path: abs, rel: path.relative(root, abs) };
+    }
+  }
+  return { found: false, path: null, rel: "artifacts/FXServer.exe" };
+}
+
+function ensureRconInCfg(cfgAbs, password) {
+  const existing = readPasswordFromCfgFile(cfgAbs);
+  if (existing) {
+    return { changed: false, password: existing, action: "kept" };
+  }
+  const block = [
+    "",
+    "# Local RCON for fxmind MCP / IDE agents (never use a real password in production)",
+    `set rcon_password "${password}"`,
+    'set fxmind_log ".fxmind/server-debug.log"',
+    "",
+  ].join("\n");
+  fs.appendFileSync(cfgAbs, block, "utf8");
+  return { changed: true, password, action: "added" };
+}
+
+function ensureGitignoreLines(root) {
+  const gitignorePath = path.join(root, ".gitignore");
+  const lines = [
+    ".fxmind/fivem-console.log",
+    ".fxmind/server-debug.log",
+    ".fxmind/rcon.json",
+  ];
+  let content = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, "utf8") : "";
+  const added = [];
+  for (const line of lines) {
+    const re = new RegExp(`^${line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m");
+    if (re.test(content)) continue;
+    if (content.length && !content.endsWith("\n")) content += "\n";
+    if (!content.includes("# fxmind session")) {
+      content += "\n# fxmind session (do not commit)\n";
+    }
+    content += `${line}\n`;
+    added.push(line);
+  }
+  if (added.length) {
+    fs.writeFileSync(gitignorePath, content, "utf8");
+  }
+  return { path: ".gitignore", added };
+}
+
+function writeFivemStartPs1(root, execCfg, { force = false } = {}) {
+  const dest = path.join(root, ".vscode", "fivem-start.ps1");
+  const templatePath = path.join(__dirname, "..", "templates", "vscode", "fivem-start.ps1");
+  if (!fs.existsSync(templatePath)) {
+    return { path: ".vscode/fivem-start.ps1", action: "missing-template", ok: false };
+  }
+  if (fs.existsSync(dest) && !force) {
+    // Still refresh exec cfg placeholder if our marker is present
+    let current = fs.readFileSync(dest, "utf8");
+    if (current.includes("__FXMIND_EXEC_CFG__") || /\+exec',\s*'[^']+'/.test(current)) {
+      current = current.replace("__FXMIND_EXEC_CFG__", execCfg);
+      current = current.replace(/\+exec',\s*'[^']+'/, `+exec', '${execCfg}'`);
+      fs.writeFileSync(dest, current, "utf8");
+      return { path: ".vscode/fivem-start.ps1", action: "updated-exec", ok: true };
+    }
+    return { path: ".vscode/fivem-start.ps1", action: "kept", ok: true };
+  }
+  let body = fs.readFileSync(templatePath, "utf8").replace(/__FXMIND_EXEC_CFG__/g, execCfg);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.writeFileSync(dest, body, "utf8");
+  return { path: ".vscode/fivem-start.ps1", action: force ? "replaced" : "created", ok: true };
+}
+
+function ensureFivemStartTask(root) {
+  const tasksPath = path.join(root, ".vscode", "tasks.json");
+  const task = {
+    label: FIVEM_START_TASK_LABEL,
+    type: "process",
+    command: "powershell.exe",
+    args: [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      "${workspaceFolder}\\.vscode\\fivem-start.ps1",
+    ],
+    options: { cwd: "${workspaceFolder}" },
+    group: { kind: "build", isDefault: true },
+    presentation: { reveal: "always", panel: "dedicated", focus: true },
+    problemMatcher: [],
+  };
+
+  let data = { version: "2.0.0", tasks: [] };
+  let action = "created";
+  if (fs.existsSync(tasksPath)) {
+    try {
+      data = JSON.parse(fs.readFileSync(tasksPath, "utf8"));
+      if (!Array.isArray(data.tasks)) data.tasks = [];
+    } catch {
+      data = { version: "2.0.0", tasks: [] };
+      action = "recreated";
+    }
+  }
+  const idx = data.tasks.findIndex((t) => t && t.label === FIVEM_START_TASK_LABEL);
+  if (idx >= 0) {
+    data.tasks[idx] = { ...data.tasks[idx], ...task };
+    action = action === "recreated" ? action : "updated";
+  } else {
+    data.tasks.push(task);
+    action = fs.existsSync(tasksPath) && action !== "recreated" ? "added" : action;
+  }
+  fs.mkdirSync(path.dirname(tasksPath), { recursive: true });
+  fs.writeFileSync(tasksPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  return { path: ".vscode/tasks.json", action, ok: true };
+}
+
+/**
+ * Idempotent local FiveM RCON + IDE task setup for agents/humans.
+ *   fxmind fivem install
+ */
+function installFivemDev(options = {}) {
+  const root = projectRoot(options);
+  const force = Boolean(options.force);
+  const password =
+    String(options.password || process.env.FXMIND_RCON_PASSWORD || DEFAULT_LOCAL_PASSWORD).trim() ||
+    DEFAULT_LOCAL_PASSWORD;
+
+  const steps = [];
+  const warnings = [];
+
+  fs.mkdirSync(path.join(root, ".fxmind"), { recursive: true });
+
+  const execCfg = detectExecCfg(root);
+  const cfgAbs = path.join(root, execCfg);
+  if (!fs.existsSync(cfgAbs)) {
+    fs.mkdirSync(path.dirname(cfgAbs), { recursive: true });
+    fs.writeFileSync(
+      cfgAbs,
+      [
+        `# Created by fxmind fivem install`,
+        `endpoint_add_tcp "0.0.0.0:30120"`,
+        `endpoint_add_udp "0.0.0.0:30120"`,
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    steps.push({ step: "cfg-create", path: execCfg, action: "created" });
+  }
+
+  const rcon = ensureRconInCfg(cfgAbs, password);
+  steps.push({
+    step: "rcon_password",
+    path: execCfg,
+    action: rcon.action,
+    passwordSet: true,
+  });
+
+  const fx = detectFxServer(root);
+  if (!fx.found) {
+    warnings.push(`FXServer not found at ${fx.rel} — place artifacts then restart the fivem-start task`);
+  } else {
+    steps.push({ step: "fxserver", path: fx.rel, action: "found" });
+  }
+
+  steps.push({ step: "ps1", ...writeFivemStartPs1(root, execCfg, { force }) });
+  steps.push({ step: "tasks", ...ensureFivemStartTask(root) });
+  steps.push({ step: "gitignore", ...ensureGitignoreLines(root) });
+
+  const config = rconConfig({ root, password: rcon.password });
+  const needsRestart = rcon.changed;
+
+  return {
+    ok: true,
+    root,
+    execCfg,
+    passwordSource: config.passwordSource,
+    passwordSet: Boolean(rcon.password),
+    needsServerRestart: needsRestart,
+    note: needsRestart
+      ? "rcon_password was added/changed — restart FXServer (fivem-start task) before ensure works"
+      : "RCON already configured — ensure/restart via MCP is ready when FXServer is running",
+    steps,
+    warnings,
+    config: publicConfig(config),
+  };
+}
+
 module.exports = {
   ALLOWED_COMMANDS,
   rconConfig,
@@ -447,4 +650,6 @@ module.exports = {
   appendRconLog,
   consoleTail,
   status,
+  installFivemDev,
+  DEFAULT_LOCAL_PASSWORD,
 };

@@ -50,4 +50,27 @@ describe("fivem rcon allowlist", () => {
     assert.match(result.content, /> ensure shops/);
     assert.match(result.content, /Started resource shops/);
   });
+
+  it("installFivemDev is idempotent and writes rcon + vscode task", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fxinst-"));
+    fs.mkdirSync(path.join(dir, "dev"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "dev", "dev.cfg"),
+      'endpoint_add_udp "0.0.0.0:30120"\n',
+      "utf8",
+    );
+    const first = fivem.installFivemDev({ root: dir });
+    assert.equal(first.ok, true);
+    assert.equal(first.passwordSet, true);
+    assert.equal(first.needsServerRestart, true);
+    assert.match(fs.readFileSync(path.join(dir, "dev", "dev.cfg"), "utf8"), /rcon_password/);
+    assert.ok(fs.existsSync(path.join(dir, ".vscode", "fivem-start.ps1")));
+    assert.ok(fs.existsSync(path.join(dir, ".vscode", "tasks.json")));
+    const second = fivem.installFivemDev({ root: dir });
+    assert.equal(second.needsServerRestart, false);
+    assert.equal(
+      second.steps.find((s) => s.step === "rcon_password").action,
+      "kept",
+    );
+  });
 });

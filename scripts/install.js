@@ -182,6 +182,7 @@ Without global install:
   ${npxInstall("memory validate")}    Validate memory frontmatter + duplicates
   ${npxInstall("corrections list")}   List skill-improvement corrections backlog
   ${npxInstall("corrections export")} Export open corrections for editing best-practices
+  ${npxInstall("fivem install")}      Configure local RCON + Cursor fivem-start tee
   ${npxInstall("fivem status")}       Local FXServer RCON status (dev)
   ${npxInstall("fivem ensure <res>")} RCON ensure/stop/restart/refresh (allowlisted)
   ${npxInstall("pack new <id>")}      Scaffold a new knowledge pack under packs/<id>/
@@ -1923,6 +1924,7 @@ async function runFivemCli(argv = []) {
     console.log(`
 fxmind fivem — local FXServer RCON (dev; no txAdmin).
 
+  fxmind fivem install [--force] [--password <secret>]
   fxmind fivem status
   fxmind fivem ensure <resource>
   fxmind fivem stop <resource>
@@ -1934,17 +1936,47 @@ fxmind fivem — local FXServer RCON (dev; no txAdmin).
 
   --json   raw JSON output (default on errors)
 
-Primary path: ensure/restart via UDP RCON.
-  fxmind fivem tail  →  last lines of FXServer terminal mirror (.fxmind/fivem-console.log)
+  install  writes rcon_password to cfg + .vscode/fivem-start.ps1 tee + tasks.json
+  ensure   UDP RCON reload
+  tail     last lines of .fxmind/fivem-console.log (terminal mirror)
 
 Env: FXMIND_RCON_HOST (127.0.0.1) FXMIND_RCON_PORT (30120)
-     FXMIND_RCON_PASSWORD (optional if set in dev/dev.cfg)
+     FXMIND_RCON_PASSWORD (optional if set in cfg by install)
 `);
     return rest.length === 0 && !options.help ? 1 : 0;
   }
 
   const sub = rest[0];
   try {
+    if (sub === "install") {
+      let password;
+      let force = false;
+      for (let i = 1; i < rest.length; i += 1) {
+        if (rest[i] === "--force" || rest[i] === "-f") {
+          force = true;
+        } else if (rest[i] === "--password" || rest[i] === "-p") {
+          password = rest[i + 1];
+          i += 1;
+        }
+      }
+      const result = fivemRcon.installFivemDev({ force, password });
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(`${fivemAnsi("32", "✓")} ${fivemAnsi("1", "fivem install")}`);
+        for (const step of result.steps || []) {
+          const detail = [step.path, step.action].filter(Boolean).join(" · ");
+          console.log(`  ${fivemAnsi("2", `${step.step}: ${detail}`)}`);
+        }
+        for (const w of result.warnings || []) {
+          console.log(`  ${fivemAnsi("33", `⚠ ${w}`)}`);
+        }
+        if (result.note) {
+          console.log(`  ${fivemAnsi("33", result.note)}`);
+        }
+      }
+      return result.ok ? 0 : 1;
+    }
     if (sub === "status") {
       console.log(JSON.stringify(fivemRcon.status(), null, 2));
       return 0;

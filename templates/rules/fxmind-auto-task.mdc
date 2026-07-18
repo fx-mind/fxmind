@@ -22,10 +22,11 @@ When the user asks to **make, create, implement, fix, adjust, refactor, add, rem
 4. **Gate A** → analysis in chat → **`fxmind_record_gate`** `A`.
 5. **Gate B** → load memories (`fxmind_query` preferred) → **`fxmind_record_gate`** `B`.
 6. **Implement** the change.
-7. **Reload FXServer yourself** when a resource changed: MCP **`fxmind_fivem_cmd`** (`ensure`/`restart`). Never ask the user to run ensure.
-8. **Live debug** when needed: tagged prints → ensure → user reproduces → **`fxmind_fivem_console_tail`** (terminal mirror) → fix → remove prints.
-9. **Gate C** → post-task learn → **`fxmind_record_gate`** `C` (clears task). After memory writes, call **`fxmind_validate_memories`**.
-10. If the user corrected a mistake → AskQuestion: Pitfalls / **`fxmind_record_correction`** / both / neither (see `.fxmind/modes/task.md`).
+7. If FiveM RCON is missing (`passwordSet: false`) → MCP **`fxmind_fivem_install`** once, then ask the user to restart **fivem-start**.
+8. **Reload FXServer yourself** when a resource changed: MCP **`fxmind_fivem_cmd`** (`ensure`/`restart`). Never ask the user to run ensure.
+9. **Live debug** when needed: tagged prints → ensure → user reproduces → **`fxmind_fivem_console_tail`** (terminal mirror) → fix → remove prints.
+10. **Gate C** → post-task learn → **`fxmind_record_gate`** `C` (clears task). After memory writes, call **`fxmind_validate_memories`**.
+11. If the user corrected a mistake → AskQuestion: Pitfalls / **`fxmind_record_correction`** / both / neither (see `.fxmind/modes/task.md`).
 
 ## Exceptions (skip Task)
 

@@ -6,7 +6,7 @@
  *   fxmind_list_memories / fxmind_validate_memories / fxmind_query / fxmind_graph
  *   fxmind_drift_check / fxmind_start_task / fxmind_gate_status / fxmind_record_gate
  *   fxmind_record_correction / fxmind_list_corrections
- *   fxmind_fivem_cmd / fxmind_fivem_console_tail / fxmind_fivem_status (local RCON)
+ *   fxmind_fivem_install / fxmind_fivem_cmd / fxmind_fivem_console_tail / fxmind_fivem_status
  *
  * Gates are session state — use fxmind_start_task + fxmind_record_gate only.
  * Never Write .fxmind/fxmind-gates.json from the agent.
@@ -154,15 +154,33 @@ const TOOL_DEFS = [
     },
   },
   {
+    name: "fxmind_fivem_install",
+    description:
+      "Configure local FiveM RCON + Cursor fivem-start tee (idempotent). Writes rcon_password to cfg, .vscode/fivem-start.ps1, tasks.json, gitignore. Run once per project (or when RCON/status fails). After adding password, user must restart FXServer.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        force: {
+          type: "boolean",
+          description: "Overwrite .vscode/fivem-start.ps1 even if it already exists.",
+        },
+        password: {
+          type: "string",
+          description: "Optional local rcon_password (default fxmind-local-dev). Dev only.",
+        },
+      },
+    },
+  },
+  {
     name: "fxmind_fivem_status",
     description:
-      "Check local FiveM RCON config (host/port/password/log). Dev-only — FXServer via IDE task, no txAdmin.",
+      "Check local FiveM RCON config (host/port/password/log). Dev-only — FXServer via IDE task, no txAdmin. If passwordSet is false, call fxmind_fivem_install.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "fxmind_fivem_cmd",
     description:
-      "Send an allowlisted FXServer console command over local UDP RCON (ensure/start/stop/restart/refresh/status/resmon). After editing a resource, call this yourself — do not ask the user. Does not need a console log tee; keep the IDE task as a direct FXServer.exe launch. Requires rcon_password / FXMIND_RCON_PASSWORD.",
+      "Send an allowlisted FXServer console command over local UDP RCON (ensure/start/stop/restart/refresh/status/resmon). After editing a resource, call this yourself — do not ask the user. If RCON is not configured, call fxmind_fivem_install first. Requires FXServer running with rcon_password loaded.",
     inputSchema: {
       type: "object",
       properties: {
@@ -252,6 +270,12 @@ function dispatchTool(name, args) {
           category: args.category || undefined,
         }),
       };
+
+    case "fxmind_fivem_install":
+      return fivemRcon.installFivemDev({
+        force: Boolean(args.force),
+        password: args.password || undefined,
+      });
 
     case "fxmind_fivem_status":
       return fivemRcon.status();
