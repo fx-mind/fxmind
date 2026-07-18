@@ -28,9 +28,11 @@ The full `/fxmind` command body is a slim router — read **`.fxmind/fxmind.md`*
 
 ## MCP fast path
 
-If the fxmind MCP server is registered, prefer its tools over manual mode specs — they run in Node (faster, cheaper): `fxmind_list_memories`, `fxmind_validate_memories`, `fxmind_query`, `fxmind_graph`, `fxmind_drift_check`, `fxmind_start_task`, `fxmind_gate_status`, `fxmind_record_gate`, `fxmind_record_correction`, `fxmind_list_corrections`, `fxmind_fivem_install`, `fxmind_fivem_cmd`, `fxmind_fivem_console_tail`, `fxmind_fivem_status`.
+If the fxmind MCP server is registered, prefer its tools over manual mode specs — they run in Node (faster, cheaper): `fxmind_list_memories`, `fxmind_validate_memories`, `fxmind_query`, `fxmind_graph`, `fxmind_drift_check`, `fxmind_start_task`, `fxmind_gate_status`, `fxmind_record_gate`, `fxmind_record_correction`, `fxmind_list_corrections`, `fxmind_fivem_install`, `fxmind_fivem_cmd`, `fxmind_fivem_console_tail`, `fxmind_fivem_status`, `fxmind_db_status`, `fxmind_db_query`, `fxmind_db_schema`, `fxmind_db_sample`, `fxmind_db_explore`, `fxmind_db_analyze`.
 
 **FiveM local setup:** if `fxmind_fivem_status` shows `passwordSet: false` (or ensure fails with missing password), call **`fxmind_fivem_install`** once, then ask the user to restart the **fivem-start** task. Do not hand-edit cfg/tasks when this tool exists.
+
+**MySQL:** connection comes from `mysql_connection_string` in cfg (oxmysql). Prefer `fxmind_db_schema` / `fxmind_db_sample` before ad-hoc SQL. For **DELETE/DROP/TRUNCATE**, AskQuestion the user first; only then call `fxmind_db_query` with `approvedByUser: true`. Never invent approval.
 
 **After editing a FiveM resource:** call `fxmind_fivem_cmd` (`ensure`/`restart`) yourself. **Do not ask the user** to run ensure/restart.
 

@@ -7,6 +7,8 @@
  *   fxmind_drift_check / fxmind_start_task / fxmind_gate_status / fxmind_record_gate
  *   fxmind_record_correction / fxmind_list_corrections
  *   fxmind_fivem_install / fxmind_fivem_cmd / fxmind_fivem_console_tail / fxmind_fivem_status
+ *   fxmind_db_status / fxmind_db_query / fxmind_db_schema / fxmind_db_sample
+ *   fxmind_db_explore / fxmind_db_analyze
  *
  * Gates are session state — use fxmind_start_task + fxmind_record_gate only.
  * Never Write .fxmind/fxmind-gates.json from the agent.
@@ -14,9 +16,10 @@
 
 const tools = require("./fxmind-tools");
 const fivemRcon = require("./fivem-rcon");
+const fxmindMysql = require("./fxmind-mysql");
 
 const PROTOCOL_VERSION = "2024-11-05";
-const SERVER_INFO = { name: "fxmind", version: "1.3.0" };
+const SERVER_INFO = { name: "fxmind", version: "1.4.0" };
 
 function targetRoot() {
   return (
@@ -203,6 +206,78 @@ const TOOL_DEFS = [
       },
     },
   },
+  {
+    name: "fxmind_db_status",
+    description:
+      "Check MySQL config from mysql_connection_string (dev/dev.cfg / server.cfg) or FXMIND_MYSQL_URL. Read-only; never returns the password.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "fxmind_db_query",
+    description:
+      "Execute one SQL statement against the project MySQL (oxmysql connection from cfg). SELECT/SHOW/DESCRIBE and INSERT/UPDATE are allowed. DELETE/DROP/TRUNCATE (and ALTER…DROP) require approvedByUser=true AFTER explicit user approval (AskQuestion).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Single SQL statement." },
+        approvedByUser: {
+          type: "boolean",
+          description:
+            "Required true for DELETE/DROP/TRUNCATE after the user approved. Do not set true without asking.",
+        },
+        limit: {
+          type: "number",
+          description: "Max rows returned for SELECT (default 200).",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "fxmind_db_schema",
+    description:
+      "Get column metadata for a table, or list all tables if table_name is omitted. Like get_schema_info.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table_name: {
+          type: "string",
+          description: "Optional bare table or database.table.",
+        },
+      },
+    },
+  },
+  {
+    name: "fxmind_db_sample",
+    description:
+      "Fetch a small sample of rows from a table (default 5, max 20). Like get_table_sample.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table_name: { type: "string" },
+        limit: { type: "number" },
+      },
+      required: ["table_name"],
+    },
+  },
+  {
+    name: "fxmind_db_explore",
+    description:
+      "List tables in the configured database with approx row counts / engines. Like explore_database.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "fxmind_db_analyze",
+    description:
+      "Analyze one table: status, exact COUNT(*), columns, indexes. Like analyze_table.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table_name: { type: "string" },
+      },
+      required: ["table_name"],
+    },
+  },
 ];
 
 function dispatchTool(name, args) {
@@ -285,6 +360,30 @@ function dispatchTool(name, args) {
 
     case "fxmind_fivem_console_tail":
       return fivemRcon.consoleTail({ lines: args.lines });
+
+    case "fxmind_db_status":
+      return fxmindMysql.status();
+
+    case "fxmind_db_query":
+      return fxmindMysql.executeSql(args.query || "", {
+        approvedByUser: Boolean(args.approvedByUser),
+        limit: args.limit,
+      });
+
+    case "fxmind_db_schema":
+      return fxmindMysql.getSchemaInfo({ table_name: args.table_name });
+
+    case "fxmind_db_sample":
+      return fxmindMysql.getTableSample({
+        table_name: args.table_name,
+        limit: args.limit,
+      });
+
+    case "fxmind_db_explore":
+      return fxmindMysql.exploreDatabase();
+
+    case "fxmind_db_analyze":
+      return fxmindMysql.analyzeTable({ table_name: args.table_name });
 
     default:
       return { ok: false, error: `Unknown tool: ${name}` };

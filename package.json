@@ -1,6 +1,6 @@
 {
   "name": "fxmind",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Project memory and knowledge packs for AI agents — install domain skills, shared .fxmind/ memory, and /fxmind commands",
   "bin": {
     "fxmind": "./scripts/install.js",
@@ -12,7 +12,8 @@
     "packs"
   ],
   "dependencies": {
-    "@inquirer/prompts": "^7.5.1"
+    "@inquirer/prompts": "^7.5.1",
+    "mysql2": "^3.23.0"
   },
   "keywords": [
     "fivem",

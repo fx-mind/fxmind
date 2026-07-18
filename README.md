@@ -245,6 +245,19 @@ fxmind fivem tail
 
 Allowlisted RCON: `ensure`, `start`, `stop`, `restart`, `refresh`, `status`, `resmon`.
 
+### MySQL (oxmysql cfg)
+
+Connection is read from `mysql_connection_string` in `dev/dev.cfg` / `server.cfg` (or `FXMIND_MYSQL_URL`).
+
+| MCP | CLI | Role |
+|-----|-----|------|
+| `fxmind_db_status` | `fxmind db status` | Config check (no password leaked) |
+| `fxmind_db_explore` | `fxmind db explore` | List tables |
+| `fxmind_db_schema` | `fxmind db schema [table]` | Columns / tables |
+| `fxmind_db_sample` | `fxmind db sample <table>` | Sample rows |
+| `fxmind_db_analyze` | `fxmind db analyze <table>` | Status + COUNT + indexes |
+| `fxmind_db_query` | `fxmind db query "…"` | SQL; **DELETE/DROP/TRUNCATE need user approval** (`approvedByUser` / `--yes`) |
+
 
 ---
 

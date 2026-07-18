@@ -28,6 +28,7 @@ const { installMcp } = require("./mcp-install");
 const { maybeSelfUpdateAndReexec } = require("./self-update");
 const { createPackScaffold, runPackCli } = require("./pack-new");
 const fivemRcon = require("./fivem-rcon");
+const fxmindMysql = require("./fxmind-mysql");
 
 let SKILL_SOURCES = new Map();
 
@@ -185,6 +186,8 @@ Without global install:
   ${npxInstall("fivem install")}      Configure local RCON + Cursor fivem-start tee
   ${npxInstall("fivem status")}       Local FXServer RCON status (dev)
   ${npxInstall("fivem ensure <res>")} RCON ensure/stop/restart/refresh (allowlisted)
+  ${npxInstall("db status")}          MySQL from mysql_connection_string (cfg)
+  ${npxInstall("db query \"SELECT 1\"")} Run SQL (DELETE needs --yes)
   ${npxInstall("pack new <id>")}      Scaffold a new knowledge pack under packs/<id>/
   fxmind-mcp                          Run the fxmind MCP server (stdio) for agent tool access
 
@@ -2017,6 +2020,78 @@ Env: FXMIND_RCON_HOST (127.0.0.1) FXMIND_RCON_PORT (30120)
   }
 }
 
+async function runDbCli(argv = []) {
+  const options = { help: false, json: false, yes: false };
+  const rest = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "-h" || arg === "--help") options.help = true;
+    else if (arg === "--json") options.json = true;
+    else if (arg === "--yes" || arg === "-y") options.yes = true;
+    else rest.push(arg);
+  }
+
+  if (options.help || rest.length === 0) {
+    console.log(`
+fxmind db — MySQL via mysql_connection_string (dev/dev.cfg / oxmysql).
+
+  fxmind db status
+  fxmind db explore
+  fxmind db schema [table]
+  fxmind db sample <table> [--limit 5]
+  fxmind db analyze <table>
+  fxmind db query "SELECT ..." 
+  fxmind db query "DELETE ..." --yes   # destructive needs --yes
+
+  --json   raw JSON
+`);
+    return rest.length === 0 && !options.help ? 1 : 0;
+  }
+
+  const sub = rest[0];
+  try {
+    let result;
+    if (sub === "status") result = fxmindMysql.status();
+    else if (sub === "explore") result = await fxmindMysql.exploreDatabase();
+    else if (sub === "schema") {
+      result = await fxmindMysql.getSchemaInfo({ table_name: rest[1] });
+    } else if (sub === "sample") {
+      let limit = 5;
+      for (let i = 2; i < rest.length; i += 1) {
+        if (rest[i] === "--limit" || rest[i] === "-n") {
+          limit = Number(rest[i + 1] || 5);
+          i += 1;
+        }
+      }
+      result = await fxmindMysql.getTableSample({ table_name: rest[1], limit });
+    } else if (sub === "analyze") {
+      result = await fxmindMysql.analyzeTable({ table_name: rest[1] });
+    } else if (sub === "query") {
+      const query = rest.slice(1).join(" ").replace(/^["']|["']$/g, "");
+      result = await fxmindMysql.executeSql(query, { approvedByUser: options.yes });
+    } else {
+      console.error(`Unknown db subcommand: ${sub}`);
+      return 1;
+    }
+
+    if (options.json || !result.ok) {
+      console.log(JSON.stringify(result, null, 2));
+      return result.ok ? 0 : 1;
+    }
+    if (sub === "status") {
+      console.log(
+        `${fivemAnsi("32", "✓")} db ${result.configured ? "configured" : "missing"} · ${result.config?.source || "—"} · ${result.config?.database || "?"}@${result.config?.host || "?"}`,
+      );
+      return 0;
+    }
+    console.log(JSON.stringify(result, null, 2));
+    return 0;
+  } catch (error) {
+    console.error(`Error: ${error.message}`);
+    return 1;
+  }
+}
+
 function runMigrateCli(argv) {
   const options = { target: process.cwd(), help: false };
 
@@ -2545,6 +2620,12 @@ async function main() {
   if (argv[0] === "fivem" || argv[0] === "rcon") {
     process.exitCode = 0;
     runFivemCli(argv.slice(1)).then((code) => process.exit(code));
+    return;
+  }
+
+  if (argv[0] === "db" || argv[0] === "mysql") {
+    process.exitCode = 0;
+    runDbCli(argv.slice(1)).then((code) => process.exit(code));
     return;
   }
 
