@@ -21,12 +21,33 @@ describe("fivem rcon allowlist", () => {
     assert.equal(fivem.sanitizeCommand("ensure ../../x").ok, false);
   });
 
-  it("tails log file when present", () => {
+  it("tails rcon + server-debug logs", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fxlog-"));
+    const fxmind = path.join(dir, ".fxmind");
+    fs.mkdirSync(fxmind);
+    const debugLog = path.join(fxmind, "server-debug.log");
+    const rconLog = path.join(fxmind, "fivem-console.log");
+    fs.writeFileSync(debugLog, "[fxmind:shops] hello\n", "utf8");
+    fivem.appendRconLog(
+      { logPath: rconLog },
+      { ok: true, command: "ensure shops", response: "Started resource shops\n" },
+    );
+    const result = fivem.consoleTail({ root: dir, logPath: rconLog, lines: 40 });
+    assert.equal(result.ok, true);
+    assert.match(result.content, /\[fxmind:shops\] hello/);
+    assert.match(result.content, /> ensure shops/);
+  });
+
+  it("appendRconLog feeds consoleTail", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fxlog-"));
     const log = path.join(dir, "fivem-console.log");
-    fs.writeFileSync(log, "a\nb\nc\nd\ne\n", "utf8");
-    const result = fivem.consoleTail({ logPath: log, lines: 3 });
+    fivem.appendRconLog(
+      { logPath: log },
+      { ok: true, command: "ensure shops", response: "Started resource shops\n" },
+    );
+    const result = fivem.consoleTail({ root: dir, logPath: log, lines: 20 });
     assert.equal(result.ok, true);
-    assert.match(result.content, /d\ne/);
+    assert.match(result.content, /> ensure shops/);
+    assert.match(result.content, /Started resource shops/);
   });
 });

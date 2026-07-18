@@ -925,6 +925,7 @@ const PROJECT_GITIGNORE_LINES = [
   ".fxmind-gates.json",
   ".fxmind/metrics.jsonl",
   ".fxmind/fivem-console.log",
+  ".fxmind/server-debug.log",
   ".fxmind/rcon.json",
 ];
 

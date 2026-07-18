@@ -8,8 +8,11 @@
  *   FXMIND_RCON_HOST       default 127.0.0.1
  *   FXMIND_RCON_PORT       default from endpoint_add_udp/tcp or 30120
  *   FXMIND_RCON_PASSWORD   overrides cfg
- *   FXMIND_FIVEM_LOG       default .fxmind/fivem-console.log
+ *   FXMIND_FIVEM_LOG       default .fxmind/fivem-console.log (RCON activity log)
  *   FXMIND_RCON_TIMEOUT_MS default 3000
+ *
+ * The activity log is written by execRcon itself — do NOT tee FXServer stdout
+ * in the IDE task (that breaks interactive console typing).
  */
 
 const dgram = require("dgram");
@@ -205,6 +208,44 @@ function decodeUdpResponse(msg) {
   return text;
 }
 
+function stripAnsi(text) {
+  return String(text || "").replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+/**
+ * Append an RCON exchange to the project log (no FXServer stdout tee needed).
+ * This is what `fxmind fivem tail` / fxmind_fivem_console_tail reads.
+ */
+function appendRconLog(config, entry) {
+  if (!config?.logPath || !entry?.command) return;
+  const logPath = path.resolve(config.logPath);
+  try {
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    const lines = [`==== rcon ${new Date().toISOString()} ====`, `> ${entry.command}`];
+    if (entry.error) lines.push(`! ${entry.error}`);
+    const body = stripAnsi(entry.response || "").trim();
+    if (body) {
+      for (const line of body.split(/\r?\n/)) {
+        if (line.length) lines.push(line);
+      }
+    } else if (entry.note) {
+      lines.push(`(${entry.note})`);
+    } else if (entry.ok) {
+      lines.push("(ok)");
+    }
+    lines.push("");
+    fs.appendFileSync(logPath, `${lines.join("\n")}\n`, "utf8");
+
+    const st = fs.statSync(logPath);
+    if (st.size > 512 * 1024) {
+      const text = fs.readFileSync(logPath, "utf8");
+      fs.writeFileSync(logPath, text.slice(-200 * 1024), "utf8");
+    }
+  } catch {
+    // logging must never break RCON
+  }
+}
+
 /**
  * Execute one allowlisted command over FiveM UDP RCON (Quake3-style).
  */
@@ -240,6 +281,7 @@ function execRcon(command, overrides = {}) {
       } catch {
         // ignore
       }
+      appendRconLog(config, result);
       resolve(result);
     };
 
@@ -276,12 +318,11 @@ function execRcon(command, overrides = {}) {
         });
         return;
       }
-      // Many ensure/restart commands return empty — treat send+silence as success
       finish({
         ok: true,
         command: sanitized.command,
         response: chunks.join("").trim(),
-        note: chunks.length ? undefined : "no UDP reply (common for ensure/restart) — check fxmind fivem tail",
+        note: chunks.length ? undefined : "no UDP reply (common for ensure/restart)",
         transport: "udp",
         config: publicConfig(config),
       });
@@ -334,30 +375,55 @@ function publicConfig(config) {
 }
 
 /**
- * Tail the FXServer console log (written by IDE task Tee-Object).
+ * Tail .fxmind/fivem-console.log — last lines of the FXServer terminal mirrored
+ * by .vscode/fivem-start.ps1 (runs inside Cursor). Also merges server-debug.log if present.
  */
 function consoleTail(options = {}) {
   const config = rconConfig(options);
   const lines = Math.min(Math.max(Number(options.lines) || 80, 1), 500);
-  const logPath = path.resolve(config.logPath);
+  const terminalLog = path.resolve(config.logPath);
+  const debugLog = path.resolve(config.root, ".fxmind", "server-debug.log");
 
-  if (!fs.existsSync(logPath)) {
+  const parts = [];
+  for (const filePath of [terminalLog, debugLog]) {
+    if (!fs.existsSync(filePath)) continue;
+    let content = stripAnsi(fs.readFileSync(filePath, "utf8"));
+    const startMarks = [...content.matchAll(/^==== fivem-start .*$/gm)];
+    if (startMarks.length) {
+      content = content.slice(startMarks[startMarks.length - 1].index);
+    }
+    const label = path.basename(filePath);
+    const body = content
+      .split(/\r?\n/)
+      .filter((line) => line.length > 0)
+      .filter(
+        (line) =>
+          !/ensure\s*rconlogensure/i.test(line) && !/^ensure\s+ensure\s+/i.test(line),
+      );
+    const useful = body.filter((line) => !/^==== fivem-start\b/.test(line));
+    if (useful.length) {
+      parts.push(`---- ${label} ----`, ...body);
+    }
+  }
+
+  if (!parts.length) {
     return {
       ok: false,
-      error: `log file missing: ${logPath} — start FXServer with the fivem-start task (tees to .fxmind/fivem-console.log)`,
+      empty: true,
+      error:
+        "sem linhas ainda — corre a task fivem-start no Cursor (.vscode/fivem-start.ps1 tees para .fxmind/fivem-console.log)",
       config: publicConfig(config),
-      path: logPath,
+      path: terminalLog,
     };
   }
 
-  const content = fs.readFileSync(logPath, "utf8");
-  const all = content.split(/\r?\n/);
-  const slice = all.slice(-lines);
+  const slice = parts.slice(-lines);
   return {
     ok: true,
-    path: logPath,
+    path: terminalLog,
     lines: slice.length,
     content: slice.join("\n"),
+    source: "terminal-log",
     config: publicConfig(config),
   };
 }
@@ -378,6 +444,7 @@ module.exports = {
   isConfigured,
   sanitizeCommand,
   execRcon,
+  appendRconLog,
   consoleTail,
   status,
 };

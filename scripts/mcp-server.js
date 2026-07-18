@@ -162,7 +162,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_fivem_cmd",
     description:
-      "Send an allowlisted FXServer console command over local RCON (ensure/start/stop/restart/refresh/status/resmon). After editing a resource in a task, call this yourself (ensure/restart) — do not ask the user. Then use fxmind_fivem_console_tail. Requires FXServer running and rcon_password / FXMIND_RCON_PASSWORD.",
+      "Send an allowlisted FXServer console command over local UDP RCON (ensure/start/stop/restart/refresh/status/resmon). After editing a resource, call this yourself — do not ask the user. Does not need a console log tee; keep the IDE task as a direct FXServer.exe launch. Requires rcon_password / FXMIND_RCON_PASSWORD.",
     inputSchema: {
       type: "object",
       properties: {
@@ -177,7 +177,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_fivem_console_tail",
     description:
-      "Read the last N lines of the FXServer console log (FXMIND_FIVEM_LOG / .fxmind/fivem-console.log). Use after ensure/restart and during live debug: after the user reproduces in-game, you read the log yourself — never ask them to paste console output.",
+      "Read the last N lines of .fxmind/fivem-console.log (FXServer stdout mirrored by the in-Cursor fivem-start.ps1 task). Full terminal output for live debug — not only the last ensure reply. Never ask the user to paste console output.",
     inputSchema: {
       type: "object",
       properties: {

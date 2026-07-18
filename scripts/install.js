@@ -184,7 +184,6 @@ Without global install:
   ${npxInstall("corrections export")} Export open corrections for editing best-practices
   ${npxInstall("fivem status")}       Local FXServer RCON status (dev)
   ${npxInstall("fivem ensure <res>")} RCON ensure/stop/restart/refresh (allowlisted)
-  ${npxInstall("fivem tail")}         Tail .fxmind/fivem-console.log
   ${npxInstall("pack new <id>")}      Scaffold a new knowledge pack under packs/<id>/
   fxmind-mcp                          Run the fxmind MCP server (stdio) for agent tool access
 
@@ -1935,9 +1934,11 @@ fxmind fivem — local FXServer RCON (dev; no txAdmin).
 
   --json   raw JSON output (default on errors)
 
+Primary path: ensure/restart via UDP RCON.
+  fxmind fivem tail  →  last lines of FXServer terminal mirror (.fxmind/fivem-console.log)
+
 Env: FXMIND_RCON_HOST (127.0.0.1) FXMIND_RCON_PORT (30120)
-     FXMIND_RCON_PASSWORD (must match rcon_password in server.cfg)
-     FXMIND_FIVEM_LOG (e.g. .fxmind/fivem-console.log)
+     FXMIND_RCON_PASSWORD (optional if set in dev/dev.cfg)
 `);
     return rest.length === 0 && !options.help ? 1 : 0;
   }
@@ -1958,8 +1959,8 @@ Env: FXMIND_RCON_HOST (127.0.0.1) FXMIND_RCON_PORT (30120)
       }
       const result = fivemRcon.consoleTail({ lines });
       if (!result.ok) {
-        console.error(result.error);
-        return 1;
+        console.log(fivemAnsi("33", result.error || "sem entradas RCON"));
+        return 0;
       }
       console.log(result.content);
       return 0;

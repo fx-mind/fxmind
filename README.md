@@ -224,37 +224,21 @@ Skip with `--no-mcp`. Refresh with `fxmind hooks install` or `fxmind --update -y
 
 ### Local FiveM RCON (dev, no txAdmin)
 
-FXServer RCON is **UDP** (Quake3-style), not Source TCP. For projects that start FXServer via an IDE task (e.g. `.vscode/tasks.json` → `artifacts/FXServer.exe`):
+FXServer RCON is **UDP** (Quake3-style), not Source TCP.
 
-1. Set in `server.cfg` / `dev/dev.cfg` (local only):
-
-```cfg
-rcon_password "fxmind-local-dev"
-```
-
-2. Wire MCP env in `.cursor/mcp.json`:
-
-```json
-"env": {
-  "FXMIND_TARGET": "${workspaceFolder}",
-  "FXMIND_RCON_HOST": "127.0.0.1",
-  "FXMIND_RCON_PORT": "30120",
-  "FXMIND_RCON_PASSWORD": "fxmind-local-dev",
-  "FXMIND_FIVEM_LOG": "${workspaceFolder}/.fxmind/fivem-console.log"
-}
-```
-
-3. Tee FXServer output to `.fxmind/fivem-console.log` from the IDE task (see project `.vscode/fivem-start.ps1`).
-
-4. Start the server task, enable MCP **fxmind**, then:
+| Need | How |
+|------|-----|
+| `ensure` / `restart` | UDP RCON (`fxmind fivem ensure` / MCP) |
+| Full terminal log for `tail` / MCP | IDE task **fivem-start** → `.vscode/fivem-start.ps1` runs FXServer **inside Cursor** and tees stdout to `.fxmind/fivem-console.log` |
 
 ```bash
-fxmind fivem status
 fxmind fivem ensure my_resource
 fxmind fivem tail
 ```
 
-Allowlisted commands only: `ensure`, `start`, `stop`, `restart`, `refresh`, `status`, `resmon`.
+Allowlisted RCON: `ensure`, `start`, `stop`, `restart`, `refresh`, `status`, `resmon`.
+
+Local cfg: `set rcon_password "..."` (password also auto-read from `dev/dev.cfg`).
 
 ---
 
