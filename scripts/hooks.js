@@ -373,7 +373,7 @@ Usage:
   fxmind hooks pre-commit [--strict]                      Run pre-commit drift check on staged files
   fxmind hooks drift-check <file>                         Check memories referencing <file>
   fxmind hooks graph [--no-open]                          Rebuild knowledge graph
-  fxmind hooks gates                                      Show Gate A/B/C status from .fxmind/fxmind-gates.json
+  fxmind hooks gates                                      Show Gate A/B/V/C status from .fxmind/fxmind-gates.json
   fxmind hooks validate-memories [--strict]               Validate memory frontmatter + duplicates
   fxmind hooks -h                                         This help
 

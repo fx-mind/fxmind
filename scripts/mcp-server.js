@@ -93,20 +93,21 @@ const TOOL_DEFS = [
   },
   {
     name: "fxmind_gate_status",
-    description: "Read Task Gate A/B/C session status. Read-only.",
+    description: "Read Task Gate A/B/V/C session status. Read-only.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "fxmind_record_gate",
     description:
-      "Persist a Gate marker (START, A, B, or C). Only way agents should update gates. Gate C clears taskActive.",
+      "Persist a Gate marker (START, A, B, V, or C). Only way agents should update gates. Gate C clears taskActive.",
     inputSchema: {
       type: "object",
       properties: {
         gate: {
           type: "string",
-          enum: ["START", "A", "B", "C"],
-          description: "START begins a task; A/B unlock edits; C closes the task.",
+          enum: ["START", "A", "B", "V", "C"],
+          description:
+            "START begins a task; A/B unlock edits; V records verify-by-observation; C closes the task.",
         },
         note: { type: "string", description: "Optional note (e.g. memories loaded)." },
       },

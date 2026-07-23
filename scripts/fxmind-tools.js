@@ -875,8 +875,8 @@ function recordGate(targetRoot, gate, value = true, extra = {}) {
     });
   }
 
-  if (!["A", "B", "C"].includes(letter)) {
-    throw new Error(`Invalid gate: ${gate} (use START, A, B, or C)`);
+  if (!["A", "B", "V", "C"].includes(letter)) {
+    throw new Error(`Invalid gate: ${gate} (use START, A, B, V, or C)`);
   }
 
   let data = gateStatus(targetRoot);

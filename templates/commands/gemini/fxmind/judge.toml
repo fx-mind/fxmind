@@ -1,0 +1,18 @@
+description = "Judge finished work — claims vs observation (VERIFIED / CAVEATS / REFUTED)"
+
+prompt = """
+**Judge** — verify that claimed work actually happened.
+
+**Target / args:** {{args}}
+
+Read and follow **`.fxmind/modes/judge.md`**. Stance: a report is claims, not evidence.
+
+1. Collect claims (done / verified / untouched).
+2. Ground truth via git diff/status.
+3. Re-run claimed checks (tests/build; FiveM ensure + console_tail when relevant).
+4. Hunt frauds (weakened checks, fake completion, scope creep, unauthorized outward actions, spec betrayal, missed twins, debris).
+5. Verdict first line: VERIFIED | VERIFIED WITH CAVEATS | REFUTED — then claims table + evidence.
+
+Read-only unless the user asks to apply fixes. Checklist: `.fxmind/failure-modes.md`.
+Domain security audits remain `/fxmind:audit`.
+"""

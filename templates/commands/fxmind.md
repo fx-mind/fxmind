@@ -1,6 +1,6 @@
 ---
-description: "fxmind — FiveM project memory — task, reference, audit, learn, memory health, graph, query, path, explain, update"
-argument-hint: "task <implementation> | reference | audit [scope] | learn <topic> | memory health [fix] [topic] | graph | query \"<question>\" [--dfs] [--budget N] | path <a> <b> | explain <topic> | update | <question>"
+description: "fxmind — FiveM project memory — task, judge, reference, audit, learn, memory health, graph, query, path, explain, update"
+argument-hint: "task <implementation> | judge [target] | reference | audit [scope] | learn <topic> | memory health [fix] [topic] | graph | query \"<question>\" [--dfs] [--budget N] | path <a> <b> | explain <topic> | update | <question>"
 ---
 
 # fxmind
@@ -14,6 +14,7 @@ Parse `$ARGUMENTS` (trim, case-insensitive). **Prefer Task for any code/config c
 | Input | Mode file |
 |-------|-----------|
 | `task` or `task ...` | `.fxmind/modes/task.md` (**preferred** for code/config changes) |
+| `judge` or `judge ...` | `.fxmind/modes/judge.md` (claims vs observation; after Task / any "done") |
 | `reference` or `reference ...` | `.fxmind/modes/reference.md` |
 | `audit` or `audit ...` | `.fxmind/modes/audit.md` |
 | `learn` or `learn <topic>` / `learn list` | `.fxmind/modes/learn.md` |
@@ -42,10 +43,10 @@ If the fxmind MCP server is registered, prefer these tools over the manual mode 
 | Rebuild graph + memory-index | `fxmind_graph` |
 | Drift check for a file | `fxmind_drift_check` |
 | Start Task session | `fxmind_start_task` |
-| Read Gate A/B/C status | `fxmind_gate_status` |
-| Record a Gate marker (START/A/B/C) | `fxmind_record_gate` |
+| Read Gate A/B/V/C status | `fxmind_gate_status` |
+| Record a Gate marker (START/A/B/V/C) | `fxmind_record_gate` |
 
-For Task mode, use **`fxmind_start_task`** then **`fxmind_record_gate`** for each gate — never Write `.fxmind/fxmind-gates.json`. `fxmind_query` replaces the graph-router step (Gate B). For `graph`, `fxmind_graph` replaces the CLI shell-out.
+For Task mode, use **`fxmind_start_task`** then **`fxmind_record_gate`** for each gate (A → B → **V** → C) — never Write `.fxmind/fxmind-gates.json`. `fxmind_query` replaces the graph-router step (Gate B). For `graph`, `fxmind_graph` replaces the CLI shell-out.
 
 ## Shared memory (`.fxmind/`)
 
@@ -58,6 +59,7 @@ All agents read and write the **same project memory** under `.fxmind/` at the pr
 | `.fxmind/memory/<topic>.md` | Shared topic memories (compact English, `lang: en-compact`) |
 | `.fxmind/memory/_index.md` | Memory router |
 | `.fxmind/modes/<mode>.md` | On-demand mode specs (read only the matched one) |
+| `.fxmind/failure-modes.md` | Behavioral failure map (judge / Task self-audit) |
 | `.fxmind/audit-procedure.md` | Heavy audit matrix (read only on `audit`) |
 | `.fxmind/topic-catalog.md` | Learn search hints |
 | `.fxmind/knowledge-graph.json` | Topic graph for query/path/explain |

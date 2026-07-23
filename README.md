@@ -100,10 +100,14 @@ Session-only (gitignored): `fxmind-gates.json`, `metrics.jsonl`.
 
 Just ask for the change in natural language — Task mode runs **automatically** (no `/fxmind task` required). With Cursor hooks installed:
 
-1. **Start** — MCP `fxmind_start_task`
-2. **Gate A** — plan (scope, risks, memories) before editing → `fxmind_record_gate` A
+1. **Start** — MCP `fxmind_start_task` (classify ask + triviality gate first — see `.fxmind/modes/task.md`)
+2. **Gate A** — CLASS, Done+verify, INTENT if needed, scope/risks → `fxmind_record_gate` A
 3. **Gate B** — load memories (`fxmind_query`) → `fxmind_record_gate` B
-4. **Gate C** — post-task learn → `fxmind_record_gate` C (clears session)
+4. **Implement** — surgical edits; max 3 fix→verify retries
+5. **Gate V** — verify by observation (+ TWINS if bugfix) → `fxmind_record_gate` V
+6. **Gate C** — post-task learn → `fxmind_record_gate` C (clears session)
+
+Prove claims after work: **`/fxmind judge`**. Behavioral map: `.fxmind/failure-modes.md`.
 
 **Gates are session state (MCP only).** Agents must not Write `.fxmind/fxmind-gates.json` — `gate-guard` blocks it. The file is gitignored (ephemeral).
 
@@ -216,7 +220,7 @@ The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP sp
 | `fxmind_validate_memories` | Schema + path checks + duplicates |
 | `fxmind_drift_check` | Memories referencing a file |
 | `fxmind_start_task` | Begin Task session |
-| `fxmind_gate_status` / `fxmind_record_gate` | Gates START/A/B/C (session only) |
+| `fxmind_gate_status` / `fxmind_record_gate` | Gates START/A/B/V/C (session only) |
 | `fxmind_record_correction` / `fxmind_list_corrections` | Skill-improvement backlog |
 | `fxmind_fivem_status` / `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` | Local FXServer RCON + log tail (dev) |
 

@@ -51,6 +51,7 @@ function main() {
   }
   const a = gates.gates && gates.gates.A && gates.gates.A.complete;
   const b = gates.gates && gates.gates.B && gates.gates.B.complete;
+  const v = gates.gates && gates.gates.V && gates.gates.V.complete;
   const c = gates.gates && gates.gates.C && gates.gates.C.complete;
 
   if (!a || !b) {
@@ -60,6 +61,12 @@ function main() {
 
   if (c) {
     noop();
+  }
+
+  if (!v) {
+    followup(
+      "fxmind: Gate V (verify by observation) is still pending before Gate C. Re-run the Done check from Gate A (ensure+console_tail / tests / lint as applicable). If you fixed a defect, search for twins and include TWINS: searched <pattern> — found: <files|none>. Then call fxmind_record_gate gate=V. After V, finish Gate C (learn or \"mudança pontual\"). Never Write the gates JSON.",
+    );
   }
 
   followup(
