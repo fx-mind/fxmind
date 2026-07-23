@@ -19,6 +19,7 @@ You are a FiveM development expert. Help the user with their FiveM scripting que
    - NUI/React UI → Read skill `fivem-react-nui`
    - Patterns/best practices → Read skill `fivem-development` (`SKILL.md` router → topic files)
    - Code audit → suggest `/fxmind audit [scope]`
+   - Verify claims / "did that actually work?" → suggest **`/fxmind judge`**
    - Implement, fix, refactor, add/remove code → suggest **`/fxmind task <request>`**
    - Recurring project flow (craft, item, loja, NUI) → read `.fxmind/memory/<topic>.md` if exists; else suggest `/fxmind learn <topic>`
    - Architecture / cross-topic flow → suggest `/fxmind query "<question>"` if `knowledge-graph.json` exists

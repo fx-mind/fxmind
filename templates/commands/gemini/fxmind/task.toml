@@ -1,96 +1,22 @@
-description = "Task workflow — analyze, load memories, implement, post-task learning"
+description = "Task workflow — classify, gates A/B/V/C, implement, verify, learn"
 
 prompt = """
-**Task (implementation / fix / refactor / config change).** Do NOT skip gates.
+**Task (implementation / fix / refactor / config change).**
 
 **Task text:** {{args}}
-(Everything after `task` — goal, scope hints, `@` mentions.)
 
-> **🛑 HARD STOP: You MUST NOT read, open, or edit any code file until both Gate A and Gate B output markers are visible in this conversation. This is a blocking requirement, not a suggestion.**
+Read and follow **`.fxmind/modes/task.md`** in full (source of truth). Do not improvise a shorter pipeline.
 
-## Gate A — show analysis in chat (before any edit)
+Summary (details in that file):
+1. Classify ask (question → no edit; plan-first → stop after plan; task → continue). Triviality gate when applicable.
+2. MCP `fxmind_start_task` then Gate A (CLASS, Done+verify, INTENT if behavior change, scope) → `fxmind_record_gate` A.
+3. Gate B (memories / reference / primary sources) → `fxmind_record_gate` B.
+4. Implement surgically (max 3 fix→verify retries; surprise re-route).
+5. Gate V (observe Done + surrounding health + TWINS if bugfix) → `fxmind_record_gate` V.
+6. Gate C (learn or "mudança pontual") → `fxmind_record_gate` C.
+7. Reply outcome-first with owed artifacts (INTENT / TWINS / AUTH / PENDING).
 
-Post a block with ALL 5 items below. Do not skip any item.
-
-1. **Goal** — what the user wants
-2. **Scope** — resource/files (from args, `@`, open files)
-3. **Topics** — NUI, garage, admin, permissions, events, etc.
-4. **Risks** — if any (permissions, client/server, destructive)
-5. **Memory plan** — candidate topics from index/graph, or "no index match"
-
-**Output:**
-```
-🛑 GATE A COMPLETE — GOAL: <one-line summary>, SCOPE: <files/resources>, TOPICS: <list>, RISKS: <list or none>
-DO NOT proceed to Gate B until this marker is visible.
-```
-
-## Gate B — load memory (before any edit)
-
-1. Read **`.fxmind/memory/_index.md`** (required every Task)
-2. If **`.fxmind/knowledge-graph.json`** exists → graph-router (keywords → BFS depth 3, ~1500 token budget)
-3. Else → **`.fxmind/topic-catalog.md`** + index row matching
-4. Load **3–5** relevant **`.fxmind/memory/<topic>.md`** files (or state none matched)
-5. Read **`.fxmind/reference.md`** if present (skip if absent)
-6. Read pack skills from **`.fxmind/skills/`** when domain knowledge is needed (NUI → `fivem-react-nui`, framework → detected skill)
-
-**Output:**
-```
-🛑 GATE B COMPLETE — MEMORIES LOADED: <list topics or "none">, REFERENCE: <loaded/absent>, GRAPH: <used/fallback>
-DO NOT proceed to implementation until this marker is visible.
-```
-
-Only after Gate A marker + Gate B marker → read task code files and implement.
-
-## Step 4 — Implement
-
-1. Read real code files for the task
-2. Follow loaded memories + `.fxmind/reference.md` + skills
-3. Edit only what the task requires
-4. Validate with focused lint/test/grep where practical
-5. Do **not** edit memory files during implementation
-
-## User corrections — ask to save (mandatory)
-
-When the user **corrects** your work (wrong resource/file, event, client/server, permissions, approach, or "não é assim"), apply the fix then **ask if they want to save it** to project memory:
-
-- **Salvar em Pitfalls** → append to `.fxmind/memory/<topic>.md`
-- **Salvar como tópico novo** → create/update a memory file
-- **Não salvar** → one-off, no reusable knowledge
-
-Summarize in one line what would be saved and suggest the topic slug. If they choose save, write it at Gate C (Pitfalls section, compact English). Skip the prompt for trivial typos/formatting or when the user already asked to save.
-
-## Gate C — post-task learning (before final reply)
-
-After implementation:
-
-1. Review whether reusable project knowledge was learned (flows, events, menu structure, conventions) — **including corrections the user approved saving**
-2. If yes → update/create **`.fxmind/memory/<topic>.md`** + **`_index.md`** (use `.fxmind/memory.template.md`, `lang: en-compact`, grep-confirmed frontmatter only)
-3. If no → state explicitly (e.g. "Nenhuma memória nova — mudança pontual")
-4. If memory changed → suggest **`/fxmind:graph`**
-
-Do **not** create memory for: tiny text/UI toggles, one-off bugs without reusable flow, guesses, generic FiveM advice.
-
-**Output:**
-```
-🛑 GATE C COMPLETE — LEARNING: <memory created: path / memory updated: path / none — mudança pontual>
-```
-
-## Reply
-
-Reply in the user's language: implementation summary, validation, memories loaded, learn outcome (path or "none").
-
-**Compliance checklist (mandatory in every task reply):**
-
-```
-## Compliance
-- [x] Gate A: analysis shown before any edit — `🛑 GATE A COMPLETE`
-- [x] Gate B: _index.md read, 3-5 memories loaded — `🛑 GATE B COMPLETE`
-- [x] Gate C: post-task review completed — `🛑 GATE C COMPLETE`
-- [x] Memories loaded: <list>
-- [x] Learning outcome: <created/updated/none>
-```
-
-If any gate was skipped, mark it `[ ] SKIPPED` and explain why. Never mark a gate as complete if the marker was not output.
-
-Never invent paths, events, APIs, or permissions.
+Hard stop: no code edits until Gate A and Gate B markers are visible.
+Never Write `.fxmind/fxmind-gates.json`. Prefer MCP tools when available.
+Behavioral map: `.fxmind/failure-modes.md`. Optional prove step: `/fxmind:judge`.
 """

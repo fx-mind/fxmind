@@ -1,6 +1,6 @@
 ---
 name: fxmind
-description: "Use for any request that changes, fixes, implements, refactors, adds, removes, disables, enables, or configures code in this project — especially when .fxmind/ exists. Automatically runs the fxmind Task pipeline (analyze → load memories → implement → learn) without requiring /fxmind task. Also routes /fxmind modes (learn, audit, query, graph, …) and pack skills under .fxmind/skills/."
+description: "Use for any request that changes, fixes, implements, refactors, adds, removes, disables, enables, or configures code in this project — especially when .fxmind/ exists. Automatically runs the fxmind Task pipeline (classify → A → B → implement → V → learn) without requiring /fxmind task. Also routes /fxmind modes (learn, audit, judge, query, graph, …) and pack skills under .fxmind/skills/."
 ---
 
 # fxmind
@@ -11,7 +11,7 @@ You are the **fxmind** skill — the only skill that should live in the agent sk
 
 ## Auto Task (default)
 
-If the user asks to **change** code/config — **start Task mode immediately**. Do not wait for `/fxmind task`. Read **`.fxmind/modes/task.md`**, activate gates, then Gate A → B → implement → C.
+If the user asks to **change** code/config — **start Task mode immediately**. Do not wait for `/fxmind task`. Read **`.fxmind/modes/task.md`**, activate gates, then classify → Gate A → B → implement → **V** → C.
 
 If the user asks to **analyze / analisar / review / investigar / diagnosticar / propor** (without “aplica/corrige/implementa”): **analyze and report only** — no edits until they approve (AskQuestion). See `.fxmind/modes/task.md` and the auto-task rule.
 
@@ -22,11 +22,13 @@ If the user asks to **analyze / analisar / review / investigar / diagnosticar / 
 The full `/fxmind` command body is a slim router — read **`.fxmind/fxmind.md`** for the routing table. Each mode's full spec lives in **`.fxmind/modes/<mode>.md`** — read **only the matched mode file** before acting (keeps context lean).
 
 1. **Task** (any implementation request, with or without `/fxmind task`) → read **`.fxmind/modes/task.md`**.
-2. **Other modes** (`learn`, `audit`, `graph`, `query`, `path`, `explain`, `reference`, `memory health`, `update`, `help`) → read **`.fxmind/modes/<mode>.md`**.
-3. **Graph** → just run `fxmind graph` (builds + opens `.fxmind/knowledge-graph.html`).
-4. **Project memories** → `.fxmind/memory/_index.md` then relevant `memory/<topic>.md`.
-5. **Installed pack skills** → `.fxmind/skills/_index.md` and `.fxmind/packs.json`.
-6. **Global store** → if `.fxmind/store.json` has `mode: global`, memories live in `~/.fxmind/projects/<id>/` (paths via symlink). Cross-project memories may appear in graph/query links.
+2. **Judge** (`judge`, "did that actually work?", verify claims) → read **`.fxmind/modes/judge.md`**.
+3. **Other modes** (`learn`, `audit`, `graph`, `query`, `path`, `explain`, `reference`, `memory health`, `update`, `help`) → read **`.fxmind/modes/<mode>.md`**.
+4. **Graph** → just run `fxmind graph` (builds + opens `.fxmind/knowledge-graph.html`).
+5. **Project memories** → `.fxmind/memory/_index.md` then relevant `memory/<topic>.md`.
+6. **Installed pack skills** → `.fxmind/skills/_index.md` and `.fxmind/packs.json`.
+7. **Global store** → if `.fxmind/store.json` has `mode: global`, memories live in `~/.fxmind/projects/<id>/` (paths via symlink). Cross-project memories may appear in graph/query links.
+8. **Failure modes** → `.fxmind/failure-modes.md` (behavioral symptom → step map; used by judge / bad-run audit).
 
 ## MCP fast path
 
@@ -46,10 +48,12 @@ When the user asks to **change code/config** (with or without `/fxmind task`), f
 
 | Phase | Required action | Output marker | Before |
 |-------|-----------------|---------------|--------|
+| **Pre-flight** | Classify ask (question / task / plan-first); triviality gate | — | Gate A |
 | **Start** | Call MCP `fxmind_start_task` (or `fxmind_record_gate` gate=START) | — | Gate A |
-| **Gate A** | Show goal, scope, topics, risks, memory plan in chat | `🛑 GATE A COMPLETE` | Any file edit |
-| **Gate B** | Load memories via `fxmind_query` (or index + 3–5 files); read `.fxmind/reference.md` | `🛑 GATE B COMPLETE` | Any file edit |
-| **Implement** | Edit code using memories + `.fxmind/reference.md` + skills | — | — |
+| **Gate A** | CLASS, goal, **Done+verify**, INTENT if behavior change, scope, risks, memory plan | `🛑 GATE A COMPLETE` | Any file edit |
+| **Gate B** | Load memories via `fxmind_query` (or index + 3–5 files); read `.fxmind/reference.md`; primary sources for APIs | `🛑 GATE B COMPLETE` | Any file edit |
+| **Implement** | Surgical edits; surprise re-route; max 3 fix→verify retries | — | — |
+| **Gate V** | Verify by observation (Done + surrounding health + TWINS if bugfix) | `🛑 GATE V COMPLETE` | Gate C / final claim of success |
 | **Gate C** | Post-task learn — update memory or state "no reusable knowledge" | `🛑 GATE C COMPLETE` | Final reply |
 
 **User corrections:** when the user fixes your mistake, ask whether to save to memory Pitfalls and/or **`.fxmind/corrections/`** via MCP `fxmind_record_correction` (skill-improvement backlog). See `.fxmind/modes/task.md` → *User corrections*.
@@ -59,7 +63,7 @@ Each gate MUST end with its marker. Do NOT proceed to the next phase without the
 **Gates = MCP only (never Write the JSON):**
 
 - Call **`fxmind_start_task`** at task start.
-- After each marker → **`fxmind_record_gate`** with `gate: "A"|"B"|"C"`.
+- After each marker → **`fxmind_record_gate`** with `gate: "A"|"B"|"V"|"C"`.
 - Gate C clears `taskActive` automatically.
 - Do **not** Write/Edit `.fxmind/fxmind-gates.json` — the `gate-guard` hook blocks it.
 - If MCP is unavailable: chat markers are the source of truth for the user; hooks cannot be satisfied without MCP/CLI (`fxmind hooks gates`).

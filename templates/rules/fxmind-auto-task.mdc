@@ -27,23 +27,24 @@ If the user asks to **analyze, analisar, review, investigar, diagnosticar, expli
 ## Required flow (every implementation request)
 
 1. Confirm MCP **fxmind** tools are available (`fxmind_start_task`). If not → ask user to enable MCP **fxmind** and stop.
-2. Read **`.fxmind/modes/task.md`** and follow it.
+2. Read **`.fxmind/modes/task.md`** and follow it (classify ask + triviality gate first).
 3. Call MCP **`fxmind_start_task`** (never Write the gates JSON).
-4. **Gate A** → analysis in chat → **`fxmind_record_gate`** `A`.
+4. **Gate A** → CLASS, goal, Done+verify, INTENT if needed, scope → **`fxmind_record_gate`** `A`.
 5. **Gate B** → load memories (`fxmind_query` preferred) → **`fxmind_record_gate`** `B`.
-6. **Implement** the change.
+6. **Implement** the change (max 3 fix→verify retries; surprise re-route).
 7. If FiveM RCON is missing (`passwordSet: false`) → MCP **`fxmind_fivem_install`** once, then ask the user to restart **fivem-start**.
 8. **Reload FXServer yourself** when a resource changed: MCP **`fxmind_fivem_cmd`** (`ensure`/`restart`). Never ask the user to run ensure.
 9. **Live debug** when needed: tagged prints → ensure → user reproduces → **`fxmind_fivem_console_tail`** (terminal mirror) → fix → remove prints.
-10. **Gate C** → post-task learn → **`fxmind_record_gate`** `C` (clears task). After memory writes, call **`fxmind_validate_memories`**.
-11. If the user corrected a mistake → AskQuestion: Pitfalls / **`fxmind_record_correction`** / both / neither (see `.fxmind/modes/task.md`).
+10. **Gate V** → verify by observation (Done + surrounding health + TWINS if bugfix) → **`fxmind_record_gate`** `V`.
+11. **Gate C** → post-task learn → **`fxmind_record_gate`** `C` (clears task). After memory writes, call **`fxmind_validate_memories`**.
+12. If the user corrected a mistake → AskQuestion: Pitfalls / **`fxmind_record_correction`** / both / neither (see `.fxmind/modes/task.md`).
 
 ## Exceptions (skip Task)
 
-- Pure questions / explanations with no code change
+- Pure questions / explanations with no code change (classify as question — do not edit)
 - **Analyze-only** requests (see above) — report + wait for approval; no Task implement until approved
-- Explicit modes: `/fxmind learn`, `audit`, `query`, `graph`, `memory health`, `reference`, `update`
-- Never skip Task just because an *implementation* change looks “small” (salaries, config numbers, one-line fixes) — still run the pipeline
+- Explicit modes: `/fxmind learn`, `audit`, `judge`, `query`, `graph`, `memory health`, `reference`, `update`
+- **Trivial** *implementation* tasks (one file, ~<10 lines, no new behavior, no search): still start Task + abbreviated A/B + V + C — see `.fxmind/modes/task.md` triviality gate. Do not invent a fourth pipeline outside that file.
 
 ## Style (this repo)
 

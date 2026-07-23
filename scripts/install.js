@@ -51,6 +51,7 @@ const CORE_TEMPLATE_FILES = [
   "memory-index.template.md",
   "memory-health.template.md",
   "audit-procedure.md",
+  "failure-modes.md",
   "knowledge-graph.html",
 ];
 const LEGACY_TEMPLATE_FILES = [

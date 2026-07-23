@@ -9,7 +9,8 @@ You are a FiveM development expert. Help with the user's **conceptual** FiveM qu
 
 | User intent | Command |
 |-------------|---------|
-| Implement, fix, refactor, add/remove code or config | **`/fxmind:task <request>`** — mandatory analyze → memory → implement → learn |
+| Implement, fix, refactor, add/remove code or config | **`/fxmind:task <request>`** — classify → A → B → implement → V → learn |
+| Verify claims / "did that actually work?" | `/fxmind:judge [target]` |
 | Save topic memory from codebase | `/fxmind:learn <topic>` |
 | Code audit (read-only) | `/fxmind:audit [scope]` |
 | Project reference map | `/fxmind:reference` |

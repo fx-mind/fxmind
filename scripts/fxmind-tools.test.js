@@ -52,7 +52,7 @@ Files:
 });
 
 describe("gates MCP-style API", () => {
-  it("startTask + recordGate A/B/C manages taskActive", () => {
+  it("startTask + recordGate A/B/V/C manages taskActive", () => {
     const root = makeProject();
     const start = tools.startTask(root, { note: "test" });
     assert.equal(start.taskActive, true);
@@ -60,15 +60,23 @@ describe("gates MCP-style API", () => {
 
     tools.recordGate(root, "A", true, { note: "analysis" });
     tools.recordGate(root, "B", true, { note: "memories" });
+    tools.recordGate(root, "V", true, { note: "verified" });
     let st = tools.gateStatus(root);
     assert.equal(st.taskActive, true);
     assert.equal(st.gates.A.complete, true);
     assert.equal(st.gates.B.complete, true);
+    assert.equal(st.gates.V.complete, true);
 
     tools.recordGate(root, "C", true);
     st = tools.gateStatus(root);
     assert.equal(st.taskActive, false);
     assert.equal(st.gates.C.complete, true);
+  });
+
+  it("recordGate rejects unknown letters", () => {
+    const root = makeProject();
+    tools.startTask(root);
+    assert.throws(() => tools.recordGate(root, "Z", true), /Invalid gate/);
   });
 
   it("recordGate START is alias for startTask", () => {
