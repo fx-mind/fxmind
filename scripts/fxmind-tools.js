@@ -848,19 +848,30 @@ function gateStatus(targetRoot) {
 
 function startTask(targetRoot, extra = {}) {
   migrateLegacyGates(targetRoot);
+  const trivial = Boolean(extra.trivial);
+  const now = new Date().toISOString();
   const data = {
     schemaVersion: SCHEMA_VERSION,
     taskActive: true,
-    session: new Date().toISOString(),
+    session: now,
     autoStarted: Boolean(extra.autoStarted),
+    trivial,
     gates: {},
-    ...extra,
   };
   if (extra.note) {
     data.note = extra.note;
   }
+  if (trivial) {
+    const note = extra.note ? `trivial: ${extra.note}` : "trivial";
+    data.gates.A = { complete: true, at: now, note };
+    data.gates.B = { complete: true, at: now, note };
+  }
   writeJson(gatesPath(targetRoot), data);
-  appendMetric(targetRoot, { event: "task_start", autoStarted: data.autoStarted });
+  appendMetric(targetRoot, {
+    event: "task_start",
+    autoStarted: data.autoStarted,
+    trivial,
+  });
   return data;
 }
 
@@ -872,6 +883,7 @@ function recordGate(targetRoot, gate, value = true, extra = {}) {
     return startTask(targetRoot, {
       note: extra.note || "",
       autoStarted: false,
+      trivial: Boolean(extra.trivial),
     });
   }
 
@@ -886,6 +898,16 @@ function recordGate(targetRoot, gate, value = true, extra = {}) {
   }
   data.schemaVersion = SCHEMA_VERSION;
   data.gates = data.gates || {};
+
+  if (letter === "C" && value) {
+    const vDone = data.gates.V && data.gates.V.complete;
+    if (!vDone) {
+      throw new Error(
+        "Gate C requires Gate V first. Call fxmind_record_gate with gate=V after verify-by-observation, then gate=C.",
+      );
+    }
+  }
+
   data.gates[letter] = {
     complete: Boolean(value),
     at: new Date().toISOString(),

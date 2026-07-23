@@ -73,6 +73,21 @@ describe("gates MCP-style API", () => {
     assert.equal(st.gates.C.complete, true);
   });
 
+  it("startTask trivial auto-completes A/B; C requires V", () => {
+    const root = makeProject();
+    const start = tools.startTask(root, { note: "tiny", trivial: true });
+    assert.equal(start.trivial, true);
+    assert.equal(start.gates.A.complete, true);
+    assert.equal(start.gates.B.complete, true);
+
+    assert.throws(() => tools.recordGate(root, "C", true), /Gate C requires Gate V/);
+
+    tools.recordGate(root, "V", true, { note: "checked" });
+    const done = tools.recordGate(root, "C", true);
+    assert.equal(done.taskActive, false);
+    assert.equal(done.gates.C.complete, true);
+  });
+
   it("recordGate rejects unknown letters", () => {
     const root = makeProject();
     tools.startTask(root);

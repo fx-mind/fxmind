@@ -100,14 +100,16 @@ Session-only (gitignored): `fxmind-gates.json`, `metrics.jsonl`.
 
 Just ask for the change in natural language — Task mode runs **automatically** (no `/fxmind task` required). With Cursor hooks installed:
 
-1. **Start** — MCP `fxmind_start_task` (classify ask + triviality gate first — see `.fxmind/modes/task.md`)
-2. **Gate A** — CLASS, Done+verify, INTENT if needed, scope/risks → `fxmind_record_gate` A
-3. **Gate B** — load memories (`fxmind_query`) → `fxmind_record_gate` B
-4. **Implement** — surgical edits; max 3 fix→verify retries
-5. **Gate V** — verify by observation (+ TWINS if bugfix) → `fxmind_record_gate` V
-6. **Gate C** — post-task learn → `fxmind_record_gate` C (clears session)
+1. **Classify** — `question` / `analyze-only` / `plan-first` / `trivial` / `task` (see `.fxmind/modes/task.md`)
+2. **Start** — MCP `fxmind_start_task` (`trivial: true` auto-completes A+B)
+3. **Gate A** — CLASS, Done+verify, INTENT if needed → `fxmind_record_gate` A
+4. **Gate B** — load memories → `fxmind_record_gate` B
+5. **Implement** — surgical edits; max 3 fix→verify retries
+6. **Gate V** — read `.fxmind/modes/task-verify.md`; observe Done (+ TWINS) → `fxmind_record_gate` V (**required before C**)
+7. **Judge** — when task-verify says mandatory (blast radius / money-permission / INTENT)
+8. **Gate C** — post-task learn → `fxmind_record_gate` C (clears session)
 
-Prove claims after work: **`/fxmind judge`**. Behavioral map: `.fxmind/failure-modes.md`.
+Prove claims: **`/fxmind judge`**. Behavioral map: `.fxmind/failure-modes.md`. FiveM evidence: `.fxmind/minimum-evidence.md`.
 
 **Gates are session state (MCP only).** Agents must not Write `.fxmind/fxmind-gates.json` — `gate-guard` blocks it. The file is gitignored (ephemeral).
 

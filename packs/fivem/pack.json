@@ -15,6 +15,7 @@
   "templateFiles": [
     "topic-catalog.md",
     "audit.template.md",
-    "reference.example.mdc"
+    "reference.example.mdc",
+    "minimum-evidence.md"
   ]
 }

@@ -11,9 +11,12 @@ You are the **fxmind** skill — the only skill that should live in the agent sk
 
 ## Auto Task (default)
 
-If the user asks to **change** code/config — **start Task mode immediately**. Do not wait for `/fxmind task`. Read **`.fxmind/modes/task.md`**, activate gates, then classify → Gate A → B → implement → **V** → C.
+If the user asks to **change** code/config — classify (see `.fxmind/modes/task.md`) then run the pipeline. Verify details: **`.fxmind/modes/task-verify.md`**.
 
-If the user asks to **analyze / analisar / review / investigar / diagnosticar / propor** (without “aplica/corrige/implementa”): **analyze and report only** — no edits until they approve (AskQuestion). See `.fxmind/modes/task.md` and the auto-task rule.
+- **question** → answer only (no edit)
+- **analyze-only** → report + AskQuestion; no edit until approved ("analisa e corrige" = full task)
+- **trivial** → `fxmind_start_task` `{ trivial: true }` → edit → V → C
+- **task / plan-first** → A → B → implement → V → (judge if required) → C
 
 `/fxmind task <request>` is optional shorthand for the implementation pipeline.
 
@@ -28,7 +31,9 @@ The full `/fxmind` command body is a slim router — read **`.fxmind/fxmind.md`*
 5. **Project memories** → `.fxmind/memory/_index.md` then relevant `memory/<topic>.md`.
 6. **Installed pack skills** → `.fxmind/skills/_index.md` and `.fxmind/packs.json`.
 7. **Global store** → if `.fxmind/store.json` has `mode: global`, memories live in `~/.fxmind/projects/<id>/` (paths via symlink). Cross-project memories may appear in graph/query links.
-8. **Failure modes** → `.fxmind/failure-modes.md` (behavioral symptom → step map; used by judge / bad-run audit).
+8. **Failure modes** → `.fxmind/failure-modes.md`
+9. **Task verify** → `.fxmind/modes/task-verify.md` (after Implement)
+10. **Minimum evidence** (FiveM pack) → `.fxmind/minimum-evidence.md` when present
 
 ## MCP fast path
 
@@ -48,13 +53,14 @@ When the user asks to **change code/config** (with or without `/fxmind task`), f
 
 | Phase | Required action | Output marker | Before |
 |-------|-----------------|---------------|--------|
-| **Pre-flight** | Classify ask (question / task / plan-first); triviality gate | — | Gate A |
-| **Start** | Call MCP `fxmind_start_task` (or `fxmind_record_gate` gate=START) | — | Gate A |
-| **Gate A** | CLASS, goal, **Done+verify**, INTENT if behavior change, scope, risks, memory plan | `🛑 GATE A COMPLETE` | Any file edit |
-| **Gate B** | Load memories via `fxmind_query` (or index + 3–5 files); read `.fxmind/reference.md`; primary sources for APIs | `🛑 GATE B COMPLETE` | Any file edit |
-| **Implement** | Surgical edits; surprise re-route; max 3 fix→verify retries | — | — |
-| **Gate V** | Verify by observation (Done + surrounding health + TWINS if bugfix) | `🛑 GATE V COMPLETE` | Gate C / final claim of success |
-| **Gate C** | Post-task learn — update memory or state "no reusable knowledge" | `🛑 GATE C COMPLETE` | Final reply |
+| **Classify** | One CLASS: question / analyze-only / plan-first / trivial / task | — | Start |
+| **Start** | `fxmind_start_task` (`trivial: true` when CLASS=trivial) | — | Gate A |
+| **Gate A** | CLASS, goal, Done+verify, INTENT if needed, scope | `🛑 GATE A COMPLETE` | Any file edit |
+| **Gate B** | Memories + reference + primary sources | `🛑 GATE B COMPLETE` | Any file edit |
+| **Implement** | Surgical edits; max 3 retries | — | — |
+| **Gate V** | Read `.fxmind/modes/task-verify.md`; observe Done (+ TWINS) | `🛑 GATE V COMPLETE` | Gate C |
+| **Judge** | If task-verify says mandatory → `.fxmind/modes/judge.md` | verdict line | Final success claim |
+| **Gate C** | Learn or "mudança pontual" (**MCP rejects C without V**) | `🛑 GATE C COMPLETE` | Final reply |
 
 **User corrections:** when the user fixes your mistake, ask whether to save to memory Pitfalls and/or **`.fxmind/corrections/`** via MCP `fxmind_record_correction` (skill-improvement backlog). See `.fxmind/modes/task.md` → *User corrections*.
 

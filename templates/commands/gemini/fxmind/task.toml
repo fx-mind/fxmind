@@ -5,18 +5,11 @@ prompt = """
 
 **Task text:** {{args}}
 
-Read and follow **`.fxmind/modes/task.md`** in full (source of truth). Do not improvise a shorter pipeline.
+Read **`.fxmind/modes/task.md`** (source of truth). After Implement, read **`.fxmind/modes/task-verify.md`**.
 
-Summary (details in that file):
-1. Classify ask (question → no edit; plan-first → stop after plan; task → continue). Triviality gate when applicable.
-2. MCP `fxmind_start_task` then Gate A (CLASS, Done+verify, INTENT if behavior change, scope) → `fxmind_record_gate` A.
-3. Gate B (memories / reference / primary sources) → `fxmind_record_gate` B.
-4. Implement surgically (max 3 fix→verify retries; surprise re-route).
-5. Gate V (observe Done + surrounding health + TWINS if bugfix) → `fxmind_record_gate` V.
-6. Gate C (learn or "mudança pontual") → `fxmind_record_gate` C.
-7. Reply outcome-first with owed artifacts (INTENT / TWINS / AUTH / PENDING).
-
-Hard stop: no code edits until Gate A and Gate B markers are visible.
-Never Write `.fxmind/fxmind-gates.json`. Prefer MCP tools when available.
-Behavioral map: `.fxmind/failure-modes.md`. Optional prove step: `/fxmind:judge`.
+Classify first: question | analyze-only | plan-first | trivial | task.
+- trivial → `fxmind_start_task` with trivial=true (auto A+B)
+- else → start_task → A → B → implement → V → judge if required → C
+MCP rejects Gate C without V. Minimum evidence: `.fxmind/minimum-evidence.md` when present.
+Never Write `.fxmind/fxmind-gates.json`.
 """

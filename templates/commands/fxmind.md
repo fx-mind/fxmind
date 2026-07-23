@@ -59,7 +59,9 @@ All agents read and write the **same project memory** under `.fxmind/` at the pr
 | `.fxmind/memory/<topic>.md` | Shared topic memories (compact English, `lang: en-compact`) |
 | `.fxmind/memory/_index.md` | Memory router |
 | `.fxmind/modes/<mode>.md` | On-demand mode specs (read only the matched one) |
+| `.fxmind/modes/task-verify.md` | Gate V + Judge triggers (load after Implement) |
 | `.fxmind/failure-modes.md` | Behavioral failure map (judge / Task self-audit) |
+| `.fxmind/minimum-evidence.md` | Pack binding evidence set (FiveM when installed) |
 | `.fxmind/audit-procedure.md` | Heavy audit matrix (read only on `audit`) |
 | `.fxmind/topic-catalog.md` | Learn search hints |
 | `.fxmind/knowledge-graph.json` | Topic graph for query/path/explain |

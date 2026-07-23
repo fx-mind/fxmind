@@ -86,11 +86,16 @@ const TOOL_DEFS = [
   {
     name: "fxmind_start_task",
     description:
-      "Start a Task session (sets taskActive). Preferred over writing gates JSON. Call before Gate A.",
+      "Start a Task session (sets taskActive). Preferred over writing gates JSON. Call before Gate A. Pass trivial=true for one-file tiny edits to auto-complete Gates A and B.",
     inputSchema: {
       type: "object",
       properties: {
         note: { type: "string", description: "Optional goal/scope note." },
+        trivial: {
+          type: "boolean",
+          description:
+            "If true, marks Gates A and B complete immediately (tiny one-file edits). Still requires Gate V before Gate C.",
+        },
       },
     },
   },
@@ -310,7 +315,13 @@ function dispatchTool(name, args) {
       return tools.driftCheck(root, args.file || "");
 
     case "fxmind_start_task":
-      return { ok: true, ...tools.startTask(root, { note: args.note || "" }) };
+      return {
+        ok: true,
+        ...tools.startTask(root, {
+          note: args.note || "",
+          trivial: Boolean(args.trivial),
+        }),
+      };
 
     case "fxmind_gate_status":
       return tools.gateStatus(root);

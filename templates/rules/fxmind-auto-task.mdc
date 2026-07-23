@@ -5,49 +5,36 @@ alwaysApply: true
 
 # fxmind — auto Task
 
-**Prerequisite:** MCP server **`fxmind` must be enabled and connected** (tools like `fxmind_start_task` visible).
+**Prerequisite:** MCP **fxmind** connected (`fxmind_start_task` visible). If missing → STOP; tell user to enable it (Windows: `fxmind hooks install` if mcp.json keeps dying).
 
-If MCP tools are **missing / disabled / errored**:
-1. **STOP immediately** — do **not** implement, edit code, or “aplicar a correção sem MCP”.
-2. Tell the user in their language: enable **fxmind** in Cursor → Settings → Tools & MCP, then retry.
-3. On Windows, if it keeps disabling itself, the project `.cursor/mcp.json` must use `node` + `mcp-server.js` (not bare `fxmind-mcp`). Suggest `fxmind --update -y` / `fxmind hooks install`.
+When the user asks to **change code/config** — run Task automatically. Read **`.fxmind/modes/task.md`** (verify details: **`.fxmind/modes/task-verify.md`**).
 
-When the user asks to **make, create, implement, fix, adjust, refactor, add, remove, wire, migrate, disable, enable, or change code/config** — run the **fxmind Task pipeline automatically**. Do **not** wait for `/fxmind task`.
+## Classify first (one CLASS)
 
-## Analyze-only (no implement until approved)
+| CLASS | Do |
+|-------|-----|
+| **question** | Answer only — no Task implement |
+| **analyze-only** | Investigate → report → AskQuestion — no edit until approval ("analisa e corrige" = full task) |
+| **plan-first** | Plan → stop for approval |
+| **trivial** | `fxmind_start_task` `{ trivial: true }` → edit → V → C |
+| **task** | Full A → B → implement → V → (judge if required) → C |
 
-If the user asks to **analyze, analisar, review, investigar, diagnosticar, explicar o problema, propor, planear/planejar, or "só analisa"** — **do not edit code**.
+## Implementation flow
 
-1. Investigate (read code/memories/MCP as needed).
-2. Report in the user's language: findings, root cause (if any), proposed change, risks, files/resources touched.
-3. **STOP** and ask for approval (Cursor: **AskQuestion** — e.g. *Implementar agora?* / *Só reportar*).
-4. Implement **only** after explicit approval ("sim", "implementa", "pode aplicar", option chosen).
-5. "Analisa e corrige" / "analisa e aplica" = analyze then implement (full Task). Ambiguous → treat as analyze-only and ask.
+1. `fxmind_start_task` (add `trivial: true` when CLASS=trivial).
+2. Gate A → `fxmind_record_gate` A (skip ceremony if trivial already auto-marked; still state Done in chat).
+3. Gate B → `fxmind_record_gate` B (same for trivial).
+4. Implement (max 3 retries). RCON missing → `fxmind_fivem_install` + restart fivem-start. Reload via `fxmind_fivem_cmd`; debug via `fxmind_fivem_console_tail`.
+5. Read **task-verify.md** → Gate V → `fxmind_record_gate` V. **C without V fails in MCP.**
+6. Judge if task-verify says mandatory.
+7. Gate C → learn / "mudança pontual" → `fxmind_record_gate` C + `fxmind_validate_memories` if memory wrote.
+8. User correction → AskQuestion: Pitfalls / `fxmind_record_correction` / both / neither.
 
-## Required flow (every implementation request)
+## Exceptions
 
-1. Confirm MCP **fxmind** tools are available (`fxmind_start_task`). If not → ask user to enable MCP **fxmind** and stop.
-2. Read **`.fxmind/modes/task.md`** and follow it (classify ask + triviality gate first).
-3. Call MCP **`fxmind_start_task`** (never Write the gates JSON).
-4. **Gate A** → CLASS, goal, Done+verify, INTENT if needed, scope → **`fxmind_record_gate`** `A`.
-5. **Gate B** → load memories (`fxmind_query` preferred) → **`fxmind_record_gate`** `B`.
-6. **Implement** the change (max 3 fix→verify retries; surprise re-route).
-7. If FiveM RCON is missing (`passwordSet: false`) → MCP **`fxmind_fivem_install`** once, then ask the user to restart **fivem-start**.
-8. **Reload FXServer yourself** when a resource changed: MCP **`fxmind_fivem_cmd`** (`ensure`/`restart`). Never ask the user to run ensure.
-9. **Live debug** when needed: tagged prints → ensure → user reproduces → **`fxmind_fivem_console_tail`** (terminal mirror) → fix → remove prints.
-10. **Gate V** → verify by observation (Done + surrounding health + TWINS if bugfix) → **`fxmind_record_gate`** `V`.
-11. **Gate C** → post-task learn → **`fxmind_record_gate`** `C` (clears task). After memory writes, call **`fxmind_validate_memories`**.
-12. If the user corrected a mistake → AskQuestion: Pitfalls / **`fxmind_record_correction`** / both / neither (see `.fxmind/modes/task.md`).
+- question / analyze-only (until approved)
+- Explicit modes: learn, audit, **judge**, query, graph, memory health, reference, update
 
-## Exceptions (skip Task)
+## Style
 
-- Pure questions / explanations with no code change (classify as question — do not edit)
-- **Analyze-only** requests (see above) — report + wait for approval; no Task implement until approved
-- Explicit modes: `/fxmind learn`, `audit`, `judge`, `query`, `graph`, `memory health`, `reference`, `update`
-- **Trivial** *implementation* tasks (one file, ~<10 lines, no new behavior, no search): still start Task + abbreviated A/B + V + C — see `.fxmind/modes/task.md` triviality gate. Do not invent a fourth pipeline outside that file.
-
-## Style (this repo)
-
-Match senior Lua / FiveM house style: **monolith-first**, few files, almost no comments, Tunnel/`return` for queries (not event roundtrips). Read `.fxmind/memory/lua-style.md` and `lua-scope.md` when editing Lua. Skill backlog lives in `.fxmind/corrections/` (not memory).
-
-`/fxmind task <request>` remains valid; it is optional when this rule applies.
+Monolith-first Lua/FiveM; Tunnel/`return` for queries. Memories: `lua-style.md`, `lua-scope.md`. Skill backlog: `.fxmind/corrections/`.
