@@ -65,6 +65,8 @@ describe("fivem rcon allowlist", () => {
     assert.equal(first.needsServerRestart, true);
     assert.match(fs.readFileSync(path.join(dir, "dev", "dev.cfg"), "utf8"), /rcon_password/);
     assert.ok(fs.existsSync(path.join(dir, ".vscode", "fivem-start.ps1")));
+    const ps1 = fs.readFileSync(path.join(dir, ".vscode", "fivem-start.ps1"), "utf8");
+    assert.doesNotMatch(ps1, /2>&1\s*\|\s*ForEach-Object/);
     assert.ok(fs.existsSync(path.join(dir, ".vscode", "tasks.json")));
     const second = fivem.installFivemDev({ root: dir });
     assert.equal(second.needsServerRestart, false);
@@ -72,5 +74,37 @@ describe("fivem rcon allowlist", () => {
       second.steps.find((s) => s.step === "rcon_password").action,
       "kept",
     );
+  });
+
+  it("upgrades legacy tee script that breaks interactive console", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fxinst-"));
+    fs.mkdirSync(path.join(dir, "dev"), { recursive: true });
+    fs.mkdirSync(path.join(dir, ".vscode"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "dev", "dev.cfg"),
+      'endpoint_add_udp "0.0.0.0:30120"\nset rcon_password "fxmind-local-dev"\n',
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(dir, ".vscode", "fivem-start.ps1"),
+      "& $fx @argsList 2>&1 | ForEach-Object { Write-Host $_ }\n",
+      "utf8",
+    );
+    const result = fivem.installFivemDev({ root: dir });
+    const ps1 = fs.readFileSync(path.join(dir, ".vscode", "fivem-start.ps1"), "utf8");
+    assert.equal(
+      result.steps.find((s) => s.step === "ps1").action,
+      "fixed-interactive-console",
+    );
+    assert.doesNotMatch(ps1, /2>&1\s*\|\s*ForEach-Object/);
+  });
+
+  it("statusProbe reports unavailable when RCON is not configured", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fxprobe-"));
+    const result = await fivem.statusProbe({ root: dir });
+    assert.equal(result.configured, false);
+    assert.equal(result.available, false);
+    assert.equal(result.serverReachable, false);
+    assert.match(result.reason, /not configured/i);
   });
 });

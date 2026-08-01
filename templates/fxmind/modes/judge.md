@@ -27,7 +27,7 @@ Default: latest completed work in this conversation. Or named diff/branch/direct
 
 1. **Collect claims** — done / verified / untouched (each row → prove, refute, or UNVERIFIABLE).
 2. **Ground truth** — `git diff` + `git status` vs ask blast radius and Gate A SCOPE.
-3. **Re-run claimed checks** — tests/build; FiveM: `fxmind_fivem_cmd` + `fxmind_fivem_console_tail`. Missing env → UNVERIFIABLE.
+3. **Re-run claimed checks** — tests/build; FiveM: `fxmind_fivem_status` first — when `available: true`, `fxmind_fivem_cmd` + `fxmind_fivem_console_tail`. MCP missing or FXServer down → UNVERIFIABLE (do not fake ensure).
 4. **Hunt frauds** (order): weakened checks → false completion → scope creep → unauthorized outward action (not local ensure) → spec betrayal (user > memory/reference > tests > code) → missed twins → debris → costume rigor.
 5. **Verdict first line:** `VERIFIED` | `VERIFIED WITH CAVEATS` | `REFUTED` — then claims table, frauds, smallest recommended fix (apply only if asked).
 

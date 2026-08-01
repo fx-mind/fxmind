@@ -24,8 +24,12 @@ If `.fxmind/audit-procedure.md` is missing, run `fxmind --update -y` (or `npx --
 - Read the **full `fxmanifest.lua`** scope — never audit a single file unless explicitly scoped.
 - Every finding cites `file:line` + the exact event/symbol — read the line before citing.
 - Report every view-cache row V-a–V-j as **Found** or **N/A**; never skip.
+- **Pass 2b is mandatory** — inventory **every** client-callable endpoint (net events + each `Tunnel.bindInterface` `func.*` + NUI→server); check E-a…E-g. A resource with 0 `RegisterNetEvent` still exposes endpoints via Tunnel.
+- **Estimate response KB** per read endpoint (`tunnel_res` counts toward the §1.6 budget; > ~64 KB = High).
 - `manager:*` / admin events to `-1` → **Critical**; never recommend `TriggerClientEvent("manager:*", -1, ...)`.
 - Cooldown (`CanUse*Manager` with `os.time()`) is **not** permission (§5.1).
+- Mutation without `SafeEvent` or without input validation → **High**; never downgrade because "resource is small".
 - Severity→Phase: Critical→1, High→2, Medium→3, Low→4. Never downgrade.
 - Summary counts must equal findings rows; Files reviewed = manifest paths only.
+- Each pass ends with its `🛑 AUDIT PASS <id> COMPLETE` marker — do not skip.
 - Do not auto-fix; ask before implementing Phase 1.

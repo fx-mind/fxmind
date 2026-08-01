@@ -63,7 +63,7 @@ FiveM example:
 3. Max **3** fix→verify retries → hand-back.
 4. No commit/push; no weaken checks; no secrets; no silent scope expand; no deps unless asked.
 5. Outward AUTH for push/deploy-remote/publish/send. **ensure/restart = local verify, no AUTH.**
-6. FiveM: if `passwordSet: false` → `fxmind_fivem_install` once, ask restart **fivem-start**. After resource edit → `fxmind_fivem_cmd` + `fxmind_fivem_console_tail`. Live debug: tagged prints → ensure → user reproduces → tail → fix → remove prints.
+6. FiveM: call `fxmind_fivem_status` first. If `available: true` → after resource edit use `fxmind_fivem_cmd` + `fxmind_fivem_console_tail`. If `passwordSet: false` → `fxmind_fivem_install` once, ask restart **fivem-start**, stop. If MCP tools missing or `serverReachable: false` → skip automation; ask user to run ensure/restart manually. Live debug: tagged prints → ensure (when available) → user reproduces → tail or pasted console → fix → remove prints.
 7. Ask when missing: target resource, expected behavior, job/permission, client vs server vs NUI, destructive/money/inventory rules. One pointed question with your recommended reading when only the user can settle.
 
 Selective memory: never load all. Canonicalize slugs (accents, singular/plural).
@@ -90,5 +90,5 @@ Memory rules: template + `lang: en-compact`; grep-confirmed frontmatter; `paths[
 ## Rules
 
 - Never invent paths/events/APIs/permissions.
-- Never ask user to ensure/restart or paste console — use MCP.
+- When FiveM MCP is available (`fxmind_fivem_status.available: true`), use `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` — do not ask the user. When MCP or FXServer is unavailable, skip and ask the user to run ensure/restart manually (paste console output only if Gate V needs it).
 - Pack minimum evidence (when present): `.fxmind/minimum-evidence.md` before acting in that domain.

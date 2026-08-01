@@ -39,13 +39,19 @@ The full `/fxmind` command body is a slim router — read **`.fxmind/fxmind.md`*
 
 If the fxmind MCP server is registered, prefer its tools over manual mode specs — they run in Node (faster, cheaper): `fxmind_list_memories`, `fxmind_validate_memories`, `fxmind_query`, `fxmind_graph`, `fxmind_drift_check`, `fxmind_start_task`, `fxmind_gate_status`, `fxmind_record_gate`, `fxmind_record_correction`, `fxmind_list_corrections`, `fxmind_fivem_install`, `fxmind_fivem_cmd`, `fxmind_fivem_console_tail`, `fxmind_fivem_status`, `fxmind_db_status`, `fxmind_db_query`, `fxmind_db_schema`, `fxmind_db_sample`, `fxmind_db_explore`, `fxmind_db_analyze`.
 
-**FiveM local setup:** if `fxmind_fivem_status` shows `passwordSet: false` (or ensure fails with missing password), call **`fxmind_fivem_install`** once, then ask the user to restart the **fivem-start** task. Do not hand-edit cfg/tasks when this tool exists.
+**FiveM console — availability gate (before ensure/tail):**
+
+1. If `fxmind_fivem_*` MCP tools are **not** in your tool list → **skip** RCON and log tail; tell the user to run `ensure`/`restart` manually in the FXServer console (and paste output if Gate V needs it).
+2. Otherwise call **`fxmind_fivem_status`** first. Use `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` **only** when `available: true`.
+3. `passwordSet: false` → **`fxmind_fivem_install`** once, ask user to restart **fivem-start**, then stop — do not call `fxmind_fivem_cmd` until they confirm.
+4. `configured` but `serverReachable: false` → **skip** automation; ask user to start **fivem-start** and run the console command manually.
+5. Max one install attempt; no retry loops on dead RCON.
+
+**After editing a FiveM resource (when available):** call `fxmind_fivem_cmd` (`ensure`/`restart`) yourself.
+
+**Live debug (when available):** tagged `print`s → ensure via MCP → user reproduces in-game → you read **`fxmind_fivem_console_tail`** → fix → remove prints. When MCP or FXServer is unavailable, ask the user to reproduce and share console output instead.
 
 **MySQL:** connection comes from `mysql_connection_string` in cfg (oxmysql). Prefer `fxmind_db_schema` / `fxmind_db_sample` before ad-hoc SQL. For **DELETE/DROP/TRUNCATE**, AskQuestion the user first; only then call `fxmind_db_query` with `approvedByUser: true`. Never invent approval.
-
-**After editing a FiveM resource:** call `fxmind_fivem_cmd` (`ensure`/`restart`) yourself. **Do not ask the user** to run ensure/restart.
-
-**Live debug:** tagged `print`s → ensure via MCP → user reproduces in-game → you read **`fxmind_fivem_console_tail`** (last lines of `.fxmind/fivem-console.log` mirrored by the in-Cursor `fivem-start` task) → fix → remove prints. Never ask the user to paste logs.
 
 ## Task mode — Gates (enforced by hooks)
 

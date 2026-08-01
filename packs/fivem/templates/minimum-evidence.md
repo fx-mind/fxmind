@@ -24,7 +24,7 @@ Explicit user statement > `.fxmind/memory/*` + `reference.md` > pack skill docs 
 
 ## Verify by observation
 
-- Resource touched → `fxmind_fivem_cmd` (`ensure`/`restart`) + `fxmind_fivem_console_tail` (no script errors).
+- Resource touched → `fxmind_fivem_status` first; when `available: true` → `fxmind_fivem_cmd` (`ensure`/`restart`) + `fxmind_fivem_console_tail` (no script errors). When MCP or FXServer unavailable → UNVERIFIABLE; ask user to run ensure manually.
 - NUI change → confirm UI path/build artifact exists or page renders when runnable.
 - Cannot verify → UNVERIFIABLE, never "should work".
 

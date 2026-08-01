@@ -1,6 +1,6 @@
-# Start FXServer inside the Cursor terminal; mirror stdout/stderr to
-# .fxmind/fivem-console.log for fxmind MCP / `fxmind fivem tail`.
-# Avoid Join-Path/Test-Path wildcards on [bracket] paths — use [IO.Path].
+# Start FXServer inside the Cursor terminal with interactive console I/O.
+# Do NOT pipe stdout here — piping breaks stdin echo (typed chars hidden until Enter).
+# Agent logs: RCON -> .fxmind/fivem-console.log; optional .fxmind/server-debug.log.
 # Generated/updated by: fxmind fivem install
 $ErrorActionPreference = 'Continue'
 
@@ -24,14 +24,14 @@ $header = '==== fivem-start {0} ====' -f (Get-Date -Format o)
 [System.IO.File]::WriteAllText($log, $header + [Environment]::NewLine)
 
 Write-Host ('FXServer -> {0}' -f $fx)
-Write-Host ('Console log -> {0}' -f $log)
+Write-Host ('RCON log -> {0}' -f $log)
 Write-Host ('cwd -> {0}' -f $root)
+Write-Host ''
 
 Set-Location -LiteralPath $root
 
 $argsList = @('+set', 'onesync', 'on', '+exec', '__FXMIND_EXEC_CFG__')
-& $fx @argsList 2>&1 | ForEach-Object {
-  $line = [string]$_
-  [System.IO.File]::AppendAllText($log, $line + [Environment]::NewLine)
-  Write-Host $line
+& $fx @argsList
+if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+  exit $LASTEXITCODE
 }

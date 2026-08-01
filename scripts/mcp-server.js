@@ -165,7 +165,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_fivem_install",
     description:
-      "Configure local FiveM RCON + Cursor fivem-start tee (idempotent). Writes rcon_password to cfg, .vscode/fivem-start.ps1, tasks.json, gitignore. Run once per project (or when RCON/status fails). After adding password, user must restart FXServer.",
+      "Configure local FiveM RCON + Cursor fivem-start task (idempotent). Writes rcon_password to cfg, .vscode/fivem-start.ps1, tasks.json, gitignore. Run once per project (or when RCON/status fails). After adding password, user must restart FXServer.",
     inputSchema: {
       type: "object",
       properties: {
@@ -183,13 +183,13 @@ const TOOL_DEFS = [
   {
     name: "fxmind_fivem_status",
     description:
-      "Check local FiveM RCON config (host/port/password/log). Dev-only — FXServer via IDE task, no txAdmin. If passwordSet is false, call fxmind_fivem_install.",
+      "Check local FiveM RCON config and probe FXServer reachability (UDP status). Dev-only — FXServer via IDE task, no txAdmin. Call BEFORE fxmind_fivem_cmd or fxmind_fivem_console_tail. Use cmd/tail only when available:true. If passwordSet:false → fxmind_fivem_install once + ask restart fivem-start. If configured but serverReachable:false → skip automation; ask user to start fivem-start and run console commands manually.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "fxmind_fivem_cmd",
     description:
-      "Send an allowlisted FXServer console command over local UDP RCON (ensure/start/stop/restart/refresh/status/resmon). After editing a resource, call this yourself — do not ask the user. If RCON is not configured, call fxmind_fivem_install first. Requires FXServer running with rcon_password loaded.",
+      "Send an allowlisted FXServer console command over local UDP RCON (ensure/start/stop/restart/refresh/status/resmon). Call fxmind_fivem_status first — only use when available:true. After editing a resource, call this yourself when available. If MCP tools are missing or available:false, skip and ask the user to run ensure/restart manually in the FXServer console.",
     inputSchema: {
       type: "object",
       properties: {
@@ -204,7 +204,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_fivem_console_tail",
     description:
-      "Read the last N lines of .fxmind/fivem-console.log (FXServer stdout mirrored by the in-Cursor fivem-start.ps1 task). Full terminal output for live debug — not only the last ensure reply. Never ask the user to paste console output.",
+      "Read the last N lines of .fxmind/fivem-console.log (RCON exchanges) and optional server-debug.log. Call fxmind_fivem_status first — prefer when available:true. If log empty or MCP unavailable, skip and ask the user to paste console output or start fivem-start.",
     inputSchema: {
       type: "object",
       properties: {
@@ -365,7 +365,7 @@ function dispatchTool(name, args) {
       });
 
     case "fxmind_fivem_status":
-      return fivemRcon.status();
+      return fivemRcon.statusProbe();
 
     case "fxmind_fivem_cmd":
       return fivemRcon.execRcon(args.command || "");

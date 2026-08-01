@@ -375,8 +375,7 @@ function publicConfig(config) {
 }
 
 /**
- * Tail .fxmind/fivem-console.log — last lines of the FXServer terminal mirrored
- * by .vscode/fivem-start.ps1 (runs inside Cursor). Also merges server-debug.log if present.
+ * Tail .fxmind/fivem-console.log (RCON exchanges) and optional server-debug.log.
  */
 function consoleTail(options = {}) {
   const config = rconConfig(options);
@@ -411,7 +410,7 @@ function consoleTail(options = {}) {
       ok: false,
       empty: true,
       error:
-        "sem linhas ainda — corre a task fivem-start no Cursor (.vscode/fivem-start.ps1 tees para .fxmind/fivem-console.log)",
+        "sem linhas ainda — inicie fivem-start e use RCON (fxmind fivem ensure / MCP fxmind_fivem_cmd); opcional: .fxmind/server-debug.log",
       config: publicConfig(config),
       path: terminalLog,
     };
@@ -435,6 +434,65 @@ function status() {
     configured: isConfigured(config),
     allowedCommands: [...ALLOWED_COMMANDS],
     config: publicConfig(config),
+  };
+}
+
+function statusReason({ configured, serverReachable, probeError }) {
+  if (!configured) {
+    return "RCON not configured — run fxmind fivem install (or fxmind_fivem_install), then restart fivem-start";
+  }
+  if (!serverReachable) {
+    if (/timeout|FXServer running/i.test(probeError || "")) {
+      return "FXServer not running or RCON unreachable — start the fivem-start task, then retry";
+    }
+    if (/auth failed|bad rcon/i.test(probeError || "")) {
+      return "RCON auth failed — check rcon_password matches dev/dev.cfg and restart FXServer";
+    }
+    if (/no rcon_password loaded/i.test(probeError || "")) {
+      return "FXServer has no rcon_password loaded — restart fivem-start after install";
+    }
+    return probeError || "FXServer not reachable via RCON";
+  }
+  return null;
+}
+
+/**
+ * Config check + lightweight RCON probe (`status`). Used by MCP before ensure/tail.
+ */
+async function statusProbe(overrides = {}) {
+  const config = rconConfig(overrides);
+  const configured = isConfigured(config);
+  const base = {
+    ok: true,
+    configured,
+    allowedCommands: [...ALLOWED_COMMANDS],
+    config: publicConfig(config),
+  };
+
+  if (!configured) {
+    return {
+      ...base,
+      serverReachable: false,
+      available: false,
+      reason: statusReason({ configured: false, serverReachable: false }),
+    };
+  }
+
+  const probe = await execRcon("status", overrides);
+  const probeError = probe.error || null;
+  const timeout = /timeout|FXServer running/i.test(probeError || "");
+  const serverReachable = probe.ok || (Boolean(probe.response) && !timeout);
+
+  return {
+    ...base,
+    serverReachable,
+    available: serverReachable,
+    reason: statusReason({ configured, serverReachable, probeError }),
+    probe: {
+      ok: probe.ok,
+      error: probeError,
+      responsePreview: probe.response ? String(probe.response).slice(0, 200) : null,
+    },
   };
 }
 
@@ -504,26 +562,48 @@ function ensureGitignoreLines(root) {
   return { path: ".gitignore", added };
 }
 
+const LEGACY_BROKEN_TEE_RE = /2>&1\s*\|\s*ForEach-Object/;
+
+function renderFivemStartPs1(execCfg) {
+  const templatePath = path.join(__dirname, "..", "templates", "vscode", "fivem-start.ps1");
+  if (!fs.existsSync(templatePath)) return null;
+  return fs.readFileSync(templatePath, "utf8").replace(/__FXMIND_EXEC_CFG__/g, execCfg);
+}
+
 function writeFivemStartPs1(root, execCfg, { force = false } = {}) {
   const dest = path.join(root, ".vscode", "fivem-start.ps1");
-  const templatePath = path.join(__dirname, "..", "templates", "vscode", "fivem-start.ps1");
-  if (!fs.existsSync(templatePath)) {
+  const rendered = renderFivemStartPs1(execCfg);
+  if (!rendered) {
     return { path: ".vscode/fivem-start.ps1", action: "missing-template", ok: false };
   }
+
   if (fs.existsSync(dest) && !force) {
-    // Still refresh exec cfg placeholder if our marker is present
-    let current = fs.readFileSync(dest, "utf8");
-    if (current.includes("__FXMIND_EXEC_CFG__") || /\+exec',\s*'[^']+'/.test(current)) {
-      current = current.replace("__FXMIND_EXEC_CFG__", execCfg);
-      current = current.replace(/\+exec',\s*'[^']+'/, `+exec', '${execCfg}'`);
-      fs.writeFileSync(dest, current, "utf8");
+    const current = fs.readFileSync(dest, "utf8");
+    const hasBrokenTee = LEGACY_BROKEN_TEE_RE.test(current);
+    const needsExecRefresh =
+      current.includes("__FXMIND_EXEC_CFG__") || /\+exec',\s*'[^']+'/.test(current);
+
+    if (!needsExecRefresh && !hasBrokenTee) {
+      return { path: ".vscode/fivem-start.ps1", action: "kept", ok: true };
+    }
+
+    if (needsExecRefresh && !hasBrokenTee && !current.includes("__FXMIND_EXEC_CFG__")) {
+      const updated = current.replace(/\+exec',\s*'[^']+'/, `+exec', '${execCfg}'`);
+      fs.writeFileSync(dest, updated, "utf8");
       return { path: ".vscode/fivem-start.ps1", action: "updated-exec", ok: true };
     }
-    return { path: ".vscode/fivem-start.ps1", action: "kept", ok: true };
+
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, rendered, "utf8");
+    return {
+      path: ".vscode/fivem-start.ps1",
+      action: hasBrokenTee ? "fixed-interactive-console" : "updated-exec",
+      ok: true,
+    };
   }
-  let body = fs.readFileSync(templatePath, "utf8").replace(/__FXMIND_EXEC_CFG__/g, execCfg);
+
   fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.writeFileSync(dest, body, "utf8");
+  fs.writeFileSync(dest, rendered, "utf8");
   return { path: ".vscode/fivem-start.ps1", action: force ? "replaced" : "created", ok: true };
 }
 
@@ -650,6 +730,7 @@ module.exports = {
   appendRconLog,
   consoleTail,
   status,
+  statusProbe,
   installFivemDev,
   DEFAULT_LOCAL_PASSWORD,
 };

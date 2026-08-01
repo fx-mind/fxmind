@@ -7,7 +7,7 @@
 Claims are not evidence. Observe:
 
 1. **(a)** Gate A **Done** criterion passes (ran, rendered, counted, console clean) — not inferred from reading code alone.
-2. **(b)** Surrounding health for the touched area (lint/tests/build if present; FiveM: `fxmind_fivem_cmd` ensure/restart + `fxmind_fivem_console_tail` when a resource changed). Targeted green + broken surroundings = failed verification.
+2. **(b)** Surrounding health for the touched area (lint/tests/build if present; FiveM: `fxmind_fivem_status` first — when `available: true`, `fxmind_fivem_cmd` ensure/restart + `fxmind_fivem_console_tail` when a resource changed; otherwise UNVERIFIABLE and ask user to run ensure manually). Targeted green + broken surroundings = failed verification.
 3. **(c) Twin check** when you fixed a defect — search the project and include verbatim:
    `TWINS: searched <pattern> — found other sites: <files, or "none">`
    Fix them or list them.

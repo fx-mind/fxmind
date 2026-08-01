@@ -224,7 +224,7 @@ The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP sp
 | `fxmind_start_task` | Begin Task session |
 | `fxmind_gate_status` / `fxmind_record_gate` | Gates START/A/B/V/C (session only) |
 | `fxmind_record_correction` / `fxmind_list_corrections` | Skill-improvement backlog |
-| `fxmind_fivem_status` / `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` | Local FXServer RCON + log tail (dev) |
+| `fxmind_fivem_status` / `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` | Local FXServer RCON + log tail (dev). **Status probes reachability** — use cmd/tail only when `available: true`; otherwise ask user to run console commands manually. |
 
 Skip with `--no-mcp`. Refresh with `fxmind hooks install` or `fxmind --update -y`. Restart the MCP client after changes.
 
@@ -236,13 +236,13 @@ One-shot setup (agent or human):
 fxmind fivem install
 ```
 
-Writes `rcon_password` into cfg, `.vscode/fivem-start.ps1` (console tee), `tasks.json`, and gitignore. Idempotent. MCP: `fxmind_fivem_install`.
+Writes `rcon_password` into cfg, `.vscode/fivem-start.ps1` (interactive terminal), `tasks.json`, and gitignore. Idempotent. MCP: `fxmind_fivem_install`.
 
 | Need | How |
 |------|-----|
 | First-time / missing password | `fxmind fivem install` then restart **fivem-start** |
 | `ensure` / `restart` | UDP RCON (`fxmind fivem ensure` / MCP) |
-| Full terminal log for `tail` / MCP | Task **fivem-start** tees stdout → `.fxmind/fivem-console.log` |
+| Full log for `tail` / MCP | RCON exchanges → `.fxmind/fivem-console.log`; optional `server-debug.log` |
 
 ```bash
 fxmind fivem ensure my_resource
