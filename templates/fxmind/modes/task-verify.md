@@ -1,6 +1,17 @@
 # fxmind — Task verify (Gate V + Judge triggers)
 
-**Load on demand** from Task mode after Implement (or when finishing a trivial task). Do not narrate step headers to the user.
+**Load on demand** from Task mode after Implement + **diff self-review** (see `task.md` §5b). Do not narrate step headers to the user.
+
+## Pre-Gate V — self-review (FiveM tasks)
+
+Before observation checks, confirm you ran `.fxmind/skills/fivem-development/quality-gates.md` self-review loop on the diff. **Gate V cannot close without these lines** (include inside the marker):
+
+```
+REVIEW: endpoints <n> (<names>) — quality checks <pass|fixed: list|deferred: list> — clean-code <pass|fixed: list>
+PARITY: <n/a | invariants preserved | changed: reason>   ← required when Gate A had INVARIANTS (refactor)
+```
+
+Non-FiveM tasks: `REVIEW: n/a — non-FiveM` and `PARITY: n/a`.
 
 ## Gate V — verify by observation
 
@@ -18,9 +29,11 @@ On failure: mechanical mistake → Implement; surprise → re-open evidence (Gat
 
 Output:
 ```
-🛑 GATE V COMPLETE — DONE: <observed|failed|unverifiable>, CHECKS: <what ran>, TWINS: <n/a | summary>
+🛑 GATE V COMPLETE — REVIEW: <line>, PARITY: <line>, DONE: <observed|failed|unverifiable>, CHECKS: <what ran>, TWINS: <n/a | summary>
 ```
-Then **`fxmind_record_gate`** `gate: "V"`. **Gate C is rejected by MCP until V is recorded.**
+Then **`fxmind_record_gate`** `gate: "V"` (include REVIEW + PARITY in `note` if supported). **Gate C is rejected by MCP until V is recorded.**
+
+**Forbidden:** Gate V without REVIEW line on FiveM tasks = verification theater (failure mode #14).
 
 ## When Judge is mandatory
 
@@ -36,6 +49,8 @@ Otherwise Gate V alone is enough. Judge is read-only unless the user asks to app
 ## Reply artifacts (owed only)
 
 - `INTENT: ...` — behavior changed
+- `REVIEW: ...` — FiveM quality self-review (from quality-gates.md)
+- `PARITY: ...` — refactor invariant check
 - `TWINS: ...` — defect fixed
 - `AUTH: user said "..."` — outward action (push/deploy-remote/publish/send). Local ensure/restart does **not** need AUTH
 - `PENDING: <action> — awaiting your authorization` — prescribed follow-up deliberately skipped

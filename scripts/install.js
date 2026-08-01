@@ -45,6 +45,8 @@ const LEGACY_COMMAND_SKILL_DEV = "fivem-dev";
 const REFERENCE_TEMPLATES_DIR = path.join("templates", "rules");
 const FXMIND_TEMPLATES_DIR = path.join("templates", "fxmind");
 const GEMINI_COMMANDS_DIR = path.join("templates", "commands", "gemini");
+const COPILOT_COMMANDS_DIR = path.join("templates", "commands", "copilot");
+const COPILOT_PROMPT_FILE = "fxmind.prompt.md";
 const CORE_TEMPLATE_FILES = [
   "reference.template.mdc",
   "memory.template.md",
@@ -127,6 +129,12 @@ const AGENTS = {
     commandsDir: path.join(".opencode", "commands"),
     commandMode: "file",
   },
+  copilot: {
+    label: "VS Code Copilot",
+    skillsDir: path.join(".github", "skills"),
+    commandsDir: path.join(".github", "prompts"),
+    commandMode: "prompt",
+  },
 };
 
 function getPackageVersion() {
@@ -146,7 +154,7 @@ function printVersion() {
 
 function printHelp() {
   console.log(`
-Install fxmind — project memory and knowledge packs for AI agents (Cursor, Claude Code, Codex, Gemini CLI, OpenCode).
+Install fxmind — project memory and knowledge packs for AI agents (Cursor, Claude Code, Codex, Gemini CLI, OpenCode, VS Code Copilot).
 
 Knowledge packs add domain-specific skills under \`.fxmind/skills/\` and the fxmind agent skill.
 
@@ -167,6 +175,7 @@ Without global install:
   ${npxInstall("--codex -y")}        Codex only
   ${npxInstall("--gemini -y")}       Gemini CLI only
   ${npxInstall("--opencode -y")}     OpenCode only
+  ${npxInstall("--copilot -y")}      VS Code Copilot only
   ${npxInstall("--agent cursor,claude,gemini -y")}  Multiple agents
   ${npxInstall("--no-packs -y")}     Core /fxmind only — no domain skills
   ${npxInstall("--pack fivem -y")}   Explicit fivem knowledge pack
@@ -219,7 +228,8 @@ Options:
   --codex            Install for Codex only
   --gemini           Install for Gemini CLI only
   --opencode         Install for OpenCode only
-  --agent <list>     Comma-separated: cursor, claude, codex, gemini, opencode
+  --copilot          Install for VS Code Copilot only
+  --agent <list>     Comma-separated: cursor, claude, codex, gemini, opencode, copilot
   --no-command       Skip /fxmind helper
   -i, --interactive  Force interactive mode
   -y, --yes          Skip prompts, use defaults
@@ -325,6 +335,11 @@ function parseArgs(argv) {
 
     if (arg === "--opencode") {
       pushRequestedAgent(options, "opencode");
+      continue;
+    }
+
+    if (arg === "--copilot") {
+      pushRequestedAgent(options, "copilot");
       continue;
     }
 
@@ -555,6 +570,18 @@ function cleanUnselectedAgents(targetRoot, selectedAgentIds, managedSkills) {
         if (fs.existsSync(commandPath)) {
           fs.rmSync(commandPath, { recursive: true, force: true });
         }
+      }
+
+      pruneEmptyDirsUpward(
+        path.join(targetRoot, agent.commandsDir),
+        targetRoot,
+      );
+    }
+
+    if (agent.commandsDir && agent.commandMode === "prompt") {
+      const commandPath = path.join(targetRoot, agent.commandsDir, COPILOT_PROMPT_FILE);
+      if (fs.existsSync(commandPath)) {
+        fs.unlinkSync(commandPath);
       }
 
       pruneEmptyDirsUpward(
@@ -898,6 +925,9 @@ function installProjectMcp(targetRoot, agents) {
     console.log("[MCP]");
     for (const item of result.installed) {
       console.log(`  ✓ ${item.label}: ${item.configRel} → server "${item.server}"`);
+    }
+    for (const configRel of result.pruned || []) {
+      console.log(`  ✓ removed stale MCP: ${configRel}`);
     }
     if (result.entry) {
       console.log(`  command: ${result.entry.command}`);
@@ -1440,6 +1470,13 @@ function hasAgentInstall(targetRoot, agent) {
     }
   }
 
+  if (agent.commandsDir && agent.commandMode === "prompt") {
+    const promptPath = path.join(targetRoot, agent.commandsDir, COPILOT_PROMPT_FILE);
+    if (fs.existsSync(promptPath)) {
+      return true;
+    }
+  }
+
   if (agent.commandMode === "skill") {
     const skillPath = path.join(
       targetRoot,
@@ -1593,6 +1630,10 @@ function detectInstalledCommand(targetRoot, agentIds) {
         fs.existsSync(path.join(targetRoot, agent.commandsDir, "fxmind.toml")) ||
         fs.existsSync(path.join(targetRoot, agent.commandsDir, "fxmind"))
       );
+    }
+
+    if (agent.commandMode === "prompt" && agent.commandsDir) {
+      return fs.existsSync(path.join(targetRoot, agent.commandsDir, COPILOT_PROMPT_FILE));
     }
 
     if (agent.commandMode === "skill") {
@@ -2459,6 +2500,23 @@ function cleanFivemTemplates(targetRoot, relativeDestDir, packIds) {
   pruneEmptyDirsUpward(path.join(targetRoot, relativeDestDir), targetRoot);
 }
 
+function installPromptCommands(targetRoot, agent) {
+  const src = path.join(PACKAGE_ROOT, COPILOT_COMMANDS_DIR);
+  const dest = path.join(targetRoot, agent.commandsDir);
+
+  if (!fs.existsSync(src)) {
+    throw new Error(`Copilot prompt templates not found: ${COPILOT_COMMANDS_DIR}`);
+  }
+
+  fs.mkdirSync(dest, { recursive: true });
+  fs.cpSync(src, dest, { recursive: true, force: true });
+
+  return fs
+    .readdirSync(dest)
+    .filter((name) => name.endsWith(".prompt.md"))
+    .map((name) => path.join(agent.commandsDir, name).replace(/\\/g, "/"));
+}
+
 function installTomlCommands(targetRoot, agent) {
   const src = path.join(PACKAGE_ROOT, GEMINI_COMMANDS_DIR);
   const dest = path.join(targetRoot, agent.commandsDir);
@@ -2505,6 +2563,10 @@ function installCommand(targetRoot, agent) {
 
   if (agent.commandMode === "toml") {
     return installTomlCommands(targetRoot, agent);
+  }
+
+  if (agent.commandMode === "prompt") {
+    return installPromptCommands(targetRoot, agent);
   }
 
   const dest = path.join(targetRoot, agent.commandsDir, COMMAND_FILE);

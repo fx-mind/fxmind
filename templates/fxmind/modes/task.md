@@ -38,8 +38,22 @@ Open memory/reference/docs to fill Z. Disagreement → surface it; do not silent
 FiveM example:
 `INTENT: code does TriggerClientEvent(..., -1); task expects fix broadcast; spec (memory/broadcast + performance.md) says never manager:* to -1`
 
+**FiveM tasks** (resource Lua/NUI/fxmanifest in scope): read `.fxmind/skills/fivem-development/quality-gates.md` and add a **QUALITY** design block:
+
 ```
-🛑 GATE A COMPLETE — CLASS: <class>, GOAL: <one-line>, DONE: <criterion + verify>, SCOPE: <files>, TOPICS: <list>, RISKS: <list or none>
+QUALITY:
+  endpoints: <new/changed + type>
+  payload:   <KB estimate; list = metadata only>
+  cache:     <server §2.1 | client §2.1.1 | none>
+  validate:  <§5.3 per mutation>
+  rate-limit:<SafeEvent | SetCooldown | both>
+  fan-out:   <source | -1 | cerberus | none>
+```
+
+**Refactor tasks** (same resource, behavior preservation): add `INVARIANTS: <what must not change>` to Gate A.
+
+```
+🛑 GATE A COMPLETE — CLASS: <class>, GOAL: <one-line>, DONE: <criterion + verify>, SCOPE: <files>, TOPICS: <list>, RISKS: <list or none>, QUALITY: <filled|n/a — non-FiveM>
 ```
 → `fxmind_record_gate` `A`.
 
@@ -48,11 +62,12 @@ FiveM example:
 ## 4. Gate B (before any edit)
 
 1. Prefer `fxmind_query` (~1500). Else `_index` + 3–5 memories + `reference.md`.
-2. Primary sources for APIs/natives not opened this session.
-3. Evidence budget: 2 lookup rounds; 3rd needs a reason.
+2. **Graph engineering (FiveM tasks):** load memories matching Gate A TOPICS; scan `.fxmind/corrections/` for entries whose category matches the domain (`performance`, `security`, `communication`, `architecture`, `style` — maps 1:1 to pack skill files). Read matching correction files before Implement.
+3. Primary sources for APIs/natives not opened this session.
+4. Evidence budget: 2 lookup rounds; 3rd needs a reason.
 
 ```
-🛑 GATE B COMPLETE — MEMORIES LOADED: <list or none>, REFERENCE: <loaded/absent>, GRAPH: <used/fallback>
+🛑 GATE B COMPLETE — MEMORIES LOADED: <list or none>, REFERENCE: <loaded/absent>, GRAPH: <used/fallback>, CORRECTIONS: <n loaded | none>
 ```
 → `fxmind_record_gate` `B` (+ note).
 
@@ -68,6 +83,12 @@ FiveM example:
 
 Selective memory: never load all. Canonicalize slugs (accents, singular/plural).
 
+## 5b. Diff self-review (after Implement, before Gate V)
+
+**FiveM tasks:** read `.fxmind/skills/fivem-development/quality-gates.md` → run the **self-review loop** (enumerate artifacts in diff → checklist E1–E8 / §5.3 / §1.6 / §2.1.1 → clean code C1–C5 → fix failures). Max **2** self-review cycles.
+
+Output the **REVIEW** and **PARITY** lines (see `task-verify.md`) — they are required inside the Gate V marker. Do not skip self-review and jump straight to Gate V.
+
 ## 6. Gate V + Judge
 
 **Read `.fxmind/modes/task-verify.md` now.** Run Gate V (`fxmind_record_gate` `V`). Run Judge when that file says it is mandatory.
@@ -80,8 +101,10 @@ After applying a user correction, AskQuestion: Pitfalls / `fxmind_record_correct
 
 Requires V (MCP enforces). Learn reusable knowledge → memory + validate; else "mudança pontual".
 
+**Quality pitfalls:** if self-review found a reusable gap not yet in the pack, call **`fxmind_record_correction`** (category = matching skill file: `performance`, `security`, etc.) in addition to user-correction flow.
+
 ```
-🛑 GATE C COMPLETE — LEARNING: <created/updated path | none — mudança pontual>
+🛑 GATE C COMPLETE — LEARNING: <created/updated path | none — mudança pontual>, CORRECTION: <recorded|none>
 ```
 → `fxmind_record_gate` `C`.
 

@@ -7,7 +7,7 @@ description: "Use for any request that changes, fixes, implements, refactors, ad
 
 You are the **fxmind** skill — the only skill that should live in the agent skills folder.
 
-**Pack skills** (FiveM, frameworks, NUI, etc.) are installed under **`.fxmind/skills/`** — read them when needed; do not look for them in `.cursor/skills/`, `.gemini/skills/`, `.opencode/skills/`, `.claude/skills/`, or `.agents/skills/`.
+**Pack skills** (FiveM, frameworks, NUI, etc.) are installed under **`.fxmind/skills/`** — read them when needed; do not look for them in `.cursor/skills/`, `.github/skills/`, `.gemini/skills/`, `.opencode/skills/`, `.claude/skills/`, or `.agents/skills/`.
 
 ## Auto Task (default)
 
@@ -61,10 +61,10 @@ When the user asks to **change code/config** (with or without `/fxmind task`), f
 |-------|-----------------|---------------|--------|
 | **Classify** | One CLASS: question / analyze-only / plan-first / trivial / task | — | Start |
 | **Start** | `fxmind_start_task` (`trivial: true` when CLASS=trivial) | — | Gate A |
-| **Gate A** | CLASS, goal, Done+verify, INTENT if needed, scope | `🛑 GATE A COMPLETE` | Any file edit |
-| **Gate B** | Memories + reference + primary sources | `🛑 GATE B COMPLETE` | Any file edit |
-| **Implement** | Surgical edits; max 3 retries | — | — |
-| **Gate V** | Read `.fxmind/modes/task-verify.md`; observe Done (+ TWINS) | `🛑 GATE V COMPLETE` | Gate C |
+| **Gate A** | CLASS, goal, Done+verify, INTENT if needed, scope, **QUALITY** (FiveM) | `🛑 GATE A COMPLETE` | Any file edit |
+| **Gate B** | Memories + reference + corrections + primary sources | `🛑 GATE B COMPLETE` | Any file edit |
+| **Implement** | Surgical edits; diff self-review (FiveM); max 3 retries | — | — |
+| **Gate V** | Read `task-verify.md`; REVIEW + PARITY + observe Done (+ TWINS) | `🛑 GATE V COMPLETE` | Gate C |
 | **Judge** | If task-verify says mandatory → `.fxmind/modes/judge.md` | verdict line | Final success claim |
 | **Gate C** | Learn or "mudança pontual" (**MCP rejects C without V**) | `🛑 GATE C COMPLETE` | Final reply |
 
@@ -88,6 +88,7 @@ After learn/Gate C memory writes, call **`fxmind_validate_memories`** (or run `f
 |------|------|
 | FiveM patterns, natives, assets, framework detection | `.fxmind/skills/fivem-development/SKILL.md` |
 | Audit, security, performance, Cerberus, view cache, **broadcast §1.6.1**, **quality gates §2.5** | `.fxmind/skills/fivem-development/performance.md` (+ `security.md`; index: `best-practices.md`) |
+| **Implement / refactor FiveM code (task mode DoD)** | `.fxmind/skills/fivem-development/quality-gates.md` |
 | vRP Creative / vRP API | `.fxmind/skills/vrp-framework/SKILL.md` |
 | QBCore | `.fxmind/skills/qbcore-framework/SKILL.md` |
 | Qbox | `.fxmind/skills/qbox-framework/SKILL.md` |

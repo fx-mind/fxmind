@@ -30,6 +30,11 @@ const MCP_AGENT_TARGETS = {
     configRel: "opencode.json",
     format: "opencode-mcp",
   },
+  copilot: {
+    label: "VS Code Copilot",
+    configRel: path.join(".vscode", "mcp.json"),
+    format: "vscode-mcp",
+  },
   codex: {
     label: "Codex",
     configRel: path.join(".codex", "config.toml"),
@@ -51,7 +56,11 @@ function readJson(filePath, fallback = null) {
 }
 
 function writeJson(filePath, data) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const normalized = filePath.replace(/\\/g, "/");
+  // Root-level configs (.mcp.json, opencode.json) — no mkdir (avoids stray .mcp dirs on Windows)
+  if (normalized.includes("/")) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  }
   fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
@@ -94,6 +103,64 @@ function buildFxmindMcpEntry() {
   return entry;
 }
 
+function buildFxmindVscodeMcpServer() {
+  const entry = buildFxmindMcpEntry();
+  const server = {
+    type: "stdio",
+    command: entry.command,
+    env: { ...entry.env },
+  };
+  if (entry.args?.length) {
+    server.args = entry.args;
+  }
+  return server;
+}
+
+function installVscodeMcp(configPath, server) {
+  const existing = readJson(configPath, { servers: {} });
+  existing.servers = existing.servers || {};
+  existing.servers[MCP_SERVER_KEY] = server;
+  writeJson(configPath, existing);
+}
+
+function uninstallVscodeMcp(configPath) {
+  const existing = readJson(configPath);
+  if (!existing?.servers?.[MCP_SERVER_KEY]) {
+    return false;
+  }
+
+  delete existing.servers[MCP_SERVER_KEY];
+  if (Object.keys(existing.servers).length === 0) {
+    delete existing.servers;
+  }
+
+  const remainingKeys = Object.keys(existing).filter((key) => key !== "$schema");
+  if (remainingKeys.length === 0) {
+    fs.unlinkSync(configPath);
+  } else {
+    writeJson(configPath, existing);
+  }
+  return true;
+}
+
+function mcpStatusVscode(configPath) {
+  const existing = readJson(configPath);
+  const raw = existing?.servers?.[MCP_SERVER_KEY] || null;
+  const entry = raw
+    ? {
+        command: raw.command || null,
+        args: raw.args || [],
+        cwd: raw.cwd || null,
+        env: raw.env || {},
+      }
+    : null;
+  return {
+    configExists: fs.existsSync(configPath),
+    installed: Boolean(raw),
+    entry,
+  };
+}
+
 function tomlString(value) {
   return JSON.stringify(String(value));
 }
@@ -119,45 +186,54 @@ function hasAgentInstallMarker(targetRoot, agentId) {
   const markers = {
     cursor: [
       path.join(".cursor", "commands", "fxmind.md"),
-      path.join(".cursor", "skills", "fxmind"),
+      path.join(".cursor", "skills", "fxmind", "SKILL.md"),
     ],
     claude: [
       path.join(".claude", "commands", "fxmind.md"),
-      path.join(".claude", "skills", "fxmind"),
+      path.join(".claude", "skills", "fxmind", "SKILL.md"),
     ],
     codex: [
-      path.join(".agents", "skills", "fxmind"),
-      path.join(".codex", "skills", "fxmind"),
+      path.join(".agents", "skills", "fxmind", "SKILL.md"),
+      path.join(".codex", "skills", "fxmind", "SKILL.md"),
     ],
     gemini: [
       path.join(".gemini", "commands", "fxmind.toml"),
-      path.join(".gemini", "skills", "fxmind"),
-      path.join(".agents", "skills", "fxmind"),
+      path.join(".gemini", "skills", "fxmind", "SKILL.md"),
     ],
     opencode: [
       path.join(".opencode", "commands", "fxmind.md"),
-      path.join(".opencode", "skills", "fxmind"),
+      path.join(".opencode", "skills", "fxmind", "SKILL.md"),
+    ],
+    copilot: [
+      path.join(".github", "prompts", "fxmind.prompt.md"),
+      path.join(".github", "skills", "fxmind", "SKILL.md"),
     ],
   };
 
   return (markers[agentId] || []).some((relPath) => fs.existsSync(path.join(projectRoot, relPath)));
 }
 
+function filterMcpAgentIds(targetRoot, agentIds) {
+  const projectRoot = path.resolve(targetRoot);
+  return normalizeAgentIds(agentIds).filter((agentId) =>
+    hasAgentInstallMarker(projectRoot, agentId),
+  );
+}
+
 function detectInstalledMcpAgentIds(targetRoot) {
   const projectRoot = path.resolve(targetRoot);
-  return Object.keys(MCP_AGENT_TARGETS).filter((agentId) => {
-    const configPath = path.join(projectRoot, MCP_AGENT_TARGETS[agentId].configRel);
-    return fs.existsSync(configPath) || hasAgentInstallMarker(projectRoot, agentId);
-  });
+  return Object.keys(MCP_AGENT_TARGETS).filter((agentId) =>
+    hasAgentInstallMarker(projectRoot, agentId),
+  );
 }
 
 function resolveMcpAgentIds(targetRoot, agentIds) {
   const explicit = normalizeAgentIds(agentIds);
   if (explicit.length) {
-    return explicit;
+    return filterMcpAgentIds(targetRoot, explicit);
   }
 
-  const fromManifest = readManifestAgentIds(targetRoot);
+  const fromManifest = filterMcpAgentIds(targetRoot, readManifestAgentIds(targetRoot));
   if (fromManifest.length) {
     return fromManifest;
   }
@@ -168,6 +244,23 @@ function resolveMcpAgentIds(targetRoot, agentIds) {
   }
 
   return ["cursor"];
+}
+
+function pruneStaleMcpConfigs(targetRoot, activeAgentIds) {
+  const active = new Set(normalizeAgentIds(activeAgentIds));
+  const removed = [];
+
+  for (const agentId of Object.keys(MCP_AGENT_TARGETS)) {
+    if (active.has(agentId)) {
+      continue;
+    }
+    const result = uninstallMcpForAgent(targetRoot, agentId);
+    if (result.removed) {
+      removed.push(result.configRel);
+    }
+  }
+
+  return removed;
 }
 
 function buildCodexMcpToml(entry) {
@@ -397,10 +490,13 @@ function installMcpForAgent(targetRoot, agentId, options = {}) {
   const projectRoot = path.resolve(targetRoot);
   const configPath = path.join(projectRoot, target.configRel);
   const entry = buildFxmindMcpEntry();
+  const vscodeServer = buildFxmindVscodeMcpServer();
 
   if (agentId === "opencode") {
     installOpenCodeMcp(configPath);
     removeLegacyOpenCodeMcpJson(projectRoot);
+  } else if (target.format === "vscode-mcp") {
+    installVscodeMcp(configPath, vscodeServer);
   } else if (target.format === "mcpServers-json") {
     installMcpServersJson(configPath, entry);
   } else if (target.format === "codex-toml") {
@@ -414,7 +510,7 @@ function installMcpForAgent(targetRoot, agentId, options = {}) {
     label: target.label,
     configRel: target.configRel.replace(/\\/g, "/"),
     server: MCP_SERVER_KEY,
-    entry,
+    entry: target.format === "vscode-mcp" ? vscodeServer : entry,
   };
 }
 
@@ -429,6 +525,8 @@ function uninstallMcpForAgent(targetRoot, agentId) {
 
   if (target.format === "mcpServers-json") {
     removed = uninstallMcpServersJson(configPath);
+  } else if (target.format === "vscode-mcp") {
+    removed = uninstallVscodeMcp(configPath);
   } else if (target.format === "opencode-mcp") {
     removed = uninstallOpenCodeMcp(configPath);
   } else if (target.format === "codex-toml") {
@@ -453,6 +551,8 @@ function mcpStatusForAgent(targetRoot, agentId) {
   let status;
   if (target.format === "mcpServers-json") {
     status = mcpStatusMcpServersJson(configPath);
+  } else if (target.format === "vscode-mcp") {
+    status = mcpStatusVscode(configPath);
   } else if (target.format === "opencode-mcp") {
     status = mcpStatusOpenCode(configPath);
   } else if (target.format === "codex-toml") {
@@ -472,11 +572,14 @@ function mcpStatusForAgent(targetRoot, agentId) {
 function installMcp(targetRoot, options = {}) {
   const agentIds = resolveMcpAgentIds(targetRoot, options.agentIds);
   const installed = agentIds.map((agentId) => installMcpForAgent(targetRoot, agentId, options));
+  const pruned =
+    options.prune === false ? [] : pruneStaleMcpConfigs(targetRoot, agentIds);
   const primary = installed.find((item) => item.agentId === "cursor") || installed[0] || null;
 
   return {
     agentIds,
     installed,
+    pruned,
     server: MCP_SERVER_KEY,
     mcpJson: primary?.configRel || MCP_JSON_REL.replace(/\\/g, "/"),
     entry: primary?.entry || null,
@@ -521,6 +624,9 @@ module.exports = {
   uninstallMcpForAgent,
   mcpStatusForAgent,
   resolveMcpAgentIds,
+  filterMcpAgentIds,
+  pruneStaleMcpConfigs,
+  hasAgentInstallMarker,
   buildFxmindMcpEntry,
   resolveOpenCodeMcpLaunch,
 };

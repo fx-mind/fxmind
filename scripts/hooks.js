@@ -440,6 +440,9 @@ function runHooksCli(argv = []) {
       for (const item of mcpResult.installed) {
         console.log(`  ✓ ${item.label}: ${item.configRel} → MCP server "${item.server}"`);
       }
+      for (const configRel of mcpResult.pruned || []) {
+        console.log(`  ✓ removed stale MCP: ${configRel}`);
+      }
     }
     if (result.gitHook && typeof result.gitHook === "string") {
       console.log(`  ✓ git pre-commit → ${result.gitHook}`);

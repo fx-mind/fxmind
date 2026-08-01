@@ -4,7 +4,7 @@
 
 # fxmind — shared project memory for AI agents
 
-**fxmind** installs shared project memory (`.fxmind/`), a `/fxmind` command workflow, and optional domain **knowledge packs** into your repo. Works with **Cursor**, **Claude Code**, **Codex**, **Gemini CLI**, and **OpenCode**.
+**fxmind** installs shared project memory (`.fxmind/`), a `/fxmind` command workflow, and optional domain **knowledge packs** into your repo. Works with **Cursor**, **Claude Code**, **Codex**, **Gemini CLI**, **OpenCode**, and **VS Code Copilot**.
 
 The first pack is **FiveM** (vRP, QBCore, Qbox, ESX, NUI). More domains can be added under `packs/`.
 
@@ -60,7 +60,7 @@ Restart your agent IDE/CLI after install or update.
 | `/fxmind memory health` | Verify memories against the codebase |
 | `/fxmind update` | Prompts to run `fxmind --update -y` in the terminal |
 
-Gemini uses `/fxmind:task`, `/fxmind:learn`, etc.
+Gemini uses `/fxmind:task`, `/fxmind:learn`, etc. VS Code Copilot uses `/fxmind` (prompt file) plus the `.github/skills/fxmind` skill.
 
 ### In the terminal
 
@@ -72,7 +72,7 @@ fxmind hooks status        # show hooks + MCP status
 fxmind -h                  # all options
 ```
 
-**Agents** — `--cursor`, `--claude`, `--gemini`, `--opencode`, `--codex`, or `--agent cursor,claude -y`.
+**Agents** — `--cursor`, `--claude`, `--gemini`, `--opencode`, `--codex`, `--copilot`, or `--agent cursor,copilot -y`.
 
 **Packs** — `--pack fivem`, `--no-packs` (core only), `--all-packs`.
 
@@ -171,13 +171,32 @@ Install globally once (all agents use the `fxmind-mcp` binary on `PATH`):
 npm install -g github:fx-mind/fxmind
 ```
 
-Wired automatically into `.cursor/mcp.json` (and agent equivalents). **Portable** config — safe to commit:
+Wired automatically into `.cursor/mcp.json`, `.vscode/mcp.json` (VS Code Copilot), and other agent equivalents. **Portable** config — safe to commit:
 
-**Cursor / Claude / Gemini** (`.cursor/mcp.json`, etc.):
+**Cursor / Claude / Gemini** (`.cursor/mcp.json`, `.mcp.json`, etc.):
 
 ```json
 {
   "mcpServers": {
+    "fxmind": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${env:APPDATA}/npm/node_modules/fxmind/scripts/mcp-server.js"
+      ],
+      "env": {
+        "FXMIND_TARGET": "${workspaceFolder}"
+      }
+    }
+  }
+}
+```
+
+**VS Code Copilot** (`.vscode/mcp.json` — top-level `servers`, not `mcpServers`):
+
+```json
+{
+  "servers": {
     "fxmind": {
       "type": "stdio",
       "command": "node",
