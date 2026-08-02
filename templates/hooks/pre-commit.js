@@ -6,6 +6,9 @@
  * Stale-candidate (file exists but memory may be outdated) prints warnings only.
  * Set FXMIND_PRECOMMIT_STRICT=1 to also block on stale-candidate hits.
  *
+ * Deleted staged files (diff-filter D) are skipped — intentional removals (e.g. hashed
+ * NUI rebuilds) would otherwise always look "BROKEN" because the file is gone on disk.
+ *
  * Installed to .git/hooks/pre-commit by `fxmind hooks install-git`.
  * Requires .cursor/hooks/pre-commit.js (copied by `fxmind hooks install`).
  */
@@ -20,9 +23,10 @@ const FXMIND_DIR = path.join(PROJECT_ROOT, ".fxmind");
 
 function getStagedFiles() {
   try {
+    // ACMR only — exclude D (deleted). Checking existence on a staged deletion is a false positive.
     const out = execFileSync(
       "git",
-      ["diff", "--cached", "--name-only", "--diff-filter=ACMRD"],
+      ["diff", "--cached", "--name-only", "--diff-filter=ACMR"],
       { cwd: PROJECT_ROOT, stdio: ["pipe", "pipe", "pipe"] },
     )
       .toString()

@@ -207,7 +207,9 @@ function runPreCommitCheck(targetRoot, options = {}) {
   try {
     const out = execFileSync(
       "git",
-      ["diff", "--cached", "--name-only", "--diff-filter=ACMRD"],
+      // ACMR only — exclude D (deleted). Staged deletions are intentional; checking
+      // existence would always mark memory paths as BROKEN (false positive on NUI rebuilds).
+      ["diff", "--cached", "--name-only", "--diff-filter=ACMR"],
       { cwd: projectRoot, stdio: ["pipe", "pipe", "pipe"] },
     )
       .toString()
@@ -383,7 +385,8 @@ Cursor hooks:
   stop        → .cursor/hooks/learn-prompt.js   (remind to finish Gate C)
 
 Git pre-commit:
-  Blocks commit when staged code files break topic memories (paths[] → missing file).
+  Blocks commit when staged (non-deleted) code files break topic memories (paths[] → missing file).
+  Intentional deletions in the same commit are skipped (diff-filter excludes D).
   Warnings only for stale-candidate; use --strict or FXMIND_PRECOMMIT_STRICT=1 to block those too.
 
 Env:

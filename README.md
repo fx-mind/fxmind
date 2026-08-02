@@ -66,7 +66,7 @@ Gemini uses `/fxmind:task`, `/fxmind:learn`, etc. VS Code Copilot uses `/fxmind`
 
 ```bash
 fxmind -y                  # install (Cursor + fivem pack by default)
-fxmind --update -y         # refresh templates/skills (keeps memories)
+fxmind --update -y         # refresh templates/skills/hooks/MCP/fivem-start (keeps memories)
 fxmind graph               # open 3D graph in the browser
 fxmind hooks status        # show hooks + MCP status
 fxmind -h                  # all options
@@ -152,7 +152,7 @@ Also installs `.cursor/rules/fxmind-auto-task.mdc` (`alwaysApply`) and adds sess
 | `gate-guard` | Auto-starts Task; blocks edits until A/B; blocks Write to gates JSON |
 | `drift-watcher` | Detects stale memories; rebuilds graph after learn |
 | `learn-prompt` | Reminds to finish Gate C |
-| `pre-commit` (git) | Blocks commit when a memory references a deleted file |
+| `pre-commit` (git) | Blocks commit when a staged (non-deleted) file is missing but still listed in a memory `paths[]` |
 
 ```bash
 fxmind hooks install       # hooks + MCP + auto-task rule + gitignore
@@ -245,7 +245,7 @@ The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP sp
 | `fxmind_record_correction` / `fxmind_list_corrections` | Skill-improvement backlog |
 | `fxmind_fivem_status` / `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` | Local FXServer RCON + log tail (dev). **Status probes reachability** — use cmd/tail only when `available: true`; otherwise ask user to run console commands manually. |
 
-Skip with `--no-mcp`. Refresh with `fxmind hooks install` or `fxmind --update -y`. Restart the MCP client after changes.
+Skip with `--no-mcp`. Refresh with `fxmind --update -y` (also refreshes hooks + fivem-start) or `fxmind hooks install`. Restart the MCP client after changes.
 
 ### Local FiveM RCON (dev, no txAdmin)
 
@@ -255,7 +255,7 @@ One-shot setup (agent or human):
 fxmind fivem install
 ```
 
-Writes `rcon_password` into cfg, `.vscode/fivem-start.ps1` (interactive terminal), `tasks.json`, and gitignore. Idempotent. MCP: `fxmind_fivem_install`.
+Writes `rcon_password` into cfg, `.vscode/fivem-start.ps1` (interactive terminal), `tasks.json`, and gitignore. Idempotent. MCP: `fxmind_fivem_install`. Also refreshed automatically by `fxmind --update -y` when the fivem pack is installed or markers already exist.
 
 | Need | How |
 |------|-----|

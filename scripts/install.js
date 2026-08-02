@@ -23,7 +23,7 @@ const {
   GLOBAL_SHARED_SKILLS,
 } = require("./global-store");
 const { writeLockfile, readLockfile, diffLockfiles, printLockSummary } = require("./lockfile");
-const { installHooks, uninstallHooks, hooksStatus, runHooksCli, FXMIND_COMMANDS } = require("./hooks");
+const { installHooks, uninstallHooks, hooksStatus, runHooksCli, FXMIND_COMMANDS, isGitHookInstalled } = require("./hooks");
 const { installMcp } = require("./mcp-install");
 const { maybeSelfUpdateAndReexec } = require("./self-update");
 const { createPackScaffold, runPackCli } = require("./pack-new");
@@ -181,7 +181,7 @@ Without global install:
   ${npxInstall("--pack fivem -y")}   Explicit fivem knowledge pack
   ${npxInstall("--all-packs -y")}    Every available pack
   ${npxInstall("--all -y")}          All skills from selected pack(s)
-  ${npxInstall("--update -y")}       Refresh global fxmind + project (packs, skills, hooks, MCP)
+  ${npxInstall("--update -y")}       Refresh global fxmind + project (packs, skills, hooks, MCP, fivem-start)
   ${npxInstall("graph")}             Build graph from .fxmind/memory/ + open browser
   ${npxInstall("--global-store -y")} Install with global store (~/.fxmind/projects/<id>/)
   ${npxInstall("migrate")}            Move legacy audit-*.md → audits/
@@ -208,12 +208,14 @@ Local dev (monorepo):
 
 Options:
   --global-store     Store memories/graph in ~/.fxmind/projects/<id>/ (shared pack skills)
-  --update           Refresh global fxmind (GitHub) + project files from .fxmind/packs.json (keeps memories)
+  --update           Refresh global fxmind (GitHub) + project files from .fxmind/packs.json (keeps memories; also refreshes hooks, MCP, fivem-start)
   --no-self-update   With --update, skip npm install -g github:fx-mind/fxmind
   --hooks            Install Cursor hooks (gate-guard, drift-watcher, learn-prompt)
   --no-hooks         Skip hook installation even when Cursor is selected
   --mcp              Install MCP server configs for selected agents (fxmind-mcp)
   --no-mcp           Skip MCP wiring even when agents are selected
+  --fivem-dev        Install/refresh local FiveM RCON + fivem-start task
+  --no-fivem-dev     Skip local FiveM RCON / fivem-start wiring
   --replace-agents   Replace agent set (remove fxmind from agents not selected this run)
   --target <dir>     Project root (default: current directory)
   --pack <id>        Knowledge pack to install (e.g. fivem)
@@ -275,6 +277,8 @@ function parseArgs(argv) {
     update: false,
     globalStore: false,
     hooks: null,
+    mcp: null,
+    fivem: null,
     replaceAgents: false,
     noSelfUpdate: false,
   };
@@ -376,6 +380,16 @@ function parseArgs(argv) {
 
     if (arg === "--no-mcp") {
       options.mcp = false;
+      continue;
+    }
+
+    if (arg === "--fivem-dev") {
+      options.fivem = true;
+      continue;
+    }
+
+    if (arg === "--no-fivem-dev") {
+      options.fivem = false;
       continue;
     }
 
@@ -879,12 +893,57 @@ function cursorHooksPresent(targetRoot) {
   return fs.existsSync(path.join(path.resolve(targetRoot), ".cursor", "hooks.json"));
 }
 
+function cursorHookScriptsPresent(targetRoot) {
+  const hooksDir = path.join(path.resolve(targetRoot), ".cursor", "hooks");
+  return (
+    fs.existsSync(path.join(hooksDir, "pre-commit.js")) ||
+    fs.existsSync(path.join(hooksDir, "gate-guard.js"))
+  );
+}
+
+function fivemInstallMarkersPresent(targetRoot) {
+  const root = path.resolve(targetRoot);
+  if (fs.existsSync(path.join(root, ".vscode", "fivem-start.ps1"))) {
+    return true;
+  }
+
+  const tasksPath = path.join(root, ".vscode", "tasks.json");
+  if (fs.existsSync(tasksPath)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(tasksPath, "utf8"));
+      if ((data.tasks || []).some((t) => t && t.label === "fivem-start")) {
+        return true;
+      }
+    } catch {
+      // ignore invalid tasks.json
+    }
+  }
+
+  const cfg = fivemRcon.rconConfig({ root });
+  if (cfg.password) {
+    return true;
+  }
+
+  const fxCandidates = [
+    path.join(root, "artifacts", "FXServer.exe"),
+    path.join(root, "FXServer.exe"),
+    path.join(root, "artifacts", "FXServer"),
+    path.join(root, "FXServer"),
+  ];
+  return fxCandidates.some((p) => fs.existsSync(p));
+}
+
 function shouldInstallHooks(options, agents) {
   if (options.hooks === false) return false;
   if (options.hooks === true) return true;
   const cursorSelected = agents.some((agent) => agent.id === "cursor");
-  const hasCursorHooks = cursorHooksPresent(options.target);
-  if (options.update && options.command && (cursorSelected || hasCursorHooks)) {
+  const hasHooks =
+    cursorHooksPresent(options.target) ||
+    cursorHookScriptsPresent(options.target) ||
+    isGitHookInstalled(options.target);
+
+  // On update, refresh hooks whenever Cursor is selected or any prior hook install exists.
+  if (options.update && (cursorSelected || hasHooks)) {
     return true;
   }
   return Boolean(cursorSelected && options.command);
@@ -897,6 +956,27 @@ function shouldInstallMcp(options, agents) {
     return true;
   }
   return Boolean(agents.length > 0 && options.command);
+}
+
+function shouldRefreshFivem(options, packs = []) {
+  if (options.fivem === false) return false;
+  if (options.fivem === true) return true;
+
+  const packIds = packs.length
+    ? packs
+    : Array.isArray(options.packs)
+      ? options.packs
+      : [];
+  const hasFivemPack = packIds.includes("fivem");
+  const markers = fivemInstallMarkersPresent(options.target);
+
+  // Update: refresh whenever the fivem pack is installed or local RCON/task was set up before.
+  if (options.update && (hasFivemPack || markers)) {
+    return true;
+  }
+
+  // Fresh install: auto-wire when the fivem pack is selected.
+  return Boolean(hasFivemPack && options.command);
 }
 
 function installProjectHooks(targetRoot) {
@@ -945,12 +1025,34 @@ function installProjectMcp(targetRoot, agents) {
   }
 }
 
-function installProjectCursorIntegration(targetRoot, options, agents) {
+function installProjectFivem(targetRoot) {
+  try {
+    const result = fivemRcon.installFivemDev({ root: path.resolve(targetRoot) });
+    console.log("[FiveM]");
+    for (const step of result.steps || []) {
+      const detail = [step.path, step.action].filter(Boolean).join(" ");
+      console.log(`  ✓ ${step.step}: ${detail}`);
+    }
+    for (const warning of result.warnings || []) {
+      console.log(`  ⚠ ${warning}`);
+    }
+    if (result.note) {
+      console.log(`  ${result.note}`);
+    }
+  } catch (error) {
+    console.log(`[FiveM] skipped: ${error.message}`);
+  }
+}
+
+function installProjectCursorIntegration(targetRoot, options, agents, packs = []) {
   if (shouldInstallHooks(options, agents)) {
     installProjectHooks(targetRoot);
   }
   if (shouldInstallMcp(options, agents)) {
     installProjectMcp(targetRoot, agents);
+  }
+  if (shouldRefreshFivem(options, packs)) {
+    installProjectFivem(targetRoot);
   }
 }
 
@@ -2826,12 +2928,12 @@ async function main() {
       console.log("");
     }
 
-    if (shouldInstallHooks(options, agents) || shouldInstallMcp(options, agents)) {
-      installProjectCursorIntegration(options.target, options, agents);
+    if (shouldInstallHooks(options, agents) || shouldInstallMcp(options, agents) || shouldRefreshFivem(options, packs)) {
+      installProjectCursorIntegration(options.target, options, agents, packs);
     }
 
     console.log("Update complete.");
-    console.log("Refreshed: templates, skills, agent commands, hooks (Cursor), MCP (all agents).");
+    console.log("Refreshed: templates, skills, agent commands, hooks (Cursor), MCP, FiveM RCON/fivem-start (when applicable).");
     printLegacyAuditLayoutWarning(options.target);
     console.log("Restart your agent IDE/CLI or open a new session.");
     console.log(`Refresh again anytime: ${npxInstall("--update -y")}`);
@@ -3022,8 +3124,8 @@ async function main() {
     console.log("");
   }
 
-  if (shouldInstallHooks(options, agents) || shouldInstallMcp(options, agents)) {
-    installProjectCursorIntegration(options.target, options, agents);
+  if (shouldInstallHooks(options, agents) || shouldInstallMcp(options, agents) || shouldRefreshFivem(options, packs)) {
+    installProjectCursorIntegration(options.target, options, agents, packs);
   }
 
   console.log("Done.");
