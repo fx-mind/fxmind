@@ -12,6 +12,8 @@ const {
 } = require("./global-store");
 
 const SHARED_DIR = ".fxmind";
+const GRAPH_CACHE_SCHEMA = 1;
+const GRAPH_CACHE_FILE = "graph-cache.json";
 const GENERIC_TOPIC_TOKENS = new Set([
   "config", "script", "module", "system", "core", "main", "utils", "util",
   "handler", "server", "client", "shared", "resource", "data", "file", "files",
@@ -353,6 +355,39 @@ function tokenizeTechnical(text) {
   );
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function pairKey(aId, bId) {
+  return aId < bId ? `${aId}|${bId}` : `${bId}|${aId}`;
+}
+
+function buildMentionPairs(learnedNodes) {
+  const pairs = new Set();
+  for (const a of learnedNodes) {
+    for (const b of learnedNodes) {
+      if (a.id === b.id) continue;
+      const pattern = new RegExp(`\\b${escapeRegExp(b.id)}\\b`, "i");
+      if (pattern.test(a._content)) {
+        pairs.add(pairKey(a.id, b.id));
+      }
+    }
+  }
+  return pairs;
+}
+
+function pathsOverlap(aPaths, bPaths) {
+  for (const p of aPaths) {
+    for (const bp of bPaths) {
+      if (bp === p || bp.includes(p) || p.includes(bp)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function inferLinks(learnedNodes) {
   const links = [];
   const seen = new Set();
@@ -365,56 +400,58 @@ function inferLinks(learnedNodes) {
     "domain-related",
   ];
 
+  const mentionPairs = buildMentionPairs(learnedNodes);
+  const contentTokensById = new Map();
+  for (const node of learnedNodes) {
+    contentTokensById.set(
+      node.id,
+      tokenizeTechnical(`${node.triggers} ${node._content} ${node.paths}`),
+    );
+  }
+
   for (let i = 0; i < learnedNodes.length; i += 1) {
     for (let j = i + 1; j < learnedNodes.length; j += 1) {
       const a = learnedNodes[i];
       const b = learnedNodes[j];
 
-      const sharedEvents = a._events.filter((event) => b._events.includes(event));
-      if (sharedEvents.length > 0) {
+      const bEvents = new Set(b._events);
+      if (a._events.some((event) => bEvents.has(event))) {
         addLink(links, seen, a.id, b.id, "event-flow", "extracted");
         continue;
       }
 
-      const sharedResources = a._resources.filter((r) => b._resources.includes(r));
-      if (sharedResources.length > 0) {
+      const bResources = new Set(b._resources);
+      if (a._resources.some((r) => bResources.has(r))) {
         addLink(links, seen, a.id, b.id, "shared-resource", "extracted");
         continue;
       }
 
-      const sharedPaths = a._paths.filter((p) => b._paths.some((bp) => bp === p || bp.includes(p) || p.includes(bp)));
-      if (sharedPaths.length > 0) {
+      if (pathsOverlap(a._paths, b._paths)) {
         addLink(links, seen, a.id, b.id, "shared-path", "extracted");
         continue;
       }
 
-      const sharedSymbols = [
-        ...a._exports,
-        ...a._symbols,
-        ...b._exports,
-        ...b._symbols,
-      ];
       const aSymbols = new Set([...a._exports, ...a._symbols]);
-      const symbolHit = b._exports.some((s) => aSymbols.has(s)) ||
+      const symbolHit =
+        b._exports.some((s) => aSymbols.has(s)) ||
         b._symbols.some((s) => aSymbols.has(s));
-      if (symbolHit && sharedSymbols.length > 0) {
+      if (symbolHit) {
         addLink(links, seen, a.id, b.id, "shared-symbol", "inferred");
         continue;
       }
 
-      const mentionPattern = new RegExp(`\\b${a.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-      const reversePattern = new RegExp(`\\b${b.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-      if (mentionPattern.test(b._content) || reversePattern.test(a._content)) {
+      if (mentionPairs.has(pairKey(a.id, b.id))) {
         addLink(links, seen, a.id, b.id, "cross-mention", "inferred");
         continue;
       }
 
-      const aTokens = tokenizeTechnical(`${a.triggers} ${a._content} ${a.paths}`);
-      const bTokens = tokenizeTechnical(`${b.triggers} ${b._content} ${b.paths}`);
+      const aTokens = contentTokensById.get(a.id);
+      const bTokens = contentTokensById.get(b.id);
       let shared = 0;
       for (const token of aTokens) {
         if (bTokens.has(token)) {
           shared += 1;
+          if (shared >= 2) break;
         }
       }
       if (shared >= 2) {
@@ -467,10 +504,9 @@ function syncKnowledgeGraphHtml(targetRoot, graphData) {
   const globalHtml = path.join(dataRoot, "knowledge-graph.html");
 
   if (!syncKnowledgeGraphHtmlAt(localHtml, graphData) && !syncKnowledgeGraphHtmlAt(globalHtml, graphData)) {
-    throw new Error(
-      `Missing ${SHARED_DIR}/knowledge-graph.html — run fxmind -y first.`,
-    );
+    return false;
   }
+  return true;
 }
 
 function openGraphInBrowser(htmlPath) {
@@ -538,16 +574,59 @@ function inferCrossProjectLinks(localNodes, foreignNodes) {
   return links;
 }
 
-function buildGraphData(projectRoot) {
+function extractMemoryBody(content) {
+  const match = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?([\s\S]*)$/);
+  return match ? match[1] : content;
+}
+
+function loadGraphCache(dataRoot) {
+  const cachePath = path.join(dataRoot, GRAPH_CACHE_FILE);
+  if (!fs.existsSync(cachePath)) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+    if (parsed?.schemaVersion !== GRAPH_CACHE_SCHEMA || !parsed.files) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveGraphCache(dataRoot, files) {
+  const cachePath = path.join(dataRoot, GRAPH_CACHE_FILE);
+  fs.mkdirSync(dataRoot, { recursive: true });
+  fs.writeFileSync(
+    cachePath,
+    `${JSON.stringify({ schemaVersion: GRAPH_CACHE_SCHEMA, files }, null, 2)}\n`,
+    "utf8",
+  );
+}
+
+function nodeForCache(node) {
+  const copy = { ...node };
+  delete copy._content;
+  return copy;
+}
+
+function buildGraphData(projectRoot, options = {}) {
   const projectRootResolved = path.resolve(projectRoot);
   const localFxmindDir = path.join(projectRootResolved, SHARED_DIR);
   const memoryDir = resolveMemoryDir(projectRootResolved);
+  const dataRoot = resolveDataRoot(projectRootResolved);
+  const useCache = options.useCache === true;
 
   if (!fs.existsSync(localFxmindDir)) {
     throw new Error(
       `Missing ${SHARED_DIR}/ — run fxmind -y from the project root first.`,
     );
   }
+
+  const cache = useCache ? loadGraphCache(dataRoot) : null;
+  const cacheFiles = cache?.files || {};
+  const nextCacheFiles = {};
 
   const indexPath = path.join(memoryDir, "_index.md");
   const indexRows = fs.existsSync(indexPath)
@@ -562,11 +641,34 @@ function buildGraphData(projectRoot) {
       }
 
       const slug = entry.name.replace(/\.md$/i, "").toLowerCase();
-      const content = fs.readFileSync(path.join(memoryDir, entry.name), "utf8");
-      learnedNodes.push(
-        buildLearnedNode(slug, content, indexRows.get(slug), projectRootResolved),
-      );
+      const filePath = path.join(memoryDir, entry.name);
+      const mtimeMs = fs.statSync(filePath).mtimeMs;
+      const cached = cacheFiles[slug];
+
+      if (
+        cached &&
+        cached.mtimeMs === mtimeMs &&
+        cached.node &&
+        typeof cached.node === "object"
+      ) {
+        const content = fs.readFileSync(filePath, "utf8");
+        learnedNodes.push({
+          ...cached.node,
+          _content: extractMemoryBody(content),
+        });
+        nextCacheFiles[slug] = { mtimeMs, node: cached.node };
+        continue;
+      }
+
+      const content = fs.readFileSync(filePath, "utf8");
+      const node = buildLearnedNode(slug, content, indexRows.get(slug), projectRootResolved);
+      learnedNodes.push(node);
+      nextCacheFiles[slug] = { mtimeMs, node: nodeForCache(node) };
     }
+  }
+
+  if (useCache) {
+    saveGraphCache(dataRoot, nextCacheFiles);
   }
 
   learnedNodes.sort((a, b) => a.id.localeCompare(b.id));
@@ -631,13 +733,18 @@ function buildGraphData(projectRoot) {
   return graphData;
 }
 
-function writeGraph(projectRoot, graphData) {
+function writeGraph(projectRoot, graphData, options = {}) {
+  const updateHtml =
+    options.updateHtml !== false || process.env.FXMIND_GRAPH_UPDATE_HTML === "1";
+
   const dataRoot = resolveDataRoot(projectRoot);
   const jsonPath = path.join(dataRoot, "knowledge-graph.json");
   const localHtml = path.join(projectRoot, SHARED_DIR, "knowledge-graph.html");
 
   fs.writeFileSync(jsonPath, `${JSON.stringify(graphData, null, 2)}\n`, "utf8");
-  syncKnowledgeGraphHtml(projectRoot, graphData);
+  if (updateHtml) {
+    syncKnowledgeGraphHtml(projectRoot, graphData);
+  }
 
   let memoryIndex = null;
   try {
@@ -666,6 +773,7 @@ Usage:
 Options:
   --target <dir>   Project root (default: current directory)
   --no-open        Write JSON/HTML only — do not open the browser
+  --no-html        Update knowledge-graph.json + memory-index only (skip HTML)
   -h, --help       Show this help
 
 Reads:
@@ -675,7 +783,7 @@ Reads:
 
 Writes:
   .fxmind/knowledge-graph.json
-  .fxmind/knowledge-graph.html
+  .fxmind/knowledge-graph.html (unless --no-html)
   .fxmind/memory-index.json
 `);
 }
@@ -685,6 +793,7 @@ function parseGraphCliArgs(argv) {
     target: process.cwd(),
     open: true,
     help: false,
+    updateHtml: true,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -693,6 +802,8 @@ function parseGraphCliArgs(argv) {
       options.help = true;
     } else if (arg === "--no-open") {
       options.open = false;
+    } else if (arg === "--no-html") {
+      options.updateHtml = false;
     } else if (arg === "--target") {
       options.target = path.resolve(argv[i + 1] || "");
       i += 1;
@@ -716,8 +827,8 @@ function runGraphCli(argv = process.argv.slice(3)) {
   }
 
   try {
-    const graphData = buildGraphData(options.target);
-    const paths = writeGraph(options.target, graphData);
+    const graphData = buildGraphData(options.target, { useCache: true });
+    const paths = writeGraph(options.target, graphData, { updateHtml: options.updateHtml });
 
     console.log(`\nGraph built: ${options.target}`);
     console.log(`  learned  → ${graphData.meta.counts.learned}`);
@@ -754,6 +865,9 @@ module.exports = {
   syncKnowledgeGraphHtml,
   openGraphInBrowser,
   runGraphCli,
+  inferLinks,
+  GRAPH_CACHE_SCHEMA,
+  GRAPH_CACHE_FILE,
 };
 
 if (require.main === module) {

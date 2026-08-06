@@ -124,13 +124,18 @@ Memories stay as **Markdown** (source of truth, git-friendly). The graph build a
 | File | Role |
 |------|------|
 | `.fxmind/memory/*.md` | Topic knowledge (edit / review in PRs) |
-| `.fxmind/knowledge-graph.json` | Query graph |
+| `.fxmind/knowledge-graph.json` | Query graph (agents use this + `memory-index.json`) |
+| `.fxmind/knowledge-graph.html` | Optional 2D visualization for humans (`fxmind graph`) |
 | `.fxmind/memory-index.json` | Fast frontmatter index + validation summary |
+| `.fxmind/graph-cache.json` | Local build cache (gitignored) |
+
+**Agents and MCP tools depend on JSON + index, not HTML.** Automatic rebuilds (after learn, drift-watcher, session start, stale `fxmind_query`) refresh JSON + index only unless you run `fxmind graph` (browser) or pass `updateHtml: true` / set `FXMIND_GRAPH_UPDATE_HTML=1`.
 
 ```bash
 fxmind memory validate          # schema + missing paths + duplicates
 fxmind memory validate --strict # exit 1 on errors (CI-friendly)
-fxmind graph                    # rebuild graph + memory-index.json
+fxmind graph                    # rebuild JSON + HTML + memory-index.json (opens browser)
+fxmind graph --no-open --no-html  # JSON + index only (same as automatic rebuilds)
 fxmind corrections list         # skill-improvement backlog
 fxmind corrections export       # markdown digest → edit fivem-development/<category>.md
 fxmind corrections promote <id> # mark as applied to the skill
@@ -150,8 +155,9 @@ Also installs `.cursor/rules/fxmind-auto-task.mdc` (`alwaysApply`) and adds sess
 | Hook | Role |
 |------|------|
 | `gate-guard` | Auto-starts Task; blocks edits until A/B; blocks Write to gates JSON |
-| `drift-watcher` | Detects stale memories; rebuilds graph after learn |
+| `drift-watcher` | Detects stale memories; rebuilds JSON graph after memory edits |
 | `learn-prompt` | Reminds to finish Gate C |
+| `graph-freshness` | On session start, rebuilds stale `knowledge-graph.json` + index |
 | `update-notifier` | On session start, prompts agent to offer `fxmind --update -y` when a newer version exists |
 | `pre-commit` (git) | Blocks commit when a staged (non-deleted) file is missing but still listed in a memory `paths[]` |
 
@@ -237,7 +243,7 @@ The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP sp
 | MCP tool | Action |
 |----------|--------|
 | `fxmind_query` | Graph search with token budget |
-| `fxmind_graph` | Rebuild graph + `memory-index.json` |
+| `fxmind_graph` | Rebuild `knowledge-graph.json` + `memory-index.json` (optional HTML via `updateHtml`) |
 | `fxmind_check_update` | Compare local vs GitHub fxmind version (read-only) |
 | `fxmind_list_memories` | List topic memories |
 | `fxmind_validate_memories` | Schema + path checks + duplicates |

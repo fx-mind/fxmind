@@ -14,8 +14,9 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-const { SHARED_DIR } = require("./global-store");
+const { SHARED_DIR, resolveDataRoot } = require("./global-store");
 const { buildGraphData, writeGraph } = require("./build-graph");
+const { isGraphStale, ensureGraphFresh } = require("./lib/graph-freshness");
 
 const SCHEMA_VERSION = 1;
 const GATES_FILE = "fxmind-gates.json";
@@ -676,22 +677,24 @@ function driftCheck(targetRoot, changedFile) {
   return result;
 }
 
-function buildGraph(targetRoot) {
-  const data = buildGraphData(targetRoot);
+function buildGraph(targetRoot, options = {}) {
+  const updateHtml = options.updateHtml !== false;
+  const data = buildGraphData(targetRoot, { useCache: options.useCache !== false });
   if (!data.meta) data.meta = {};
   data.meta.schemaVersion = SCHEMA_VERSION;
-  const paths = writeGraph(targetRoot, data);
+  const paths = writeGraph(targetRoot, data, { updateHtml });
   const index = writeMemoryIndex(targetRoot);
   appendMetric(targetRoot, {
     event: "graph_build",
     learned: data.meta?.counts?.learned,
     links: data.meta?.counts?.links,
+    updateHtml,
   });
   return { counts: data.meta.counts, paths, memoryIndex: index };
 }
 
 function loadGraphData(targetRoot) {
-  const jsonPath = path.join(fxmindDir(targetRoot), "knowledge-graph.json");
+  const jsonPath = path.join(resolveDataRoot(targetRoot), "knowledge-graph.json");
   if (fs.existsSync(jsonPath)) {
     return readJson(jsonPath);
   }
@@ -725,11 +728,15 @@ function scoreNode(node, tokens) {
  * nodes up to a token budget (chars/4).
  */
 function queryGraph(targetRoot, question, options = {}) {
-  const graph = loadGraphData(targetRoot);
+  let graph = loadGraphData(targetRoot);
+  if (!graph || isGraphStale(targetRoot)) {
+    ensureGraphFresh(targetRoot, { updateHtml: false, useCache: true });
+    graph = loadGraphData(targetRoot);
+  }
   if (!graph) {
     return {
       ok: false,
-      error: "Missing .fxmind/knowledge-graph.json — run fxmind graph first.",
+      error: "Missing knowledge-graph.json — run fxmind graph or /fxmind learn first.",
     };
   }
 
@@ -949,6 +956,7 @@ const PROJECT_GITIGNORE_LINES = [
   ".fxmind/fivem-console.log",
   ".fxmind/server-debug.log",
   ".fxmind/rcon.json",
+  ".fxmind/graph-cache.json",
 ];
 
 function ensureProjectGitignore(targetRoot) {
@@ -993,6 +1001,8 @@ module.exports = {
   buildGraph,
   queryGraph,
   loadGraphData,
+  isGraphStale,
+  ensureGraphFresh,
   gateStatus,
   startTask,
   recordGate,

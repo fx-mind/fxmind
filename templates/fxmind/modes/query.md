@@ -12,9 +12,9 @@ Parse `$ARGUMENTS` after `query`: question text in quotes (required), `--dfs` (d
 
 ### Step 1 — Load graph
 
-1. Read `.fxmind/knowledge-graph.json` if it exists.
-2. If missing → extract `GRAPH_DATA` from `.fxmind/knowledge-graph.html`.
-3. If neither exists → tell user to run `/fxmind learn <topic>` then `/fxmind graph`; stop.
+1. Prefer MCP **`fxmind_query`** — it rebuilds `knowledge-graph.json` automatically when missing or stale (JSON + `memory-index.json` only; HTML is optional).
+2. Manual: read `.fxmind/knowledge-graph.json` (or global store path if linked). If missing or older than any `memory/*.md` → call MCP **`fxmind_graph`** with `{ updateHtml: false }` or run `fxmind graph --no-open --no-html`, then reload JSON.
+3. Do **not** require `knowledge-graph.html` — the agent uses JSON + index only. HTML is for human visualization (`fxmind graph` in the browser).
 
 ### Step 2 — Vocabulary expansion (required)
 

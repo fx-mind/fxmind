@@ -35,6 +35,7 @@ const HOOK_SCRIPTS = [
   "drift-watcher.js",
   "learn-prompt.js",
   "update-notifier.js",
+  "graph-freshness.js",
   "pre-commit.js",
 ];
 
@@ -44,8 +45,15 @@ const FXMIND_COMMANDS = {
   preToolUse: { command: "node .cursor/hooks/gate-guard.js", timeout: 15 },
   postToolUse: { command: "node .cursor/hooks/drift-watcher.js", timeout: 15 },
   stop: { command: "node .cursor/hooks/learn-prompt.js", timeout: 15 },
-  sessionStart: { command: "node .cursor/hooks/update-notifier.js", timeout: 8 },
+  sessionStart: [
+    { command: "node .cursor/hooks/update-notifier.js", timeout: 8 },
+    { command: "node .cursor/hooks/graph-freshness.js", timeout: 12 },
+  ],
 };
+
+function normalizeHookSpecs(spec) {
+  return Array.isArray(spec) ? spec : [spec];
+}
 
 function normalizeHookSpec(spec) {
   if (typeof spec === "string") {
@@ -266,14 +274,16 @@ function installHooks(targetRoot, options = {}) {
   existing.hooks = existing.hooks || {};
 
   for (const [event, spec] of Object.entries(FXMIND_COMMANDS)) {
-    const { command, timeout } = normalizeHookSpec(spec);
-    if (!Array.isArray(existing.hooks[event])) {
-      existing.hooks[event] = [];
+    for (const normalized of normalizeHookSpecs(spec).map(normalizeHookSpec)) {
+      const { command, timeout } = normalized;
+      if (!Array.isArray(existing.hooks[event])) {
+        existing.hooks[event] = [];
+      }
+      existing.hooks[event] = existing.hooks[event].filter(
+        (entry) => typeof entry === "object" && entry.command !== command,
+      );
+      existing.hooks[event].push({ command, timeout });
     }
-    existing.hooks[event] = existing.hooks[event].filter(
-      (entry) => typeof entry === "object" && entry.command !== command,
-    );
-    existing.hooks[event].push({ command, timeout });
   }
 
   writeJson(hooksJsonPath, existing);
@@ -324,9 +334,11 @@ function uninstallHooks(targetRoot) {
   if (existing && existing.hooks) {
     for (const event of Object.keys(FXMIND_COMMANDS)) {
       if (!Array.isArray(existing.hooks[event])) continue;
-      const { command } = normalizeHookSpec(FXMIND_COMMANDS[event]);
+      const commands = normalizeHookSpecs(FXMIND_COMMANDS[event]).map(
+        (s) => normalizeHookSpec(s).command,
+      );
       existing.hooks[event] = existing.hooks[event].filter(
-        (entry) => typeof entry === "object" && entry.command !== command,
+        (entry) => typeof entry === "object" && !commands.includes(entry.command),
       );
       if (existing.hooks[event].length === 0) delete existing.hooks[event];
     }
@@ -352,11 +364,13 @@ function hooksStatus(targetRoot) {
   }
   const wired = {};
   for (const [event, spec] of Object.entries(FXMIND_COMMANDS)) {
-    const { command } = normalizeHookSpec(spec);
+    const commands = normalizeHookSpecs(spec).map((s) => normalizeHookSpec(s).command);
     wired[event] = Boolean(
       existing &&
         Array.isArray(existing.hooks?.[event]) &&
-        existing.hooks[event].some((e) => e?.command === command),
+        commands.every((command) =>
+          existing.hooks[event].some((e) => e?.command === command),
+        ),
     );
   }
   const autoTaskRule = fs.existsSync(path.join(projectRoot, RULES_DIR_REL, AUTO_TASK_RULE));

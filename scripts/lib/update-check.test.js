@@ -88,10 +88,15 @@ describe("update-check", () => {
 });
 
 describe("hooks sessionStart wiring", () => {
-  it("registers sessionStart update-notifier with 8s timeout", () => {
-    const spec = normalizeHookSpec(FXMIND_COMMANDS.sessionStart);
-    assert.equal(spec.command, "node .cursor/hooks/update-notifier.js");
-    assert.equal(spec.timeout, 8);
+  it("registers sessionStart hooks (update-notifier + graph-freshness)", () => {
+    const specs = Array.isArray(FXMIND_COMMANDS.sessionStart)
+      ? FXMIND_COMMANDS.sessionStart
+      : [FXMIND_COMMANDS.sessionStart];
+    const commands = specs.map((s) => normalizeHookSpec(s).command);
+    assert.ok(commands.includes("node .cursor/hooks/update-notifier.js"));
+    assert.ok(commands.includes("node .cursor/hooks/graph-freshness.js"));
+    assert.equal(normalizeHookSpec(specs[0]).timeout, 8);
+    assert.equal(normalizeHookSpec(specs[1]).timeout, 12);
   });
 
   it("installHooks writes sessionStart into hooks.json", () => {
@@ -105,7 +110,11 @@ describe("hooks sessionStart wiring", () => {
     assert.ok(
       entries.some((e) => e.command === "node .cursor/hooks/update-notifier.js"),
     );
+    assert.ok(
+      entries.some((e) => e.command === "node .cursor/hooks/graph-freshness.js"),
+    );
     assert.ok(fs.existsSync(path.join(dir, ".cursor", "hooks", "update-notifier.js")));
+    assert.ok(fs.existsSync(path.join(dir, ".cursor", "hooks", "graph-freshness.js")));
     assert.ok(fs.existsSync(path.join(dir, ".cursor", "hooks", "lib", "update-check.js")));
   });
 });

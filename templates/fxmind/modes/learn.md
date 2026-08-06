@@ -47,15 +47,18 @@ Save to `.fxmind/memory/<topic>.md` using `memory.template.md` structure (**~25�
 
 1. Call MCP **`fxmind_validate_memories`** (or note to run `fxmind memory validate`) and fix any errors before finishing.
 2. Update `.fxmind/memory/_index.md` — table row: topic | file | triggers | last updated. Create from `memory-index.template.md` if missing.
-3. Suggest `/fxmind graph` (writes `knowledge-graph.json` + `memory-index.json`).
 
-## Step 6 — Update .fxmind/reference.md
+## Step 6 — Rebuild graph (required for query / Gate B)
+
+After index validation, call MCP **`fxmind_graph`** with `{ updateHtml: false }` (or `fxmind graph --no-open --no-html`). If MCP is unavailable, tell the user once to run that command manually. HTML sync is optional (`fxmind graph` or `updateHtml: true`).
+
+## Step 7 — Update .fxmind/reference.md
 
 If `.fxmind/reference.md` exists: ensure section `## Memórias por tópico` exists; add/update one table row per topic; keep the rest lean (do not duplicate full flows here). If absent, skip.
 
-## Step 7 — Reply
+## Step 8 — Reply
 
-Reply in **their language** (usually PT-BR): summary of what was learned (3–5 bullets), path `.fxmind/memory/<topic>.md`, suggest `/fxmind graph` to refresh the knowledge map + `memory-index.json`.
+Reply in **their language** (usually PT-BR): summary of what was learned (3–5 bullets), path `.fxmind/memory/<topic>.md`, note that **`fxmind_graph`** (JSON) was rebuilt or should be run if MCP failed.
 
 ## Learn rules
 

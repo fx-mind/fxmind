@@ -30,7 +30,7 @@ function autoRebuildGraph() {
   try {
     child = spawn(
       bin,
-      ["graph", "--no-open"],
+      ["graph", "--no-open", "--no-html"],
       { cwd: PROJECT_ROOT, detached: true, stdio: "ignore", shell: true },
     );
   } catch {
@@ -110,8 +110,8 @@ async function main() {
     const rebuilt = autoRebuildGraph();
     emit(
       rebuilt
-        ? `fxmind: memory file ${rel} edited — rebuilding knowledge-graph.json in the background via \`fxmind graph\`. Run /fxmind query or reopen the 3D map to use it.`
-        : `fxmind: memory file ${rel} was edited. Run \`fxmind graph\` (or /fxmind graph) to rebuild the 3D knowledge map and knowledge-graph.json.`,
+        ? `fxmind: memory file ${rel} edited — rebuilding knowledge-graph.json in the background via \`fxmind graph --no-html\`. Run /fxmind query to use it.`
+        : `fxmind: memory file ${rel} was edited. Run \`fxmind graph --no-open\` (or /fxmind graph) to rebuild knowledge-graph.json and memory-index.json.`,
     );
   }
 

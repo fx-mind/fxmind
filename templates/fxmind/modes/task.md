@@ -61,7 +61,7 @@ QUALITY:
 
 ## 4. Gate B (before any edit)
 
-1. Prefer `fxmind_query` (~1500). Else `_index` + 3–5 memories + `reference.md`.
+1. Prefer **`fxmind_query`** (~1500). If it fails because the graph is missing/stale, call **`fxmind_graph`** with `{ updateHtml: false }` and retry; else fall back to `_index` + 3–5 memories + `reference.md`.
 2. **Graph engineering (FiveM tasks):** load memories matching Gate A TOPICS; scan `.fxmind/corrections/` for entries whose category matches the domain (`performance`, `security`, `communication`, `architecture`, `style` — maps 1:1 to pack skill files). Read matching correction files before Implement.
 3. Primary sources for APIs/natives not opened this session.
 4. Evidence budget: 2 lookup rounds; 3rd needs a reason.

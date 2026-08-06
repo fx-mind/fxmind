@@ -69,8 +69,18 @@ const TOOL_DEFS = [
   {
     name: "fxmind_graph",
     description:
-      "Rebuild knowledge-graph.json + HTML + memory-index.json from memories. Use after learn.",
-    inputSchema: { type: "object", properties: {} },
+      "Rebuild knowledge-graph.json + memory-index.json from memories (HTML optional). Use after learn.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        updateHtml: {
+          type: "boolean",
+          description:
+            "Also sync knowledge-graph.html (default true). Set false for JSON + index only.",
+          default: true,
+        },
+      },
+    },
   },
   {
     name: "fxmind_check_update",
@@ -325,7 +335,9 @@ function dispatchTool(name, args) {
       });
 
     case "fxmind_graph":
-      return tools.buildGraph(root);
+      return tools.buildGraph(root, {
+        updateHtml: args.updateHtml !== false,
+      });
 
     case "fxmind_check_update":
       return checkForUpdate({
