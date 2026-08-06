@@ -38,7 +38,7 @@ Restart your agent IDE/CLI after install or update.
 | **Memory** (`.fxmind/memory/`) | Topic memories in compact English, shared across all agents |
 | **`/fxmind`** | Chat command + **auto Task** for code changes (no slash required) |
 | **Packs** | Domain skills under `.fxmind/skills/` (e.g. FiveM) |
-| **3D graph** | Visual topic map (`fxmind graph`) |
+| **2D graph** | Visual topic map (`fxmind graph`) |
 | **Hooks** (Cursor) | Task gates + stale-memory detection |
 | **MCP** | Programmatic tools (`fxmind_query`, `fxmind_graph`, …) |
 
@@ -56,7 +56,7 @@ Restart your agent IDE/CLI after install or update.
 | `/fxmind learn <topic>` | Save or update a topic memory |
 | `/fxmind query "…"` | Search the knowledge graph |
 | `/fxmind audit [scope]` | Code audit → `.fxmind/audits/` |
-| `/fxmind graph` | Rebuild the 3D knowledge graph |
+| `/fxmind graph` | Rebuild the 2D knowledge graph |
 | `/fxmind memory health` | Verify memories against the codebase |
 | `/fxmind update` | Prompts to run `fxmind --update -y` in the terminal |
 
@@ -67,7 +67,7 @@ Gemini uses `/fxmind:task`, `/fxmind:learn`, etc. VS Code Copilot uses `/fxmind`
 ```bash
 fxmind -y                  # install (Cursor + fivem pack by default)
 fxmind --update -y         # refresh templates/skills/hooks/MCP/fivem-start (keeps memories)
-fxmind graph               # open 3D graph in the browser
+fxmind graph               # open 2D graph in the browser
 fxmind hooks status        # show hooks + MCP status
 fxmind -h                  # all options
 ```

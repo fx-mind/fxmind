@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FiveM — Mapa mental 3D</title>
+  <title>FiveM — Mapa mental</title>
   <style>
     :root {
       --bg: #000000;
@@ -374,37 +374,51 @@
       inset: 0;
     }
 
-    #node-labels {
+    .graph-toolbar {
       position: absolute;
-      inset: 0;
+      top: 12px;
+      right: 12px;
+      z-index: 3;
+      display: flex;
+      gap: 8px;
+    }
+
+    .graph-toolbar button {
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(9, 9, 11, 0.85);
+      color: var(--muted);
+      font-size: 11px;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+    }
+
+    .graph-toolbar button:hover {
+      border-color: var(--border-strong);
+      color: var(--text);
+      background: rgba(9, 9, 11, 0.95);
+    }
+
+    #graph-tooltip {
+      position: absolute;
       pointer-events: none;
-      overflow: hidden;
-      z-index: 2;
+      z-index: 4;
+      display: none;
+      max-width: 280px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border-strong);
+      background: rgba(9, 9, 11, 0.92);
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.4;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      transform: translate(-50%, -100%);
+      margin-top: -10px;
     }
-
-    .node-label {
-      position: absolute;
-      transform: translate(-50%, 12px);
-      color: #ffffff;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      text-shadow:
-        0 0 6px rgba(0, 0, 0, 0.95),
-        0 0 12px rgba(0, 0, 0, 0.8),
-        0 1px 2px #000000;
-      white-space: nowrap;
-    }
-
-    .node-label.selected {
-      color: #ffffff;
-      text-shadow:
-        0 0 8px rgba(255, 255, 255, 0.95),
-        0 0 18px rgba(255, 255, 255, 0.7),
-        0 0 32px rgba(255, 255, 255, 0.4),
-        0 1px 2px #000000;
-    }
-
   </style>
 </head>
 <body>
@@ -466,13 +480,15 @@
     </aside>
 
     <div class="graph-stage">
+      <div class="graph-toolbar">
+        <button type="button" id="btn-fit">Centralizar</button>
+      </div>
+      <div id="graph-tooltip" role="tooltip"></div>
       <div id="graph"></div>
-      <div id="node-labels"></div>
     </div>
   </div>
 
-  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-  <script src="https://unpkg.com/3d-force-graph@1.73.0/dist/3d-force-graph.min.js"></script>
+  <script src="https://unpkg.com/force-graph@1.43.4/dist/force-graph.min.js"></script>
   <script>
     const GRAPH_DATA = /*__GRAPH_DATA__*/;
 
@@ -559,36 +575,35 @@
       learned: "#2DD4BF",
       catalog: "#71717A",
       orphan: "#71717A",
+      foreign: "#F59E0B",
       highlight: "#A855F7",
       dim: "#3a3a50",
       link: "#6366F1",
+      linkDim: "rgba(99, 102, 241, 0.12)",
+    };
+
+    const LINK_TYPE_COLORS = {
+      "event-flow": "#22D3EE",
+      "shared-resource": "#4ADE80",
+      "shared-path": "#60A5FA",
+      "shared-symbol": "#A78BFA",
+      "cross-mention": "#F472B6",
+      "domain-related": "#818CF8",
+      "cross-project": "#F59E0B",
     };
 
     const VIVID_PALETTE = [
       "#60A5FA", "#22D3EE", "#A78BFA", "#F472B6",
       "#4ADE80", "#38BDF8", "#818CF8", "#C084FC",
     ];
-    const NODE_LEARNED_BASE = 8;
-    const NODE_CATALOG_BASE = 6;
-    const NODE_LEARNED_K = 1.55;
-    const NODE_CATALOG_K = 1.0;
-    const htmlLabelMap = new Map();
-    let cameraFitted = false;
-    let orphansLaidOut = false;
 
-    function activeNodeCount(data) {
-      return data?.nodes?.length || Graph?.graphData()?.nodes?.length || GRAPH_DATA.nodes.length || 1;
-    }
-
-    function layoutSpread(data) {
-      const n = activeNodeCount(data);
-      return 112 + Math.sqrt(n) * 34;
-    }
-
-    function spriteDensityScale(data) {
-      const n = activeNodeCount(data);
-      return Math.max(0.72, Math.min(1.12, 6 / Math.sqrt(n)));
-    }
+    const NODE_LEARNED_BASE = 4;
+    const NODE_CATALOG_BASE = 3;
+    const NODE_LEARNED_K = 0.85;
+    const NODE_CATALOG_K = 0.55;
+    const LABEL_ZOOM_ALL = 1.15;
+    const LABEL_TOP_K = 24;
+    const SEARCH_DEBOUNCE_MS = 200;
 
     const searchInput = document.getElementById("search");
     const toggleOrphans = document.getElementById("toggle-orphans");
@@ -596,10 +611,25 @@
     const toggleHideNames = document.getElementById("toggle-hide-names");
     const statsEl = document.getElementById("stats");
     const detailEl = document.getElementById("detail");
+    const tooltipEl = document.getElementById("graph-tooltip");
+    const btnFit = document.getElementById("btn-fit");
 
     let selectedNode = null;
+    let hoverNode = null;
     let highlightNodes = new Set();
     let highlightLinks = new Set();
+    let adjacency = new Map();
+    let linkedNodeIds = new Set();
+    let labelPriorityIds = new Set();
+    let currentGlobalScale = 1;
+    let searchDebounceTimer = null;
+    let fitPending = false;
+
+    const spriteCache = new Map();
+
+    function nodeId(value) {
+      return value?.id ?? value;
+    }
 
     function effectiveTokens(node) {
       if ((node.tokens || 0) > 0) return node.tokens;
@@ -607,11 +637,11 @@
       return hint ? Math.round(hint.length / 4) : 0;
     }
 
-    function nodeSize(node) {
+    function nodeRadius(node) {
       const tokens = Math.max(0, effectiveTokens(node));
       const base = node.group === "learned" ? NODE_LEARNED_BASE : NODE_CATALOG_BASE;
       const scale = node.group === "learned" ? NODE_LEARNED_K : NODE_CATALOG_K;
-      const max = node.group === "learned" ? 38 : 20;
+      const max = node.group === "learned" ? 18 : 10;
       return Math.max(base, Math.min(max, base + scale * Math.sqrt(tokens)));
     }
 
@@ -623,282 +653,225 @@
       return VIVID_PALETTE[Math.abs(hash) % VIVID_PALETTE.length];
     }
 
-    function findGraphNode(nodeId) {
-      return GRAPH_DATA.nodes.find((node) => node.id === nodeId);
+    function nodeHasLinks(node) {
+      return linkedNodeIds.has(node.id);
     }
 
     function nodeColor(node) {
       if (selectedNode && node.id === selectedNode.id) return COLORS.highlight;
+      if (hoverNode && node.id === hoverNode.id) return COLORS.highlight;
       if (highlightNodes.size && !highlightNodes.has(node.id)) return COLORS.dim;
+      if (node.group === "foreign") return COLORS.foreign;
+      if (node.group === "catalog") return COLORS.catalog;
       return nodeHasLinks(node) ? paletteColor(node.id) : COLORS.orphan;
     }
 
-    function shouldShowLabel(node) {
-      if (!toggleHideNames.checked) return true;
-      return highlightNodes.has(node.id);
+    function buildAdjacency(links) {
+      adjacency = new Map();
+      linkedNodeIds = new Set();
+      for (const link of links) {
+        const src = nodeId(link.source);
+        const tgt = nodeId(link.target);
+        linkedNodeIds.add(src);
+        linkedNodeIds.add(tgt);
+        if (!adjacency.has(src)) adjacency.set(src, { neighbors: new Set(), links: [] });
+        if (!adjacency.has(tgt)) adjacency.set(tgt, { neighbors: new Set(), links: [] });
+        adjacency.get(src).neighbors.add(tgt);
+        adjacency.get(tgt).neighbors.add(src);
+        adjacency.get(src).links.push(link);
+        adjacency.get(tgt).links.push(link);
+      }
     }
 
-    const circleTexture = (() => {
-      const s = 128;
-      const canvas = document.createElement("canvas");
-      canvas.width = s;
-      canvas.height = s;
-      const ctx = canvas.getContext("2d");
-      ctx.beginPath();
-      ctx.arc(s / 2, s / 2, s / 2 - 1, 0, Math.PI * 2);
-      ctx.fillStyle = "#ffffff";
-      ctx.fill();
-      const tex = new THREE.CanvasTexture(canvas);
-      tex.anisotropy = 4;
-      return tex;
-    })();
+    function computeLabelPriority(nodes, links) {
+      const degrees = new Map();
+      links.forEach((link) => {
+        const src = nodeId(link.source);
+        const tgt = nodeId(link.target);
+        degrees.set(src, (degrees.get(src) || 0) + 1);
+        degrees.set(tgt, (degrees.get(tgt) || 0) + 1);
+      });
+      const ranked = nodes
+        .map((node) => ({
+          id: node.id,
+          score: (degrees.get(node.id) || 0) * 10 + effectiveTokens(node),
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, LABEL_TOP_K);
+      labelPriorityIds = new Set(ranked.map((row) => row.id));
+    }
 
-    const glowTexture = (() => {
-      const s = 128;
-      const canvas = document.createElement("canvas");
-      canvas.width = s;
-      canvas.height = s;
-      const ctx = canvas.getContext("2d");
-      const grd = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
-      grd.addColorStop(0, "rgba(168,85,247,1)");
-      grd.addColorStop(0.25, "rgba(168,85,247,0.85)");
-      grd.addColorStop(0.5, "rgba(168,85,247,0.4)");
-      grd.addColorStop(0.75, "rgba(168,85,247,0.12)");
-      grd.addColorStop(1, "rgba(168,85,247,0)");
-      ctx.fillStyle = grd;
-      ctx.fillRect(0, 0, s, s);
-      const tex = new THREE.CanvasTexture(canvas);
-      tex.anisotropy = 4;
-      return tex;
-    })();
+    function shouldDrawLabel(node) {
+      const inFocus =
+        (selectedNode && node.id === selectedNode.id) ||
+        (hoverNode && node.id === hoverNode.id) ||
+        highlightNodes.has(node.id);
 
-    function nodeWorldScale(node, multiplier = 1, data) {
-      const graphEl = document.getElementById("graph");
-      const camera = Graph.camera();
-      const px = (nodeSize(node) + 4) * spriteDensityScale(data) * multiplier;
-
-      if (!Number.isFinite(node.x) || !Number.isFinite(node.y) || !Number.isFinite(node.z)) {
-        const vFov = (camera.fov * Math.PI) / 180;
-        const viewHeight = graphEl?.clientHeight || window.innerHeight;
-        const dist = Math.max(camera.position.length(), 120);
-        const worldPerPx = (2 * Math.tan(vFov / 2) * dist) / viewHeight;
-        return worldPerPx * px;
+      if (toggleHideNames.checked) {
+        return inFocus;
       }
 
-      const dist = Math.max(
-        camera.position.distanceTo(new THREE.Vector3(node.x, node.y, node.z)),
-        1,
-      );
-      const vFov = (camera.fov * Math.PI) / 180;
-      const viewHeight = graphEl?.clientHeight || window.innerHeight;
-      const worldPerPx = (2 * Math.tan(vFov / 2) * dist) / viewHeight;
-      const scale = worldPerPx * px;
-      return Number.isFinite(scale) && scale > 0 ? scale : 1;
+      if (inFocus) return true;
+      if (currentGlobalScale >= LABEL_ZOOM_ALL) return true;
+      return labelPriorityIds.has(node.id);
     }
 
-    function findNodeObject(nodeId) {
-      let found = null;
-      Graph.scene().traverse((obj) => {
-        if (found) return;
-        if (obj.__graphObjType === "node" && obj.__data?.id === nodeId) {
-          found = obj;
-        } else if (obj.userData?.nodeId === nodeId && obj.isSprite) {
-          found = obj.parent || obj;
-        }
-      });
-      return found;
+    function getNodeSprite(color, radiusPx, glow) {
+      const key = `${color}|${Math.round(radiusPx)}|${glow ? 1 : 0}`;
+      let entry = spriteCache.get(key);
+      if (entry) return entry;
+
+      const pad = glow ? Math.ceil(radiusPx * 1.8) : 2;
+      const size = Math.ceil(radiusPx * 2 + pad * 2);
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      const cx = size / 2;
+      const cy = size / 2;
+
+      if (glow) {
+        const grd = ctx.createRadialGradient(cx, cy, radiusPx * 0.2, cx, cy, radiusPx * 1.65);
+        grd.addColorStop(0, colorWithAlpha(color, 0.55));
+        grd.addColorStop(0.45, colorWithAlpha(color, 0.22));
+        grd.addColorStop(1, colorWithAlpha(color, 0));
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radiusPx * 1.65, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radiusPx, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      entry = { canvas, half: size / 2 };
+      spriteCache.set(key, entry);
+      return entry;
     }
 
-    function styleNodeObject(root, node, data) {
-      const isSelected = selectedNode && node.id === selectedNode.id;
+    function colorWithAlpha(hex, alpha) {
+      const value = hex.replace("#", "");
+      const r = parseInt(value.slice(0, 2), 16);
+      const g = parseInt(value.slice(2, 4), 16);
+      const b = parseInt(value.slice(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    function drawNodeLabel(ctx, node, radius, globalScale) {
+      if (!shouldDrawLabel(node)) return;
+
+      const fontSize = Math.max(10, Math.min(14, 11 / globalScale));
+      ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      const y = radius + 4 / globalScale;
       const dimmed = highlightNodes.size > 0 && !highlightNodes.has(node.id);
-      const coreScale = nodeWorldScale(node, isSelected ? 1.08 : 1, data);
-      const glowScale = nodeWorldScale(node, isSelected ? 2.2 : 1.65, data);
 
-      root.traverse((obj) => {
-        if (!obj.isSprite || !obj.material) return;
-        if (obj.userData?.isGlow) {
-          obj.material.opacity = dimmed ? 0.06 : (isSelected ? 0.78 : 0.18);
-          obj.scale.set(glowScale, glowScale, 1);
-          obj.material.color.set(isSelected ? COLORS.highlight : nodeColor(node));
-          return;
-        }
-        obj.scale.set(coreScale, coreScale, 1);
-        obj.material.color.set(isSelected ? COLORS.highlight : nodeColor(node));
-        obj.material.opacity = 1;
-      });
+      ctx.lineWidth = 3 / globalScale;
+      ctx.strokeStyle = "rgba(0, 0, 0, 0.85)";
+      ctx.fillStyle = dimmed ? "rgba(250, 250, 250, 0.45)" : "#fafafa";
+      ctx.strokeText(node.name, node.x, y);
+      ctx.fillText(node.name, node.x, y);
     }
 
-    function syncSpritePositions() {
-      Graph.graphData().nodes.forEach((node) => {
-        if (!Number.isFinite(node.x)) return;
-        const root = findNodeObject(node.id);
-        if (root) {
-          root.position.set(node.x, node.y, node.z);
-        }
-      });
-    }
+    function paintNode(node, ctx, globalScale) {
+      currentGlobalScale = globalScale;
+      const radius = nodeRadius(node) / globalScale;
+      const color = nodeColor(node);
+      const isFocus =
+        (selectedNode && node.id === selectedNode.id) ||
+        (hoverNode && node.id === hoverNode.id);
+      const dimmed = highlightNodes.size > 0 && !highlightNodes.has(node.id);
 
-    function updateAllSprites() {
-      const data = Graph.graphData();
-      data.nodes.forEach((node) => {
-        const root = findNodeObject(node.id);
-        if (root) styleNodeObject(root, node, data);
-      });
-    }
-
-    function makeNodeSprite(node) {
-      const group = new THREE.Group();
-      group.renderOrder = 100;
-      group.userData.nodeId = node.id;
-
-      const glow = new THREE.Sprite(
-        new THREE.SpriteMaterial({
-          map: glowTexture,
-          transparent: true,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-          depthTest: false,
-          opacity: 0,
-        }),
+      const glowSprite = getNodeSprite(color, radius * (isFocus ? 1.15 : 1), true);
+      ctx.globalAlpha = dimmed ? 0.35 : 1;
+      ctx.drawImage(
+        glowSprite.canvas,
+        node.x - glowSprite.half,
+        node.y - glowSprite.half,
       );
-      glow.renderOrder = 90;
-      glow.userData.isGlow = true;
 
-      const core = new THREE.Sprite(
-        new THREE.SpriteMaterial({
-          map: circleTexture,
-          transparent: true,
-          opacity: 1,
-          alphaTest: 0.55,
-          blending: THREE.NormalBlending,
-          depthWrite: false,
-          depthTest: false,
-        }),
+      const coreSprite = getNodeSprite(color, radius * (isFocus ? 1.08 : 1), false);
+      ctx.globalAlpha = dimmed ? 0.5 : 1;
+      ctx.drawImage(
+        coreSprite.canvas,
+        node.x - coreSprite.half,
+        node.y - coreSprite.half,
       );
-      core.renderOrder = 110;
-      core.userData.nodeId = node.id;
+      ctx.globalAlpha = 1;
 
-      group.add(glow);
-      group.add(core);
-      styleNodeObject(group, node, { nodes: GRAPH_DATA.nodes });
-      return group;
+      drawNodeLabel(ctx, node, radius, globalScale);
     }
 
-    const LINK_TUBE_DETAIL = 6;
-    const LINK_GRADIENT_PARTS = 10;
-    const LINK_CURVATURE = 0.08;
-    const LINK_RADIUS = 0.2;
-
-    function linkEndpoint(end) {
-      return end && end.id ? end : findGraphNode(end);
+    function paintPointerArea(node, color, ctx) {
+      const scale = Math.max(currentGlobalScale, 0.05);
+      const radius = (nodeRadius(node) + 10) / scale;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
+      ctx.fill();
     }
 
-    function buildLinkCurve(start, end) {
-      const vs = new THREE.Vector3(start.x, start.y, start.z);
-      const ve = new THREE.Vector3(end.x, end.y, end.z);
-      const dir = ve.clone().sub(vs);
-      const len = dir.length() || 1;
-      let normal = new THREE.Vector3(0, 0, 1).cross(dir);
-      if (normal.lengthSq() < 1e-6) normal = new THREE.Vector3(0, 1, 0).cross(dir);
-      normal.normalize().multiplyScalar(len * LINK_CURVATURE);
-      const ctrl = vs.clone().add(ve).multiplyScalar(0.5).add(normal);
-      return new THREE.QuadraticBezierCurve3(vs, ctrl, ve);
-    }
-
-    function linkSegmentOpacity(tMid, highlighted, dimmed) {
-      const edgeFactor = Math.abs(tMid - 0.5) * 2;
-      const base = dimmed ? 0.06 : (highlighted ? 0.92 : 0.58);
-      return base * (0.08 + 0.92 * Math.pow(edgeFactor, 0.55));
-    }
-
-    function styleLinkGroup(group, link) {
-      const src = linkEndpoint(link.source);
-      const tgt = linkEndpoint(link.target);
+    function linkColor(link) {
       const highlighted = highlightLinks.has(link);
       const dimmed = highlightLinks.size > 0 && !highlighted;
-      const cStart = new THREE.Color(src ? nodeColor(src) : COLORS.link);
-      const cEnd = new THREE.Color(tgt ? nodeColor(tgt) : COLORS.link);
-      const parts = group.__linkParts || LINK_GRADIENT_PARTS;
+      if (dimmed) return COLORS.linkDim;
+      if (highlighted) return LINK_TYPE_COLORS[link.type] || COLORS.link;
+      return colorWithAlpha(LINK_TYPE_COLORS[link.type] || COLORS.link, 0.45);
+    }
 
-      group.children.forEach((mesh, i) => {
-        const tMid = (i + 0.5) / parts;
-        mesh.material.color.copy(cStart).lerp(cEnd, tMid);
-        mesh.material.opacity = linkSegmentOpacity(tMid, highlighted, dimmed);
+    function linkWidth(link) {
+      const highlighted = highlightLinks.has(link);
+      if (highlightLinks.size > 0 && !highlighted) return 0.35;
+      return highlighted ? 2.2 : 0.85;
+    }
+
+    function layoutSpread(nodeCount) {
+      const n = nodeCount || 1;
+      return 90 + Math.sqrt(n) * 28;
+    }
+
+    function seedMindMapPositions2D(nodes, links) {
+      const spread = layoutSpread(nodes.length);
+      const degrees = new Map();
+      links.forEach((link) => {
+        const src = nodeId(link.source);
+        const tgt = nodeId(link.target);
+        degrees.set(src, (degrees.get(src) || 0) + 1);
+        degrees.set(tgt, (degrees.get(tgt) || 0) + 1);
       });
-    }
 
-    function makeLinkObject() {
-      const group = new THREE.Group();
-      group.renderOrder = 0;
-      group.raycast = () => {};
-      return group;
-    }
+      const connected = nodes
+        .filter((node) => degrees.has(node.id))
+        .sort((a, b) => (degrees.get(b.id) || 0) - (degrees.get(a.id) || 0));
+      const orphans = nodes
+        .filter((node) => !degrees.has(node.id))
+        .sort((a, b) => a.name.localeCompare(b.name));
 
-    function updateLinkObject(group, { start, end }, link) {
-      while (group.children.length) {
-        const child = group.children[0];
-        if (child.geometry) child.geometry.dispose();
-        if (child.material) child.material.dispose();
-        group.remove(child);
+      const golden = Math.PI * (3 - Math.sqrt(5));
+
+      function placeDisc(list, radius, startIndex) {
+        const total = list.length + startIndex;
+        list.forEach((node, index) => {
+          const order = index + startIndex;
+          const t = (order + 0.5) / total;
+          const r = radius * Math.sqrt(t);
+          const theta = golden * order;
+          node.x = r * Math.cos(theta);
+          node.y = r * Math.sin(theta);
+        });
       }
 
-      const curve = buildLinkCurve(start, end);
-      const parts = LINK_GRADIENT_PARTS;
-      group.__linkParts = parts;
-
-      for (let i = 0; i < parts; i += 1) {
-        const t0 = i / parts;
-        const t1 = (i + 1) / parts;
-        const subPoints = [];
-        for (let j = 0; j <= LINK_TUBE_DETAIL; j += 1) {
-          const t = t0 + (t1 - t0) * (j / LINK_TUBE_DETAIL);
-          subPoints.push(curve.getPoint(t));
-        }
-        const subCurve = subPoints.length >= 2
-          ? new THREE.CatmullRomCurve3(subPoints)
-          : new THREE.LineCurve3(subPoints[0], subPoints[subPoints.length - 1] || subPoints[0]);
-        const geometry = new THREE.TubeGeometry(subCurve, LINK_TUBE_DETAIL, LINK_RADIUS, 6, false);
-        const mesh = new THREE.Mesh(
-          geometry,
-          new THREE.MeshBasicMaterial({
-            transparent: true,
-            opacity: 0.5,
-            depthTest: false,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-          }),
-        );
-        mesh.renderOrder = 0;
-        mesh.raycast = () => {};
-        group.add(mesh);
+      const center = connected[0] || nodes[0];
+      if (center) {
+        center.x = 0;
+        center.y = 0;
       }
-      styleLinkGroup(group, link);
-      return true;
-    }
 
-    function syncLinkPositions() {
-      Graph.graphData().links.forEach((link) => {
-        const src = link.source;
-        const tgt = link.target;
-        if (!link.__lineObj || !Number.isFinite(src.x) || !Number.isFinite(tgt.x)) return;
-
-        const posKey = `${src.x.toFixed(1)}|${src.y.toFixed(1)}|${src.z.toFixed(1)}|${tgt.x.toFixed(1)}|${tgt.y.toFixed(1)}|${tgt.z.toFixed(1)}`;
-        if (link.__posKey === posKey) return;
-        link.__posKey = posKey;
-
-        updateLinkObject(
-          link.__lineObj,
-          { start: { x: src.x, y: src.y, z: src.z }, end: { x: tgt.x, y: tgt.y, z: tgt.z } },
-          link,
-        );
-      });
-    }
-
-    function styleAllLinks() {
-      Graph.graphData().links.forEach((link) => {
-        if (link.__lineObj) styleLinkGroup(link.__lineObj, link);
-      });
+      placeDisc(connected.filter((node) => node !== center), spread * 0.38, 1);
+      placeDisc(orphans, spread * 0.92, connected.length + 2);
     }
 
     function filteredData() {
@@ -906,7 +879,7 @@
       const showOrphans = toggleOrphans.checked;
       const learnedOnly = toggleLearnedOnly.checked;
 
-      let nodes = GRAPH_DATA.nodes.filter((node) => {
+      const nodes = GRAPH_DATA.nodes.filter((node) => {
         if (learnedOnly && node.group !== "learned") return false;
         if (!showOrphans && node.group === "catalog") return false;
         if (query && !node.name.toLowerCase().includes(query) && !node.id.includes(query)) {
@@ -917,7 +890,7 @@
 
       const nodeIds = new Set(nodes.map((node) => node.id));
       const links = GRAPH_DATA.links.filter(
-        (link) => nodeIds.has(link.source.id || link.source) && nodeIds.has(link.target.id || link.target),
+        (link) => nodeIds.has(nodeId(link.source)) && nodeIds.has(nodeId(link.target)),
       );
 
       return { nodes, links };
@@ -969,8 +942,10 @@
       const learned = data.nodes.filter((n) => n.group === "learned").length;
       const catalog = data.nodes.filter((n) => n.group === "catalog").length;
       const visibleTokens = data.nodes.reduce((sum, n) => sum + (n.tokens || 0), 0);
-      const totalTokens = GRAPH_DATA.meta.counts.tokens || 0;
-      const generated = formatGeneratedAt(GRAPH_DATA.meta.generatedAt);
+      const totalTokens = GRAPH_DATA.meta?.counts?.tokens || 0;
+      const generated = formatGeneratedAt(GRAPH_DATA.meta?.generatedAt);
+      const meta = GRAPH_DATA.meta?.counts || { learned: 0, catalog: 0, links: 0 };
+
       statsEl.innerHTML = `
         <div class="stat-grid">
           <div class="stat-chip">
@@ -991,268 +966,27 @@
           </div>
         </div>
         <div class="stat-footer">
-          Total: ${GRAPH_DATA.meta.counts.learned} aprendidos · ${GRAPH_DATA.meta.counts.catalog} órfãos · ${GRAPH_DATA.meta.counts.links} links · ~${totalTokens.toLocaleString("pt-BR")} tokens
+          Total: ${meta.learned} aprendidos · ${meta.catalog} órfãos · ${meta.links} links · ~${totalTokens.toLocaleString("pt-BR")} tokens
           ${generated ? `<br>Gerado: ${generated}` : ""}
         </div>
       `;
     }
 
-    function pruneHtmlLabels(visibleNodes) {
-      const visibleIds = new Set(visibleNodes.map((node) => node.id));
-      for (const [id, el] of htmlLabelMap.entries()) {
-        if (!visibleIds.has(id)) {
-          el.remove();
-          htmlLabelMap.delete(id);
-        }
+    function setHighlightFromNode(node) {
+      highlightNodes = new Set([node.id]);
+      highlightLinks = new Set();
+      const entry = adjacency.get(node.id);
+      if (entry) {
+        entry.neighbors.forEach((id) => highlightNodes.add(id));
+        entry.links.forEach((link) => highlightLinks.add(link));
       }
-    }
-
-    function syncHtmlLabels() {
-      const labelsRoot = document.getElementById("node-labels");
-      const data = Graph.graphData();
-      if (!labelsRoot || !data?.nodes?.length) return;
-
-      const visibleIds = new Set();
-      const dimmed = highlightNodes.size > 0;
-
-      data.nodes.forEach((node) => {
-        if (!Number.isFinite(node.x) || !Number.isFinite(node.y) || !Number.isFinite(node.z)) return;
-        visibleIds.add(node.id);
-
-        let el = htmlLabelMap.get(node.id);
-        if (!el) {
-          el = document.createElement("div");
-          el.className = "node-label";
-          labelsRoot.appendChild(el);
-          htmlLabelMap.set(node.id, el);
-        }
-
-        el.textContent = node.name;
-        const isSelected = selectedNode && node.id === selectedNode.id;
-        el.classList.toggle("selected", isSelected);
-        el.style.opacity = dimmed && !highlightNodes.has(node.id) ? "0.35" : "1";
-
-        const coords = Graph.graph2ScreenCoords(node.x, node.y, node.z);
-        if (!coords || !shouldShowLabel(node)) {
-          el.style.display = "none";
-          return;
-        }
-
-        el.style.display = "block";
-        el.style.left = `${coords.x}px`;
-        el.style.top = `${coords.y}px`;
-      });
-
-      for (const [id, el] of htmlLabelMap.entries()) {
-        if (!visibleIds.has(id)) {
-          el.style.display = "none";
-        }
-      }
-    }
-
-    function nodeId(value) {
-      return value?.id || value;
-    }
-
-    function nodeHasLinks(node) {
-      return GRAPH_DATA.links.some((link) => (
-        nodeId(link.source) === node.id || nodeId(link.target) === node.id
-      ));
-    }
-
-    function nodeDegreeMap(links) {
-      const degrees = new Map();
-      links.forEach((link) => {
-        const sourceId = nodeId(link.source);
-        const targetId = nodeId(link.target);
-        degrees.set(sourceId, (degrees.get(sourceId) || 0) + 1);
-        degrees.set(targetId, (degrees.get(targetId) || 0) + 1);
-      });
-      return degrees;
-    }
-
-    function seedMindMapPositions(nodes, links) {
-      const spread = layoutSpread({ nodes });
-      const degrees = nodeDegreeMap(links);
-      const connected = nodes
-        .filter((node) => degrees.has(node.id))
-        .sort((a, b) => (degrees.get(b.id) || 0) - (degrees.get(a.id) || 0));
-      const orphans = nodes
-        .filter((node) => !degrees.has(node.id))
-        .sort((a, b) => a.name.localeCompare(b.name));
-
-      const golden = Math.PI * (3 - Math.sqrt(5));
-
-      function placeSphere(cloudNodes, radius, startIndex = 1, looseness = 1) {
-        const total = cloudNodes.length + startIndex;
-        cloudNodes.forEach((node, index) => {
-          const order = index + startIndex;
-          const t = (order + 0.5) / total;
-          const phi = Math.acos(Math.max(-1, Math.min(1, 1 - 2 * t)));
-          const theta = golden * order;
-          const r = radius * Math.pow(order, 0.42) * looseness;
-          node.x = r * Math.sin(phi) * Math.cos(theta);
-          node.y = r * Math.sin(phi) * Math.sin(theta);
-          node.z = r * Math.cos(phi);
-        });
-      }
-
-      const center = connected[0] || nodes[0];
-      if (center) {
-        center.x = 0;
-        center.y = 0;
-        center.z = 0;
-      }
-
-      placeSphere(connected.filter((node) => node !== center), spread * 0.42, 1, 1);
-      placeSphere(orphans, spread * 0.78, connected.length + 2, 1.35);
-    }
-
-    function seedOrphanPositions(nodes, links) {
-      const linkedIds = new Set();
-      links.forEach((link) => {
-        linkedIds.add(nodeId(link.source));
-        linkedIds.add(nodeId(link.target));
-      });
-
-      const orphans = nodes.filter((n) => !linkedIds.has(n.id));
-      const shell = layoutSpread({ nodes }) * 1.65;
-      const golden = Math.PI * (3 - Math.sqrt(5));
-      orphans.forEach((orphan, i) => {
-        const t = (i + 0.5) / orphans.length;
-        const phi = Math.acos(Math.max(-1, Math.min(1, 1 - 2 * t)));
-        const theta = golden * (i + 1);
-        orphan.x = shell * Math.sin(phi) * Math.cos(theta);
-        orphan.y = shell * Math.sin(phi) * Math.sin(theta);
-        orphan.z = shell * Math.cos(phi);
-      });
-    }
-
-    function fitCamera() {
-      if (cameraFitted) return;
-      const data = Graph.graphData();
-      const positioned = data?.nodes?.filter((node) => Number.isFinite(node.x));
-      if (!positioned?.length) return;
-
-      let minX = Infinity;
-      let maxX = -Infinity;
-      let minY = Infinity;
-      let maxY = -Infinity;
-      let minZ = Infinity;
-      let maxZ = -Infinity;
-      positioned.forEach((node) => {
-        minX = Math.min(minX, node.x);
-        maxX = Math.max(maxX, node.x);
-        minY = Math.min(minY, node.y);
-        maxY = Math.max(maxY, node.y);
-        minZ = Math.min(minZ, node.z);
-        maxZ = Math.max(maxZ, node.z);
-      });
-
-      const cx = (minX + maxX) / 2;
-      const cy = (minY + maxY) / 2;
-      const cz = (minZ + maxZ) / 2;
-      const boundsSpan = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1);
-      const span = boundsSpan + Math.max(boundsSpan * 0.35, layoutSpread(data) * 0.25, 24);
-      const dist = span * 0.86;
-
-      const camera = Graph.camera();
-      const controls = Graph.controls();
-      camera.position.set(cx + dist * 0.52, cy + span * 0.34, cz + dist);
-      camera.lookAt(cx, cy, cz);
-      controls.target.set(cx, cy, cz);
-      controls.update();
-      cameraFitted = true;
-    }
-
-    function layoutOrphansNearCluster() {
-      const data = Graph.graphData();
-      if (!data?.nodes?.length) return;
-      const spread = layoutSpread(data);
-
-      const linkedIds = new Set();
-      data.links.forEach((link) => {
-        linkedIds.add(nodeId(link.source));
-        linkedIds.add(nodeId(link.target));
-      });
-
-      const connected = data.nodes.filter((n) => linkedIds.has(n.id) && Number.isFinite(n.x));
-      const orphans = data.nodes.filter((n) => !linkedIds.has(n.id));
-      if (!connected.length || !orphans.length) return;
-
-      let cx = 0;
-      let cy = 0;
-      let cz = 0;
-      connected.forEach((n) => {
-        cx += n.x;
-        cy += n.y;
-        cz += n.z;
-      });
-      cx /= connected.length;
-      cy /= connected.length;
-      cz /= connected.length;
-
-      let clusterRadius = 0;
-      connected.forEach((n) => {
-        const dx = n.x - cx;
-        const dy = n.y - cy;
-        const dz = n.z - cz;
-        clusterRadius = Math.max(clusterRadius, Math.sqrt(dx * dx + dy * dy + dz * dz));
-      });
-
-      const innerShell = clusterRadius + spread * 0.85;
-      const outerShell = clusterRadius + spread * 1.35;
-      const golden = Math.PI * (3 - Math.sqrt(5));
-
-      orphans.forEach((orphan, i) => {
-        const shell = i % 2 === 0 ? innerShell : outerShell;
-        const t = (i + 0.5) / orphans.length;
-        const phi = Math.acos(Math.max(-1, Math.min(1, 1 - 2 * t)));
-        const theta = golden * (i + 1);
-        orphan.x = cx + shell * Math.sin(phi) * Math.cos(theta);
-        orphan.y = cy + shell * Math.sin(phi) * Math.sin(theta);
-        orphan.z = cz + shell * Math.cos(phi);
-      });
-    }
-
-    function finalizeLayout() {
-      if (orphansLaidOut) return;
-      const data = Graph.graphData();
-      if (!data?.nodes?.some((node) => Number.isFinite(node.x))) return;
-      layoutOrphansNearCluster();
-      orphansLaidOut = true;
-      cameraFitted = false;
-      fitCamera();
-      repaintGraph();
-    }
-
-    function repaintGraph() {
-      Graph.graphData().links.forEach((link) => {
-        link.__posKey = null;
-      });
-      updateAllSprites();
-      syncLinkPositions();
-      styleAllLinks();
-      syncHtmlLabels();
     }
 
     function activateNode(node) {
       selectedNode = node;
-      highlightNodes = new Set([node.id]);
-      highlightLinks = new Set();
-
-      GRAPH_DATA.links.forEach((link) => {
-        const sourceId = nodeId(link.source);
-        const targetId = nodeId(link.target);
-        if (sourceId === node.id || targetId === node.id) {
-          highlightNodes.add(sourceId);
-          highlightNodes.add(targetId);
-          highlightLinks.add(link);
-        }
-      });
-
+      setHighlightFromNode(node);
       renderDetail(node);
-      repaintGraph();
+      Graph.nodeCanvasObjectMode(() => "replace");
     }
 
     function clearSelection() {
@@ -1260,184 +994,135 @@
       highlightNodes = new Set();
       highlightLinks = new Set();
       renderDetail(null);
-      repaintGraph();
+      Graph.nodeCanvasObjectMode(() => "replace");
     }
 
-    function pickNodeAt(clientX, clientY) {
-      const canvas = Graph.renderer().domElement;
-      const rect = canvas.getBoundingClientRect();
-      const localX = clientX - rect.left;
-      const localY = clientY - rect.top;
-
-      let best = null;
-      let bestDist = Infinity;
-
-      Graph.graphData().nodes.forEach((node) => {
-        if (!Number.isFinite(node.x) || !Number.isFinite(node.y) || !Number.isFinite(node.z)) {
-          return;
-        }
-
-        const projected = new THREE.Vector3(node.x, node.y, node.z).project(Graph.camera());
-        if (projected.z > 1) return;
-
-        const sx = (projected.x * 0.5 + 0.5) * rect.width;
-        const sy = (-projected.y * 0.5 + 0.5) * rect.height;
-        const dist = Math.hypot(localX - sx, localY - sy);
-        const hitRadius = Math.max(
-          (nodeSize(node) + 30) * spriteDensityScale(Graph.graphData()) * 3.2,
-          60,
-        );
-
-        if (dist <= hitRadius && dist < bestDist) {
-          bestDist = dist;
-          best = node;
-        }
-      });
-
-      return best;
+    function updateTooltip(node, event) {
+      if (!node || selectedNode) {
+        tooltipEl.style.display = "none";
+        return;
+      }
+      tooltipEl.textContent = node.name;
+      tooltipEl.style.display = "block";
+      const stage = document.querySelector(".graph-stage");
+      const rect = stage.getBoundingClientRect();
+      tooltipEl.style.left = `${event.clientX - rect.left}px`;
+      tooltipEl.style.top = `${event.clientY - rect.top}px`;
     }
 
-    function wireGraphSelection() {
-      const canvas = Graph.renderer().domElement;
-      let pointerStart = null;
-      let dragCandidate = false;
-
-      canvas.addEventListener("pointerdown", (event) => {
-        if (event.button !== 0) return;
-        pointerStart = { x: event.clientX, y: event.clientY };
-        dragCandidate = Boolean(pickNodeAt(event.clientX, event.clientY));
-      });
-
-      canvas.addEventListener("pointerup", (event) => {
-        if (event.button !== 0 || !pointerStart) return;
-        const dx = event.clientX - pointerStart.x;
-        const dy = event.clientY - pointerStart.y;
-        const moved = Math.hypot(dx, dy);
-        pointerStart = null;
-
-        if (moved > 10) return;
-
-        const node = pickNodeAt(event.clientX, event.clientY);
-        if (node) {
-          activateNode(node);
-        } else if (!dragCandidate) {
-          clearSelection();
-        }
-        dragCandidate = false;
-      });
+    function hideTooltip() {
+      tooltipEl.style.display = "none";
     }
-
-    let isDraggingNode = false;
-    let suppressNodeClick = false;
-
-    function releaseDragPin(node) {
-      delete node.fx;
-      delete node.fy;
-      delete node.fz;
-    }
-
-    let currentLayoutSpread = 58;
 
     function configureLayoutForces(data) {
-      currentLayoutSpread = layoutSpread(data);
-      Graph.d3Force("link").distance(currentLayoutSpread * 1.18).strength(0.14);
-      Graph.d3Force("charge").strength(-currentLayoutSpread * 3.4);
+      const spread = layoutSpread(data.nodes.length);
+      Graph.d3Force("link").distance(spread * 0.95).strength(0.22);
+      Graph.d3Force("charge").strength(-spread * 2.8);
       const centerForce = Graph.d3Force("center");
       if (centerForce?.strength) {
-        centerForce.strength(0.022);
+        centerForce.strength(0.04);
       }
     }
 
-    const Graph = ForceGraph3D()(document.getElementById("graph"))
-      .backgroundColor("#000000")
-      .showNavInfo(false)
-      .nodeLabel((node) => node.name)
-      .nodeVal((node) => nodeSize(node) * 1.2)
-      .nodeColor(nodeColor)
-      .nodeThreeObject(makeNodeSprite)
-      .linkThreeObject(makeLinkObject)
-      .linkPositionUpdate(updateLinkObject)
-      .linkDirectionalParticles(0)
-      .d3VelocityDecay(0.2)
-      .d3AlphaDecay(0.008)
-      .cooldownTicks(1200)
-      .enableNodeDrag(true)
-      .onNodeClick((node) => {
-        if (!suppressNodeClick) activateNode(node);
-      })
-      .onNodeDrag(() => {
-        isDraggingNode = true;
-        suppressNodeClick = true;
-        Graph.d3ReheatSimulation();
-      })
-      .onNodeDragEnd((node) => {
-        isDraggingNode = false;
-        releaseDragPin(node);
-        Graph.d3ReheatSimulation();
-        requestAnimationFrame(() => {
-          suppressNodeClick = false;
-        });
-      })
-      .onBackgroundClick(clearSelection);
-
-    wireGraphSelection();
-
-    Graph.onEngineStop(finalizeLayout);
-    Graph.onEngineTick(() => {
-      if (!orphansLaidOut && Graph.d3Alpha() < 0.02) {
-        finalizeLayout();
-      }
-    });
+    function scheduleFitView() {
+      if (fitPending) return;
+      fitPending = true;
+      requestAnimationFrame(() => {
+        fitPending = false;
+        Graph.zoomToFit(400, 48);
+      });
+    }
 
     function refreshGraph() {
-      orphansLaidOut = false;
+      const previousId = selectedNode?.id;
       const data = filteredData();
       data.nodes.forEach((node) => {
         delete node.fx;
         delete node.fy;
-        delete node.fz;
       });
+
+      buildAdjacency(data.links);
+      computeLabelPriority(data.nodes, data.links);
       updateStats(data);
-      pruneHtmlLabels(data.nodes);
-      seedMindMapPositions(data.nodes, data.links);
-      seedOrphanPositions(data.nodes, data.links);
+      seedMindMapPositions2D(data.nodes, data.links);
+
       Graph.graphData(data);
       configureLayoutForces(data);
       Graph.d3ReheatSimulation();
-      repaintGraph();
+
+      if (previousId) {
+        const stillThere = data.nodes.find((n) => n.id === previousId);
+        if (stillThere) {
+          activateNode(stillThere);
+        } else {
+          clearSelection();
+        }
+      } else {
+        clearSelection();
+      }
     }
 
-    (function renderLoop() {
-      if (isDraggingNode && typeof Graph.tickFrame === "function") {
-        Graph.tickFrame();
-      }
-      syncSpritePositions();
-      syncLinkPositions();
-      updateAllSprites();
-      syncHtmlLabels();
-      Graph.controls().update();
-      Graph.renderer().render(Graph.scene(), Graph.camera());
-      requestAnimationFrame(renderLoop);
-    })();
+    const Graph = ForceGraph()(document.getElementById("graph"))
+      .backgroundColor("#000000")
+      .nodeId("id")
+      .nodeRelSize(1)
+      .nodeVal((node) => nodeRadius(node))
+      .nodeCanvasObject(paintNode)
+      .nodeCanvasObjectMode(() => "replace")
+      .nodePointerAreaPaint(paintPointerArea)
+      .linkColor(linkColor)
+      .linkWidth(linkWidth)
+      .linkDirectionalParticles(0)
+      .cooldownTicks(250)
+      .d3VelocityDecay(0.35)
+      .d3AlphaDecay(0.028)
+      .enableNodeDrag(true)
+      .onNodeClick((node) => activateNode(node))
+      .onNodeHover((node, prevNode) => {
+        hoverNode = node || null;
+        if (node) {
+          Graph.nodeCanvasObjectMode(() => "replace");
+        } else if (!prevNode) {
+          Graph.nodeCanvasObjectMode(() => "replace");
+        }
+      })
+      .onBackgroundClick(() => clearSelection())
+      .onZoom(({ k }) => {
+        currentGlobalScale = k;
+      });
 
-    searchInput.addEventListener("input", () => {
-      cameraFitted = false;
-      refreshGraph();
+    const graphStage = document.querySelector(".graph-stage");
+    graphStage.addEventListener("mousemove", (event) => {
+      if (hoverNode) updateTooltip(hoverNode, event);
+      else hideTooltip();
     });
-    toggleOrphans.addEventListener("change", () => {
-      cameraFitted = false;
-      refreshGraph();
+    graphStage.addEventListener("mouseleave", hideTooltip);
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        Graph.pauseAnimation();
+      } else {
+        Graph.resumeAnimation();
+      }
     });
-    toggleLearnedOnly.addEventListener("change", () => {
-      cameraFitted = false;
-      refreshGraph();
-    });
+
+    btnFit.addEventListener("click", () => Graph.zoomToFit(400, 48));
+
+    function debouncedRefresh() {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(refreshGraph, SEARCH_DEBOUNCE_MS);
+    }
+
+    searchInput.addEventListener("input", debouncedRefresh);
+    toggleOrphans.addEventListener("change", refreshGraph);
+    toggleLearnedOnly.addEventListener("change", refreshGraph);
     toggleHideNames.addEventListener("change", () => {
-      syncHtmlLabels();
+      Graph.nodeCanvasObjectMode(() => "replace");
     });
+
+    Graph.onEngineStop(scheduleFitView);
 
     refreshGraph();
-    setTimeout(finalizeLayout, 3000);
   </script>
 </body>
 </html>

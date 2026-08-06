@@ -657,7 +657,7 @@ function writeGraph(projectRoot, graphData) {
 
 function printGraphHelp() {
   console.log(`
-Build the 3D knowledge graph from .fxmind/memory/ and open it in the browser.
+Build the 2D knowledge graph from .fxmind/memory/ and open it in the browser.
 
 Usage:
   fxmind graph [options]
