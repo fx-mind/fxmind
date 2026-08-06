@@ -34,16 +34,25 @@ const HOOK_SCRIPTS = [
   "gate-guard.js",
   "drift-watcher.js",
   "learn-prompt.js",
+  "update-notifier.js",
   "pre-commit.js",
 ];
 
-const HOOK_LIB_FILES = ["memory-drift.js"];
+const HOOK_LIB_FILES = ["memory-drift.js", "update-check.js"];
 
 const FXMIND_COMMANDS = {
-  preToolUse: "node .cursor/hooks/gate-guard.js",
-  postToolUse: "node .cursor/hooks/drift-watcher.js",
-  stop: "node .cursor/hooks/learn-prompt.js",
+  preToolUse: { command: "node .cursor/hooks/gate-guard.js", timeout: 15 },
+  postToolUse: { command: "node .cursor/hooks/drift-watcher.js", timeout: 15 },
+  stop: { command: "node .cursor/hooks/learn-prompt.js", timeout: 15 },
+  sessionStart: { command: "node .cursor/hooks/update-notifier.js", timeout: 8 },
 };
+
+function normalizeHookSpec(spec) {
+  if (typeof spec === "string") {
+    return { command: spec, timeout: 15 };
+  }
+  return { command: spec.command, timeout: spec.timeout ?? 15 };
+}
 
 function readJson(filePath, fallback = null) {
   if (!filePath || !fs.existsSync(filePath)) return fallback;
@@ -256,14 +265,15 @@ function installHooks(targetRoot, options = {}) {
   existing.version = existing.version || 1;
   existing.hooks = existing.hooks || {};
 
-  for (const [event, command] of Object.entries(FXMIND_COMMANDS)) {
+  for (const [event, spec] of Object.entries(FXMIND_COMMANDS)) {
+    const { command, timeout } = normalizeHookSpec(spec);
     if (!Array.isArray(existing.hooks[event])) {
       existing.hooks[event] = [];
     }
     existing.hooks[event] = existing.hooks[event].filter(
       (entry) => typeof entry === "object" && entry.command !== command,
     );
-    existing.hooks[event].push({ command, timeout: 15 });
+    existing.hooks[event].push({ command, timeout });
   }
 
   writeJson(hooksJsonPath, existing);
@@ -314,8 +324,9 @@ function uninstallHooks(targetRoot) {
   if (existing && existing.hooks) {
     for (const event of Object.keys(FXMIND_COMMANDS)) {
       if (!Array.isArray(existing.hooks[event])) continue;
+      const { command } = normalizeHookSpec(FXMIND_COMMANDS[event]);
       existing.hooks[event] = existing.hooks[event].filter(
-        (entry) => typeof entry === "object" && entry.command !== FXMIND_COMMANDS[event],
+        (entry) => typeof entry === "object" && entry.command !== command,
       );
       if (existing.hooks[event].length === 0) delete existing.hooks[event];
     }
@@ -340,7 +351,8 @@ function hooksStatus(targetRoot) {
     present[name] = fs.existsSync(path.join(projectRoot, HOOKS_DIR_REL, name));
   }
   const wired = {};
-  for (const [event, command] of Object.entries(FXMIND_COMMANDS)) {
+  for (const [event, spec] of Object.entries(FXMIND_COMMANDS)) {
+    const { command } = normalizeHookSpec(spec);
     wired[event] = Boolean(
       existing &&
         Array.isArray(existing.hooks?.[event]) &&
@@ -380,9 +392,10 @@ Usage:
   fxmind hooks -h                                         This help
 
 Cursor hooks:
-  preToolUse  → .cursor/hooks/gate-guard.js     (auto-start Task + enforce Gates A/B; block Write to gates JSON)
-  postToolUse → .cursor/hooks/drift-watcher.js  (memory drift + graph-pending flag)
-  stop        → .cursor/hooks/learn-prompt.js   (remind to finish Gate C)
+  preToolUse   → .cursor/hooks/gate-guard.js      (auto-start Task + enforce Gates A/B; block Write to gates JSON)
+  postToolUse  → .cursor/hooks/drift-watcher.js   (memory drift + graph-pending flag)
+  stop         → .cursor/hooks/learn-prompt.js    (remind to finish Gate C)
+  sessionStart → .cursor/hooks/update-notifier.js (new fxmind version → agent asks user to update)
 
 Git pre-commit:
   Blocks commit when staged (non-deleted) code files break topic memories (paths[] → missing file).
@@ -390,8 +403,9 @@ Git pre-commit:
   Warnings only for stale-candidate; use --strict or FXMIND_PRECOMMIT_STRICT=1 to block those too.
 
 Env:
-  FXMIND_AUTO_TASK=0   disable gate-guard auto-start
-  FXMIND_GATE_WARN=1   warn-only (allow edits without gates)`);
+  FXMIND_AUTO_TASK=0        disable gate-guard auto-start
+  FXMIND_GATE_WARN=1        warn-only (allow edits without gates)
+  FXMIND_NO_UPDATE_CHECK=1  disable sessionStart update notifier`);
 }
 
 function parseHookCliArgs(argv) {
@@ -611,6 +625,7 @@ module.exports = {
   HOOK_SCRIPTS,
   HOOK_LIB_FILES,
   FXMIND_COMMANDS,
+  normalizeHookSpec,
   GIT_HOOK_MARKER,
   installHooks,
   uninstallHooks,

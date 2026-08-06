@@ -4,6 +4,10 @@ Refresh **installed knowledge packs**, **Agent Skills**, **pack templates**, and
 
 This mode runs the fxmind CLI — it does **not** edit memories, `memory/_index.md`, or `knowledge-graph.json`.
 
+### Session notifier (Cursor)
+
+On new Cursor sessions, the `sessionStart` hook may inject context when a newer fxmind version or layout is available. The agent should **ask the user** (AskQuestion) whether to update. If the user already confirmed in chat, skip asking and go to Step 2.
+
 ### Step 1 — Verify install
 
 If `.fxmind/packs.json` is missing → tell user to run `npx github:fx-mind/fxmind -y` (or `fxmind -y` if installed globally) from the project root; stop.

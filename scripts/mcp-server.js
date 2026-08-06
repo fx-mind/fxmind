@@ -3,7 +3,7 @@
  * fxmind MCP server (stdio, JSON-RPC 2.0).
  *
  * Tools:
- *   fxmind_list_memories / fxmind_validate_memories / fxmind_query / fxmind_graph
+ *   fxmind_list_memories / fxmind_validate_memories / fxmind_query / fxmind_graph / fxmind_check_update
  *   fxmind_drift_check / fxmind_start_task / fxmind_gate_status / fxmind_record_gate
  *   fxmind_record_correction / fxmind_list_corrections
  *   fxmind_fivem_install / fxmind_fivem_cmd / fxmind_fivem_console_tail / fxmind_fivem_status
@@ -17,6 +17,7 @@
 const tools = require("./fxmind-tools");
 const fivemRcon = require("./fivem-rcon");
 const fxmindMysql = require("./fxmind-mysql");
+const { checkForUpdate } = require("./lib/update-check");
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_INFO = { name: "fxmind", version: "1.4.0" };
@@ -70,6 +71,21 @@ const TOOL_DEFS = [
     description:
       "Rebuild knowledge-graph.json + HTML + memory-index.json from memories. Use after learn.",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "fxmind_check_update",
+    description:
+      "Check whether a newer fxmind version or project layout is available on GitHub. Read-only — does not run update.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        force: {
+          type: "boolean",
+          description: "Bypass 24h throttle and re-fetch remote version (default false).",
+          default: false,
+        },
+      },
+    },
   },
   {
     name: "fxmind_drift_check",
@@ -310,6 +326,12 @@ function dispatchTool(name, args) {
 
     case "fxmind_graph":
       return tools.buildGraph(root);
+
+    case "fxmind_check_update":
+      return checkForUpdate({
+        projectRoot: root,
+        force: Boolean(args.force),
+      });
 
     case "fxmind_drift_check":
       return tools.driftCheck(root, args.file || "");

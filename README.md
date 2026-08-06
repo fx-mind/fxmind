@@ -152,6 +152,7 @@ Also installs `.cursor/rules/fxmind-auto-task.mdc` (`alwaysApply`) and adds sess
 | `gate-guard` | Auto-starts Task; blocks edits until A/B; blocks Write to gates JSON |
 | `drift-watcher` | Detects stale memories; rebuilds graph after learn |
 | `learn-prompt` | Reminds to finish Gate C |
+| `update-notifier` | On session start, prompts agent to offer `fxmind --update -y` when a newer version exists |
 | `pre-commit` (git) | Blocks commit when a staged (non-deleted) file is missing but still listed in a memory `paths[]` |
 
 ```bash
@@ -159,7 +160,7 @@ fxmind hooks install       # hooks + MCP + auto-task rule + gitignore
 fxmind hooks uninstall
 ```
 
-Useful env vars: `FXMIND_AUTO_TASK=0`, `FXMIND_GATE_WARN=1`, `FXMIND_GRAPH_NO_AUTO=1`.
+Useful env vars: `FXMIND_AUTO_TASK=0`, `FXMIND_GATE_WARN=1`, `FXMIND_GRAPH_NO_AUTO=1`, `FXMIND_NO_UPDATE_CHECK=1`.
 
 ---
 
@@ -237,6 +238,7 @@ The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP sp
 |----------|--------|
 | `fxmind_query` | Graph search with token budget |
 | `fxmind_graph` | Rebuild graph + `memory-index.json` |
+| `fxmind_check_update` | Compare local vs GitHub fxmind version (read-only) |
 | `fxmind_list_memories` | List topic memories |
 | `fxmind_validate_memories` | Schema + path checks + duplicates |
 | `fxmind_drift_check` | Memories referencing a file |
@@ -246,6 +248,12 @@ The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP sp
 | `fxmind_fivem_status` / `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` | Local FXServer RCON + log tail (dev). **Status probes reachability** — use cmd/tail only when `available: true`; otherwise ask user to run console commands manually. |
 
 Skip with `--no-mcp`. Refresh with `fxmind --update -y` (also refreshes hooks + fivem-start) or `fxmind hooks install`. Restart the MCP client after changes.
+
+### Auto update check (Cursor)
+
+When Cursor hooks are installed, `sessionStart` runs `.cursor/hooks/update-notifier.js` (at most one network check per 24h). If a newer fxmind version or project layout is available, the agent receives context to **tell you in chat** and ask (AskQuestion) whether to run `fxmind --update -y`. Memories are preserved; the agent runs the CLI only after you confirm.
+
+Opt out: set `"autoUpdateCheck": false` in `.fxmind/packs.json`, or `FXMIND_NO_UPDATE_CHECK=1`.
 
 ### Local FiveM RCON (dev, no txAdmin)
 
