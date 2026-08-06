@@ -43,8 +43,8 @@ If the fxmind MCP server is registered, prefer its tools over manual mode specs 
 
 1. If `fxmind_fivem_*` MCP tools are **not** in your tool list → **skip** RCON and log tail; tell the user to run `ensure`/`restart` manually in the FXServer console (and paste output if Gate V needs it).
 2. Otherwise call **`fxmind_fivem_status`** first. Use `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` **only** when `available: true`.
-3. `passwordSet: false` → **`fxmind_fivem_install`** once, ask user to restart **fivem-start**, then stop — do not call `fxmind_fivem_cmd` until they confirm.
-4. `configured` but `serverReachable: false` → **skip** automation; ask user to start **fivem-start** and run the console command manually.
+3. `installed: false` or `passwordSet: false` → **`fxmind_fivem_install`** once (dev only — writes **dev/dev.cfg** only), ask user to restart **fivem-start**, then stop — do not call `fxmind_fivem_cmd` until they confirm.
+4. `installed: true` but `serverReachable: false` / `available: false` → **skip** automation; ask user to start **fivem-start** and run the console command manually.
 5. Max one install attempt; no retry loops on dead RCON.
 
 **After editing a FiveM resource (when available):** call `fxmind_fivem_cmd` (`ensure`/`restart`) yourself.

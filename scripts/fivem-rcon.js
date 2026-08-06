@@ -31,14 +31,48 @@ const ALLOWED_COMMANDS = new Set([
 
 const RESOURCE_RE = /^[a-zA-Z0-9_\[\]\-]+$/;
 
+const EXEC_CFG_DEV = "dev/dev.cfg";
+
 const CFG_CANDIDATES = [
-  "dev/dev.cfg",
+  EXEC_CFG_DEV,
   "server.cfg",
   "cfg/server.cfg",
   "dev.cfg",
 ];
 
+const INSTALL_REQUIRED_ERROR =
+  "fxmind fivem install not run for this project — run it once (dev only) before using RCON";
+
+const NO_REPLY_ERROR =
+  "RCON no reply — FXServer console not running (start the fivem-start task)";
+
 const UDP_HEADER = Buffer.from([0xff, 0xff, 0xff, 0xff]);
+
+function installMarkerPath(root) {
+  return path.join(path.resolve(root), ".fxmind", "rcon.json");
+}
+
+function isFivemInstalled(root) {
+  const marker = installMarkerPath(root);
+  if (!fs.existsSync(marker)) return false;
+  try {
+    const data = JSON.parse(fs.readFileSync(marker, "utf8"));
+    return Boolean(data.installedAt || data.execCfg);
+  } catch {
+    return false;
+  }
+}
+
+function writeInstallMarker(root, { execCfg, password, port, host }) {
+  const data = {
+    installedAt: new Date().toISOString(),
+    execCfg,
+    password,
+  };
+  if (port) data.port = port;
+  if (host) data.host = host;
+  fs.writeFileSync(installMarkerPath(root), `${JSON.stringify(data, null, 2)}\n`, "utf8");
+}
 
 function projectRoot(overrides = {}) {
   return path.resolve(
@@ -152,7 +186,7 @@ function rconConfig(overrides = {}) {
 }
 
 function isConfigured(config = rconConfig()) {
-  return Boolean(config.password);
+  return Boolean(config.password) && isFivemInstalled(config.root);
 }
 
 /**
@@ -255,11 +289,18 @@ function execRcon(command, overrides = {}) {
   if (!sanitized.ok) {
     return Promise.resolve({ ok: false, error: sanitized.error, config: publicConfig(config) });
   }
+  if (!isFivemInstalled(config.root)) {
+    return Promise.resolve({
+      ok: false,
+      error: INSTALL_REQUIRED_ERROR,
+      config: publicConfig(config),
+    });
+  }
   if (!config.password) {
     return Promise.resolve({
       ok: false,
       error:
-        "RCON password not found — set rcon_password in dev/dev.cfg (or server.cfg), or FXMIND_RCON_PASSWORD / .fxmind/rcon.json",
+        "RCON password not found — run fxmind fivem install (writes dev/dev.cfg and .fxmind/rcon.json)",
       config: publicConfig(config),
     });
   }
@@ -289,6 +330,17 @@ function execRcon(command, overrides = {}) {
       if (idleTimer) clearTimeout(idleTimer);
       idleTimer = setTimeout(() => {
         const response = chunks.join("").trim();
+        if (!response) {
+          finish({
+            ok: false,
+            error: NO_REPLY_ERROR,
+            command: sanitized.command,
+            response,
+            transport: "udp",
+            config: publicConfig(config),
+          });
+          return;
+        }
         const badAuth = /bad rcon|invalid rcon|rcon bad/i.test(response);
         const unset =
           /must set rcon_password|rcon_password to be able/i.test(response);
@@ -318,11 +370,22 @@ function execRcon(command, overrides = {}) {
         });
         return;
       }
+      const response = chunks.join("").trim();
+      if (!response) {
+        finish({
+          ok: false,
+          error: NO_REPLY_ERROR,
+          command: sanitized.command,
+          response,
+          transport: "udp",
+          config: publicConfig(config),
+        });
+        return;
+      }
       finish({
         ok: true,
         command: sanitized.command,
-        response: chunks.join("").trim(),
-        note: chunks.length ? undefined : "no UDP reply (common for ensure/restart)",
+        response,
         transport: "udp",
         config: publicConfig(config),
       });
@@ -363,10 +426,12 @@ function execRcon(command, overrides = {}) {
 }
 
 function publicConfig(config) {
+  const installed = config.root ? isFivemInstalled(config.root) : false;
   return {
     host: config.host,
     port: config.port,
-    passwordSet: Boolean(config.password),
+    installed,
+    passwordSet: Boolean(config.password) && installed,
     passwordSource: config.passwordSource || null,
     logPath: config.logPath || null,
     root: config.root || null,
@@ -379,6 +444,13 @@ function publicConfig(config) {
  */
 function consoleTail(options = {}) {
   const config = rconConfig(options);
+  if (!isFivemInstalled(config.root)) {
+    return {
+      ok: false,
+      error: INSTALL_REQUIRED_ERROR,
+      config: publicConfig(config),
+    };
+  }
   const lines = Math.min(Math.max(Number(options.lines) || 80, 1), 500);
   const terminalLog = path.resolve(config.logPath);
   const debugLog = path.resolve(config.root, ".fxmind", "server-debug.log");
@@ -429,19 +501,27 @@ function consoleTail(options = {}) {
 
 function status() {
   const config = rconConfig();
+  const installed = isFivemInstalled(config.root);
   return {
     ok: true,
+    installed,
     configured: isConfigured(config),
     allowedCommands: [...ALLOWED_COMMANDS],
     config: publicConfig(config),
   };
 }
 
-function statusReason({ configured, serverReachable, probeError }) {
+function statusReason({ installed, configured, serverReachable, probeError }) {
+  if (!installed) {
+    return "run fxmind fivem install first (dev only)";
+  }
   if (!configured) {
     return "RCON not configured — run fxmind fivem install (or fxmind_fivem_install), then restart fivem-start";
   }
   if (!serverReachable) {
+    if (/no reply|not running/i.test(probeError || "")) {
+      return "FXServer console not answering — start the fivem-start task, then retry";
+    }
     if (/timeout|FXServer running/i.test(probeError || "")) {
       return "FXServer not running or RCON unreachable — start the fivem-start task, then retry";
     }
@@ -461,33 +541,48 @@ function statusReason({ configured, serverReachable, probeError }) {
  */
 async function statusProbe(overrides = {}) {
   const config = rconConfig(overrides);
+  const installed = isFivemInstalled(config.root);
   const configured = isConfigured(config);
   const base = {
     ok: true,
+    installed,
     configured,
     allowedCommands: [...ALLOWED_COMMANDS],
     config: publicConfig(config),
   };
+
+  if (!installed) {
+    return {
+      ...base,
+      serverReachable: false,
+      available: false,
+      reason: statusReason({
+        installed: false,
+        configured: false,
+        serverReachable: false,
+      }),
+    };
+  }
 
   if (!configured) {
     return {
       ...base,
       serverReachable: false,
       available: false,
-      reason: statusReason({ configured: false, serverReachable: false }),
+      reason: statusReason({ installed: true, configured: false, serverReachable: false }),
     };
   }
 
   const probe = await execRcon("status", overrides);
   const probeError = probe.error || null;
-  const timeout = /timeout|FXServer running/i.test(probeError || "");
-  const serverReachable = probe.ok || (Boolean(probe.response) && !timeout);
+  const responseText = probe.response ? String(probe.response).trim() : "";
+  const serverReachable = probe.ok && Boolean(responseText);
 
   return {
     ...base,
     serverReachable,
     available: serverReachable,
-    reason: statusReason({ configured, serverReachable, probeError }),
+    reason: statusReason({ installed, configured, serverReachable, probeError }),
     probe: {
       ok: probe.ok,
       error: probeError,
@@ -666,7 +761,7 @@ function installFivemDev(options = {}) {
 
   fs.mkdirSync(path.join(root, ".fxmind"), { recursive: true });
 
-  const execCfg = detectExecCfg(root);
+  const execCfg = EXEC_CFG_DEV;
   const cfgAbs = path.join(root, execCfg);
   if (!fs.existsSync(cfgAbs)) {
     fs.mkdirSync(path.dirname(cfgAbs), { recursive: true });
@@ -702,6 +797,14 @@ function installFivemDev(options = {}) {
   steps.push({ step: "tasks", ...ensureFivemStartTask(root) });
   steps.push({ step: "gitignore", ...ensureGitignoreLines(root) });
 
+  const port = readPortFromCfgFile(cfgAbs) || 30120;
+  writeInstallMarker(root, {
+    execCfg,
+    password: rcon.password,
+    port,
+  });
+  steps.push({ step: "install-marker", path: ".fxmind/rcon.json", action: "written" });
+
   const config = rconConfig({ root, password: rcon.password });
   const needsRestart = rcon.changed;
 
@@ -709,6 +812,7 @@ function installFivemDev(options = {}) {
     ok: true,
     root,
     execCfg,
+    installed: true,
     passwordSource: config.passwordSource,
     passwordSet: Boolean(rcon.password),
     needsServerRestart: needsRestart,
@@ -723,8 +827,10 @@ function installFivemDev(options = {}) {
 
 module.exports = {
   ALLOWED_COMMANDS,
+  EXEC_CFG_DEV,
   rconConfig,
   isConfigured,
+  isFivemInstalled,
   sanitizeCommand,
   execRcon,
   appendRconLog,

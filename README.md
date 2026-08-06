@@ -257,17 +257,20 @@ Opt out: set `"autoUpdateCheck": false` in `.fxmind/packs.json`, or `FXMIND_NO_U
 
 ### Local FiveM RCON (dev, no txAdmin)
 
+Dev-only: RCON works only after **`fxmind fivem install`**, which writes **`dev/dev.cfg`** and `.fxmind/rcon.json` (never production `server.cfg`). Commands require a running **fivem-start** console that responds over UDP.
+
 One-shot setup (agent or human):
 
 ```bash
 fxmind fivem install
 ```
 
-Writes `rcon_password` into cfg, `.vscode/fivem-start.ps1` (interactive terminal), `tasks.json`, and gitignore. Idempotent. MCP: `fxmind_fivem_install`. Also refreshed automatically by `fxmind --update -y` when the fivem pack is installed or markers already exist.
+Writes `rcon_password` into **dev/dev.cfg**, `.vscode/fivem-start.ps1` (interactive terminal), `tasks.json`, and gitignore. Idempotent. MCP: `fxmind_fivem_install`. Also refreshed automatically by `fxmind --update -y` when the fivem pack is installed or markers already exist.
 
 | Need | How |
 |------|-----|
-| First-time / missing password | `fxmind fivem install` then restart **fivem-start** |
+| First-time / RCON not installed | `fxmind fivem install` then restart **fivem-start** |
+| `fxmind_fivem_status.available: false` | Start fivem-start or run console commands manually — do not claim ensure succeeded |
 | `ensure` / `restart` | UDP RCON (`fxmind fivem ensure` / MCP) |
 | Full log for `tail` / MCP | RCON exchanges → `.fxmind/fivem-console.log`; optional `server-debug.log` |
 

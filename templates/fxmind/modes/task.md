@@ -78,7 +78,7 @@ QUALITY:
 3. Max **3** fix→verify retries → hand-back.
 4. No commit/push; no weaken checks; no secrets; no silent scope expand; no deps unless asked.
 5. Outward AUTH for push/deploy-remote/publish/send. **ensure/restart = local verify, no AUTH.**
-6. FiveM: call `fxmind_fivem_status` first. If `available: true` → after resource edit use `fxmind_fivem_cmd` + `fxmind_fivem_console_tail`. If `passwordSet: false` → `fxmind_fivem_install` once, ask restart **fivem-start**, stop. If MCP tools missing or `serverReachable: false` → skip automation; ask user to run ensure/restart manually. Live debug: tagged prints → ensure (when available) → user reproduces → tail or pasted console → fix → remove prints.
+6. FiveM (local dev only): call `fxmind_fivem_status` first. If `available: true` → after resource edit use `fxmind_fivem_cmd` + `fxmind_fivem_console_tail`. If `installed: false` or `passwordSet: false` → `fxmind_fivem_install` once (writes dev/dev.cfg only), ask restart **fivem-start**, stop. If MCP tools missing or `available: false` → skip automation; ask user to run ensure/restart manually. Live debug: tagged prints → ensure (when available) → user reproduces → tail or pasted console → fix → remove prints.
 7. Ask when missing: target resource, expected behavior, job/permission, client vs server vs NUI, destructive/money/inventory rules. One pointed question with your recommended reading when only the user can settle.
 
 Selective memory: never load all. Canonicalize slugs (accents, singular/plural).

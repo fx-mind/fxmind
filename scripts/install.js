@@ -919,8 +919,7 @@ function fivemInstallMarkersPresent(targetRoot) {
     }
   }
 
-  const cfg = fivemRcon.rconConfig({ root });
-  if (cfg.password) {
+  if (fivemRcon.isFivemInstalled(root)) {
     return true;
   }
 

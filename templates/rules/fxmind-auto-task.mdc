@@ -24,7 +24,7 @@ When the user asks to **change code/config** — run Task automatically. Read **
 1. `fxmind_start_task` (add `trivial: true` when CLASS=trivial).
 2. Gate A → `fxmind_record_gate` A (skip ceremony if trivial already auto-marked; still state Done in chat).
 3. Gate B → `fxmind_record_gate` B (same for trivial).
-4. Implement (max 3 retries). FiveM: `fxmind_fivem_status` first — use `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` only when `available: true`. RCON missing → `fxmind_fivem_install` once + restart fivem-start. MCP or FXServer unavailable → skip; ask user to run ensure/restart manually.
+4. Implement (max 3 retries). FiveM (dev only): `fxmind_fivem_status` first — use `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` only when `available: true`. `installed: false` → `fxmind_fivem_install` once (dev/dev.cfg only) + restart fivem-start. MCP or FXServer unavailable → skip; ask user to run ensure/restart manually. Never use RCON on production server.cfg.
 5. Read **task-verify.md** → Gate V → `fxmind_record_gate` V. **C without V fails in MCP.**
 6. Judge if task-verify says mandatory.
 7. Gate C → learn / "mudança pontual" → `fxmind_record_gate` C + `fxmind_validate_memories` if memory wrote.
