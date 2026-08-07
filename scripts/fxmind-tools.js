@@ -957,6 +957,7 @@ const PROJECT_GITIGNORE_LINES = [
   ".fxmind/server-debug.log",
   ".fxmind/rcon.json",
   ".fxmind/graph-cache.json",
+  ".fxmind/tmp/",
 ];
 
 function ensureProjectGitignore(targetRoot) {

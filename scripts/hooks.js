@@ -39,7 +39,7 @@ const HOOK_SCRIPTS = [
   "pre-commit.js",
 ];
 
-const HOOK_LIB_FILES = ["memory-drift.js", "update-check.js"];
+const HOOK_LIB_FILES = ["memory-drift.js", "update-check.js", "cleanup-tmp.js"];
 
 const FXMIND_COMMANDS = {
   preToolUse: { command: "node .cursor/hooks/gate-guard.js", timeout: 15 },

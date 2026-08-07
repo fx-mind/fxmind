@@ -91,7 +91,7 @@ fxmind -h                  # all options
 └── fxmind.md            # /fxmind command router
 ```
 
-Session-only (gitignored): `fxmind-gates.json`, `metrics.jsonl`.
+Session-only (gitignored): `fxmind-gates.json`, `metrics.jsonl`, `.fxmind/tmp/` (agent scratch — auto-cleaned when safe).
 
 **Corrections backlog** (commit these — skill feed): `.fxmind/corrections/` — human fixes of agent mistakes, separate from topic memories. Export with `fxmind corrections export` → edit the matching `fivem-development/<category>.md`.
 ---
@@ -128,6 +128,7 @@ Memories stay as **Markdown** (source of truth, git-friendly). The graph build a
 | `.fxmind/knowledge-graph.html` | Optional 2D visualization for humans (`fxmind graph`) |
 | `.fxmind/memory-index.json` | Fast frontmatter index + validation summary |
 | `.fxmind/graph-cache.json` | Local build cache (gitignored) |
+| `.fxmind/tmp/` | Ephemeral agent scratch (gitignored; removed when task inactive or Gate C done) |
 
 **Agents and MCP tools depend on JSON + index, not HTML.** Automatic rebuilds (after learn, drift-watcher, session start, stale `fxmind_query`) refresh JSON + index only unless you run `fxmind graph` (browser) or pass `updateHtml: true` / set `FXMIND_GRAPH_UPDATE_HTML=1`.
 

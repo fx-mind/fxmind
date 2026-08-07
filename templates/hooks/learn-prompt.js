@@ -45,6 +45,13 @@ function noop() {
 }
 
 function main() {
+  try {
+    const { cleanupFxmindTmp } = require("./lib/cleanup-tmp.js");
+    cleanupFxmindTmp(PROJECT_ROOT);
+  } catch {
+    // fail-open
+  }
+
   const gates = readGates();
   if (!gates || !gates.taskActive) {
     noop();

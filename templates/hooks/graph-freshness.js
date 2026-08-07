@@ -2,9 +2,11 @@
 /**
  * fxmind graph-freshness — Cursor sessionStart hook.
  * Rebuilds knowledge-graph.json + memory-index when memories are newer than the graph.
+ * Removes stale .fxmind/tmp when no active mid-task scratch is needed.
  * Fail-open: any error → empty JSON.
  */
 const { spawnSync } = require("child_process");
+const { cleanupFxmindTmp } = require("./lib/cleanup-tmp.js");
 
 const PROJECT_ROOT = process.cwd();
 
@@ -14,6 +16,12 @@ function respond(payload) {
 }
 
 function main() {
+  try {
+    cleanupFxmindTmp(PROJECT_ROOT);
+  } catch {
+    // fail-open
+  }
+
   try {
     const disable =
       process.env.FXMIND_GRAPH_NO_AUTO &&

@@ -64,5 +64,6 @@ Reply in **their language** (usually PT-BR): summary of what was learned (3–5 
 
 - **Never invent** paths, events, or APIs.
 - **Do not** edit Lua/JS during learn mode.
+- **Do not** leave files in `.fxmind/tmp/` — learn is read-only; use grep/read in place.
 - Cursor Agent: use **AskQuestion** if critical context is missing; otherwise ask in chat.
 - **Memory file:** compact technical English (`lang: en-compact`). **Chat reply:** user's language.

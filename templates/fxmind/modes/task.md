@@ -77,6 +77,7 @@ QUALITY:
 2. Surprise → say it, update Done/Scope; do not force the old plan.
 3. Max **3** fix→verify retries → hand-back.
 4. No commit/push; no weaken checks; no secrets; no silent scope expand; no deps unless asked.
+4b. **Scratch files:** prefer OS temp or in-repo test paths under `resources/`. If you must use `.fxmind/tmp/`, delete that folder before **Gate C** (or when abandoning the task). Never commit `tmp/` — it is gitignored session scratch, not fxmind data.
 5. Outward AUTH for push/deploy-remote/publish/send. **ensure/restart = local verify, no AUTH.**
 6. FiveM (local dev only): call `fxmind_fivem_status` first. If `available: true` → after resource edit use `fxmind_fivem_cmd` + `fxmind_fivem_console_tail`. If `installed: false` or `passwordSet: false` → `fxmind_fivem_install` once (writes dev/dev.cfg only), ask restart **fivem-start**, stop. If MCP tools missing or `available: false` → skip automation; ask user to run ensure/restart manually. Live debug: tagged prints → ensure (when available) → user reproduces → tail or pasted console → fix → remove prints.
 7. Ask when missing: target resource, expected behavior, job/permission, client vs server vs NUI, destructive/money/inventory rules. One pointed question with your recommended reading when only the user can settle.
@@ -100,6 +101,8 @@ After applying a user correction, AskQuestion: Pitfalls / `fxmind_record_correct
 ## 8. Gate C
 
 Requires V (MCP enforces). Learn reusable knowledge → memory + validate; else "mudança pontual".
+
+Before recording Gate C: remove `.fxmind/tmp/` if you created scratch files there (shell `rm -rf .fxmind/tmp` or delete files). Hooks also prune `tmp` after Gate C or when no task is active.
 
 **Quality pitfalls:** if self-review found a reusable gap not yet in the pack, call **`fxmind_record_correction`** (category = matching skill file: `performance`, `security`, etc.) in addition to user-correction flow.
 
