@@ -253,6 +253,7 @@ The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP sp
 | `fxmind_gate_status` / `fxmind_record_gate` | Gates START/A/B/V/C (session only) |
 | `fxmind_record_correction` / `fxmind_list_corrections` | Skill-improvement backlog |
 | `fxmind_fivem_status` / `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` | Local FXServer RCON + log tail (dev). **Status probes reachability** — use cmd/tail only when `available: true`; otherwise ask user to run console commands manually. |
+| `fxmind_fivem_nui_wire` / `fxmind_fivem_nui_dump` / `fxmind_fivem_nui_unwire` | Agent TEMP-wires a NUI resource, dumps structured state, then **must unwire**. Better than screenshots. |
 
 Skip with `--no-mcp`. Refresh with `fxmind --update -y` (also refreshes hooks + fivem-start) or `fxmind hooks install`. Restart the MCP client after changes.
 
@@ -280,13 +281,19 @@ Writes `rcon_password` into **dev/dev.cfg**, `.vscode/fivem-start.ps1` (interact
 | `fxmind_fivem_status.available: false` | Start fivem-start or run console commands manually — do not claim ensure succeeded |
 | `ensure` / `restart` | UDP RCON (`fxmind fivem ensure` / MCP) |
 | Full log for `tail` / MCP | RCON exchanges → `.fxmind/fivem-console.log`; optional `server-debug.log` |
+| NUI vision for agents | `fxmind fivem nui-dump` / MCP `fxmind_fivem_nui_dump` → `.fxmind/nui-dump.json` |
+
+`fivem install` also copies **`fxmind-nui-bridge`** and sets `fxmind_nui_dump_path`. Agents should **auto-wire** (no manual script edits):
 
 ```bash
-fxmind fivem ensure my_resource
-fxmind fivem tail
+fxmind fivem nui-wire my_nui
+fxmind fivem ensure fxmind-nui-bridge
+fxmind fivem ensure my_nui
+fxmind fivem nui-dump --resource my_nui
+fxmind fivem nui-unwire
 ```
 
-Allowlisted RCON: `ensure`, `start`, `stop`, `restart`, `refresh`, `status`, `resmon`.
+Allowlisted RCON: `ensure`, `start`, `stop`, `restart`, `refresh`, `status`, `resmon`, `fxmind_nui_dump`.
 
 ### MySQL (oxmysql cfg)
 

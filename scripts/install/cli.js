@@ -73,6 +73,9 @@ Without global install:
   ${npxInstall("fivem install")}      Configure local RCON + Cursor fivem-start tee
   ${npxInstall("fivem status")}       Local FXServer RCON status (dev)
   ${npxInstall("fivem ensure <res>")} RCON ensure/stop/restart/refresh (allowlisted)
+  ${npxInstall("fivem nui-wire <res>")} TEMP wire NUI for agent vision (then nui-unwire)
+  ${npxInstall("fivem nui-dump")}       Structured NUI state (MCP fxmind_fivem_nui_dump)
+  ${npxInstall("fivem nui-unwire")}     Remove TEMP nui-wire (mandatory cleanup)
   ${npxInstall("db status")}          MySQL from mysql_connection_string (cfg)
   ${npxInstall("db query \"SELECT 1\"")} Run SQL (DELETE needs --yes)
   ${npxInstall("pack new <id>")}      Scaffold a new knowledge pack under packs/<id>/

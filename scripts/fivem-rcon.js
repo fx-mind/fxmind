@@ -27,6 +27,7 @@ const ALLOWED_COMMANDS = new Set([
   "refresh",
   "status",
   "resmon",
+  "fxmind_nui_dump",
 ]);
 
 const RESOURCE_RE = /^[a-zA-Z0-9_\[\]\-]+$/;
@@ -210,6 +211,19 @@ function sanitizeCommand(raw) {
     return {
       ok: false,
       error: `command not allowed: ${parts[0]} — use: ${[...ALLOWED_COMMANDS].join(", ")}`,
+    };
+  }
+
+  if (verb === "fxmind_nui_dump") {
+    if (parts.length === 1) {
+      return { ok: true, command: "fxmind_nui_dump" };
+    }
+    if (parts.length === 2 && RESOURCE_RE.test(parts[1]) && !parts[1].includes("..")) {
+      return { ok: true, command: `fxmind_nui_dump ${parts[1]}` };
+    }
+    return {
+      ok: false,
+      error: "fxmind_nui_dump takes optional resource name — e.g. fxmind_nui_dump or fxmind_nui_dump my_nui",
     };
   }
 
@@ -632,11 +646,127 @@ function ensureRconInCfg(cfgAbs, password) {
   return { changed: true, password, action: "added" };
 }
 
+const NUI_BRIDGE_NAME = "fxmind-nui-bridge";
+
+function nuiBridgeTemplateDir() {
+  return path.join(__dirname, "..", "templates", "resources", NUI_BRIDGE_NAME);
+}
+
+function detectNuiBridgeDest(root) {
+  const localDir = path.join(root, "resources", "[local]");
+  if (fs.existsSync(localDir) && fs.statSync(localDir).isDirectory()) {
+    return {
+      abs: path.join(localDir, NUI_BRIDGE_NAME),
+      rel: `resources/[local]/${NUI_BRIDGE_NAME}`,
+    };
+  }
+  const fxmindDir = path.join(root, "resources", "[fxmind]");
+  if (fs.existsSync(fxmindDir) && fs.statSync(fxmindDir).isDirectory()) {
+    return {
+      abs: path.join(fxmindDir, NUI_BRIDGE_NAME),
+      rel: `resources/[fxmind]/${NUI_BRIDGE_NAME}`,
+    };
+  }
+  const resourcesDir = path.join(root, "resources");
+  if (fs.existsSync(resourcesDir) && fs.statSync(resourcesDir).isDirectory()) {
+    return {
+      abs: path.join(resourcesDir, NUI_BRIDGE_NAME),
+      rel: `resources/${NUI_BRIDGE_NAME}`,
+    };
+  }
+  return {
+    abs: path.join(root, "resources", "[local]", NUI_BRIDGE_NAME),
+    rel: `resources/[local]/${NUI_BRIDGE_NAME}`,
+  };
+}
+
+function copyNuiBridgeResource(root) {
+  const src = nuiBridgeTemplateDir();
+  if (!fs.existsSync(src)) {
+    return { ok: false, action: "missing-template", path: null };
+  }
+  const dest = detectNuiBridgeDest(root);
+  fs.mkdirSync(dest.abs, { recursive: true });
+
+  const skipNames = new Set(["last-dump.json"]);
+  /** @type {string[]} */
+  const copied = [];
+
+  function walk(fromDir, toDir) {
+    for (const entry of fs.readdirSync(fromDir, { withFileTypes: true })) {
+      if (skipNames.has(entry.name)) continue;
+      const from = path.join(fromDir, entry.name);
+      const to = path.join(toDir, entry.name);
+      if (entry.isDirectory()) {
+        fs.mkdirSync(to, { recursive: true });
+        walk(from, to);
+      } else {
+        fs.copyFileSync(from, to);
+        copied.push(path.relative(dest.abs, to).replace(/\\/g, "/"));
+      }
+    }
+  }
+
+  walk(src, dest.abs);
+  return {
+    ok: true,
+    action: copied.length ? "synced" : "empty",
+    path: dest.rel,
+    files: copied,
+  };
+}
+
+function ensureNuiDumpCfg(cfgAbs, root) {
+  let text = fs.existsSync(cfgAbs) ? fs.readFileSync(cfgAbs, "utf8") : "";
+  const dumpAbs = path.join(root, ".fxmind", "nui-dump.json").replace(/\\/g, "/");
+  const changes = [];
+
+  if (!/^\s*ensure\s+fxmind-nui-bridge\s*$/im.test(text)) {
+    const block = [
+      "",
+      "# fxmind NUI dump bridge (dev agents)",
+      "ensure fxmind-nui-bridge",
+      "",
+    ].join("\n");
+    text += block;
+    changes.push("ensure");
+  }
+
+  const pathLine = `set fxmind_nui_dump_path "${dumpAbs}"`;
+  if (/^\s*(?:set\s+)?fxmind_nui_dump_path\s+/im.test(text)) {
+    const next = text.replace(
+      /^\s*(?:set\s+)?fxmind_nui_dump_path\s+(?:"[^"]*"|'[^']*'|\S+)\s*$/im,
+      pathLine,
+    );
+    if (next !== text) {
+      text = next;
+      changes.push("path-updated");
+    }
+  } else {
+    if (!text.endsWith("\n")) text += "\n";
+    text += `${pathLine}\n`;
+    changes.push("path");
+  }
+
+  if (changes.length) {
+    fs.mkdirSync(path.dirname(cfgAbs), { recursive: true });
+    fs.writeFileSync(cfgAbs, text, "utf8");
+  }
+
+  return {
+    ok: true,
+    action: changes.length ? changes.join("+") : "kept",
+    dumpPath: dumpAbs,
+  };
+}
+
 function ensureGitignoreLines(root) {
   const gitignorePath = path.join(root, ".gitignore");
   const lines = [
     ".fxmind/fivem-console.log",
     ".fxmind/server-debug.log",
+    ".fxmind/nui-dump.json",
+    ".fxmind/nui-wire.json",
     ".fxmind/rcon.json",
   ];
   let content = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, "utf8") : "";
@@ -797,6 +927,25 @@ function installFivemDev(options = {}) {
   steps.push({ step: "tasks", ...ensureFivemStartTask(root) });
   steps.push({ step: "gitignore", ...ensureGitignoreLines(root) });
 
+  const bridge = copyNuiBridgeResource(root);
+  steps.push({
+    step: "nui-bridge",
+    path: bridge.path,
+    action: bridge.action,
+    ok: bridge.ok !== false,
+  });
+  if (bridge.ok !== false) {
+    const nuiCfg = ensureNuiDumpCfg(cfgAbs, root);
+    steps.push({
+      step: "nui-dump-cfg",
+      path: execCfg,
+      action: nuiCfg.action,
+      dumpPath: nuiCfg.dumpPath,
+    });
+  } else {
+    warnings.push("fxmind-nui-bridge template missing — NUI dump MCP will not work until pack is complete");
+  }
+
   const port = readPortFromCfgFile(cfgAbs) || 30120;
   writeInstallMarker(root, {
     execCfg,
@@ -838,5 +987,8 @@ module.exports = {
   status,
   statusProbe,
   installFivemDev,
+  copyNuiBridgeResource,
+  ensureNuiDumpCfg,
   DEFAULT_LOCAL_PASSWORD,
+  NUI_BRIDGE_NAME,
 };

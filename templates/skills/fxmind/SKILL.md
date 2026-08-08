@@ -49,7 +49,14 @@ If the fxmind MCP server is registered, prefer its tools over manual mode specs 
 
 **After editing a FiveM resource (when available):** call `fxmind_fivem_cmd` (`ensure`/`restart`) yourself.
 
-**Live debug (when available):** tagged `print`s → ensure via MCP → user reproduces in-game → you read **`fxmind_fivem_console_tail`** → fix → remove prints. When MCP or FXServer is unavailable, ask the user to reproduce and share console output instead.
+**Live debug (when available):** tagged `print`s → ensure via MCP → user reproduces in-game → you read **`fxmind_fivem_console_tail`** → fix → remove prints. For NUI/UI logic, prefer structured vision over screenshots — **you** configure and clean up:
+
+1. `fxmind_fivem_nui_wire` with the target resource (patches fxmanifest + injects probe; do not ask the user to edit)
+2. `ensure` bridge + resource → user opens NUI in-game
+3. `fxmind_fivem_nui_dump`
+4. **`fxmind_fivem_nui_unwire` before finishing / Gate C** (mandatory — never leave the probe)
+
+When MCP or FXServer is unavailable, ask the user to reproduce and share console output instead.
 
 **MySQL:** connection comes from `mysql_connection_string` in cfg (oxmysql). Prefer `fxmind_db_schema` / `fxmind_db_sample` before ad-hoc SQL. For **DELETE/DROP/TRUNCATE**, AskQuestion the user first; only then call `fxmind_db_query` with `approvedByUser: true`. Never invent approval.
 

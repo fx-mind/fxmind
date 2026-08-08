@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 
 const fivemRcon = require("../fivem-rcon");
+const fivemNuiDump = require("../fivem-nui-dump");
 const fxmindMysql = require("../fxmind-mysql");
 const { SHARED_DIR } = require("./config");
 const { installAuditsDir, migrateAuditReports } = require("./legacy");
@@ -183,12 +184,18 @@ fxmind fivem — local FXServer RCON (dev; no txAdmin).
   fxmind fivem refresh
   fxmind fivem cmd "ensure my_resource"
   fxmind fivem tail [--lines 80]
+  fxmind fivem nui-wire <resource>
+  fxmind fivem nui-dump [--resource <name>] [--no-trigger] [--timeout 3000]
+  fxmind fivem nui-unwire [resource]
 
   --json   raw JSON output (default on errors)
 
-  install  writes rcon_password to cfg + .vscode/fivem-start.ps1 tee + tasks.json
-  ensure   UDP RCON reload
-  tail     last lines of .fxmind/fivem-console.log (terminal mirror)
+  install     writes rcon_password to cfg + nui-bridge resource + .vscode/fivem-start.ps1 + tasks.json
+  ensure      UDP RCON reload
+  tail        last lines of .fxmind/fivem-console.log (terminal mirror)
+  nui-wire    TEMP patch resource for agent NUI vision (MCP: fxmind_fivem_nui_wire)
+  nui-dump    read structured NUI state (MCP: fxmind_fivem_nui_dump)
+  nui-unwire  remove TEMP wire (mandatory cleanup; MCP: fxmind_fivem_nui_unwire)
 
 Env: FXMIND_RCON_HOST (127.0.0.1) FXMIND_RCON_PORT (30120)
      FXMIND_RCON_PASSWORD (optional if set in cfg by install)
@@ -251,6 +258,44 @@ Env: FXMIND_RCON_HOST (127.0.0.1) FXMIND_RCON_PORT (30120)
       const command = rest.slice(1).join(" ");
       const result = await fivemRcon.execRcon(command);
       printFivemCmdResult(result, { json: options.json });
+      return result.ok ? 0 : 1;
+    }
+    if (sub === "nui-wire" || sub === "nuiwire") {
+      const resource = rest[1];
+      const result = fivemNuiDump.wireNuiDump({ resource });
+      console.log(JSON.stringify(result, null, 2));
+      return result.ok ? 0 : 1;
+    }
+    if (sub === "nui-dump" || sub === "nuidump") {
+      let resource;
+      let trigger = true;
+      let timeoutMs;
+      for (let i = 1; i < rest.length; i += 1) {
+        if (rest[i] === "--resource" || rest[i] === "-r") {
+          resource = rest[i + 1];
+          i += 1;
+        } else if (rest[i] === "--no-trigger") {
+          trigger = false;
+        } else if (rest[i] === "--timeout" || rest[i] === "-t") {
+          timeoutMs = Number(rest[i + 1]);
+          i += 1;
+        } else if (!rest[i].startsWith("-") && !resource) {
+          resource = rest[i];
+        }
+      }
+      const result = await fivemNuiDump.nuiDump({ resource, trigger, timeoutMs });
+      console.log(JSON.stringify(result, null, 2));
+      return result.ok ? 0 : 1;
+    }
+    if (sub === "nui-unwire" || sub === "nuiunwire") {
+      let resource = rest[1];
+      let clearDump = true;
+      for (let i = 1; i < rest.length; i += 1) {
+        if (rest[i] === "--keep-dump") clearDump = false;
+        else if (!rest[i].startsWith("-") && !resource) resource = rest[i];
+      }
+      const result = fivemNuiDump.unwireNuiDump({ resource, clearDump });
+      console.log(JSON.stringify(result, null, 2));
       return result.ok ? 0 : 1;
     }
     if (["ensure", "start", "stop", "restart", "refresh", "resmon"].includes(sub)) {

@@ -955,6 +955,8 @@ const PROJECT_GITIGNORE_LINES = [
   ".fxmind/metrics.jsonl",
   ".fxmind/fivem-console.log",
   ".fxmind/server-debug.log",
+  ".fxmind/nui-dump.json",
+  ".fxmind/nui-wire.json",
   ".fxmind/rcon.json",
   ".fxmind/graph-cache.json",
   ".fxmind/tmp/",

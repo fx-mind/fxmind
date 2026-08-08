@@ -26,6 +26,13 @@ describe("fivem rcon allowlist", () => {
     assert.equal(fivem.sanitizeCommand("refresh").command, "refresh");
   });
 
+  it("allows fxmind_nui_dump with optional resource", () => {
+    assert.equal(fivem.sanitizeCommand("fxmind_nui_dump").ok, true);
+    assert.equal(fivem.sanitizeCommand("fxmind_nui_dump").command, "fxmind_nui_dump");
+    assert.equal(fivem.sanitizeCommand("fxmind_nui_dump my_nui").command, "fxmind_nui_dump my_nui");
+    assert.equal(fivem.sanitizeCommand("fxmind_nui_dump bad name").ok, false);
+  });
+
   it("rejects dangerous or invalid commands", () => {
     assert.equal(fivem.sanitizeCommand("quit").ok, false);
     assert.equal(fivem.sanitizeCommand("exec server.cfg").ok, false);
@@ -92,6 +99,13 @@ describe("fivem rcon allowlist", () => {
     const ps1 = fs.readFileSync(path.join(dir, ".vscode", "fivem-start.ps1"), "utf8");
     assert.doesNotMatch(ps1, /2>&1\s*\|\s*ForEach-Object/);
     assert.ok(fs.existsSync(path.join(dir, ".vscode", "tasks.json")));
+    const cfg = fs.readFileSync(path.join(dir, "dev", "dev.cfg"), "utf8");
+    assert.match(cfg, /ensure\s+fxmind-nui-bridge/);
+    assert.match(cfg, /fxmind_nui_dump_path/);
+    assert.ok(
+      fs.existsSync(path.join(dir, "resources", "[local]", "fxmind-nui-bridge", "server.lua")) ||
+        fs.existsSync(path.join(dir, "resources", "fxmind-nui-bridge", "server.lua")),
+    );
     const second = fivem.installFivemDev({ root: dir });
     assert.equal(second.needsServerRestart, false);
     assert.equal(

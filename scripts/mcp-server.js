@@ -7,6 +7,7 @@
  *   fxmind_drift_check / fxmind_start_task / fxmind_gate_status / fxmind_record_gate
  *   fxmind_record_correction / fxmind_list_corrections
  *   fxmind_fivem_install / fxmind_fivem_cmd / fxmind_fivem_console_tail / fxmind_fivem_status
+ *   fxmind_fivem_nui_wire / fxmind_fivem_nui_dump / fxmind_fivem_nui_unwire
  *   fxmind_db_status / fxmind_db_query / fxmind_db_schema / fxmind_db_sample
  *   fxmind_db_explore / fxmind_db_analyze
  *
@@ -16,6 +17,7 @@
 
 const tools = require("./fxmind-tools");
 const fivemRcon = require("./fivem-rcon");
+const fivemNuiDump = require("./fivem-nui-dump");
 const fxmindMysql = require("./fxmind-mysql");
 const { checkForUpdate } = require("./lib/update-check");
 
@@ -239,6 +241,63 @@ const TOOL_DEFS = [
     },
   },
   {
+    name: "fxmind_fivem_nui_wire",
+    description:
+      "TEMP agent setup: patch a NUI resource (fxmanifest client-hook + DOM probe in ui_page) so fxmind_fivem_nui_dump works. You configure this yourself — do not ask the user to edit scripts. ALWAYS call fxmind_fivem_nui_unwire when finished (or before Gate C). Ensures fxmind-nui-bridge is present.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        resource: {
+          type: "string",
+          description: "Resource folder name that owns the ui_page (e.g. my_police).",
+        },
+      },
+      required: ["resource"],
+    },
+  },
+  {
+    name: "fxmind_fivem_nui_dump",
+    description:
+      "Read structured NUI state for agent vision (better than screenshots). Prefer after fxmind_fivem_nui_wire. Triggers RCON fxmind_nui_dump (unless trigger=false), then reads .fxmind/nui-dump.json. Call fxmind_fivem_status first when triggering. Player must be in-game with the NUI open. After debugging, call fxmind_fivem_nui_unwire.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        resource: {
+          type: "string",
+          description: "Optional resource name filter (only that NUI responds).",
+        },
+        trigger: {
+          type: "boolean",
+          description: "Request a fresh dump via RCON (default true). Set false to only read the last file.",
+          default: true,
+        },
+        timeoutMs: {
+          type: "number",
+          description: "How long to wait for the dump file after trigger (default 3000, max 15000).",
+        },
+      },
+    },
+  },
+  {
+    name: "fxmind_fivem_nui_unwire",
+    description:
+      "Remove temporary NUI dump wiring added by fxmind_fivem_nui_wire (markers, probe script, wire state, dump file). MANDATORY cleanup after using nui_dump / when the task ends. If resource omitted, uses .fxmind/nui-wire.json.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        resource: {
+          type: "string",
+          description: "Optional; defaults to the currently wired resource.",
+        },
+        clearDump: {
+          type: "boolean",
+          description: "Also delete .fxmind/nui-dump.json (default true).",
+          default: true,
+        },
+      },
+    },
+  },
+  {
     name: "fxmind_db_status",
     description:
       "Check MySQL config from mysql_connection_string (dev/dev.cfg / server.cfg) or FXMIND_MYSQL_URL. Read-only; never returns the password.",
@@ -406,6 +465,24 @@ function dispatchTool(name, args) {
 
     case "fxmind_fivem_console_tail":
       return fivemRcon.consoleTail({ lines: args.lines });
+
+    case "fxmind_fivem_nui_wire":
+      return fivemNuiDump.wireNuiDump({
+        resource: args.resource || "",
+      });
+
+    case "fxmind_fivem_nui_dump":
+      return fivemNuiDump.nuiDump({
+        resource: args.resource || undefined,
+        trigger: args.trigger !== false,
+        timeoutMs: args.timeoutMs,
+      });
+
+    case "fxmind_fivem_nui_unwire":
+      return fivemNuiDump.unwireNuiDump({
+        resource: args.resource || undefined,
+        clearDump: args.clearDump !== false,
+      });
 
     case "fxmind_db_status":
       return fxmindMysql.status();
