@@ -7,6 +7,8 @@ Load memory → implement → **verify** → learn. Verify details live in **`.f
 > **Gates = MCP only** (`fxmind_start_task`, `fxmind_record_gate`). Never Write `.fxmind/fxmind-gates.json`. MCP off → STOP and ask user to enable **fxmind**.
 >
 > Do not narrate step numbers to the user.
+>
+> **User stop wins:** if the user says pare / parar / stop / pause / cancela, stop immediately. No more edits, tools, Gate V, Gate C, or hook follow-ups. Leave the task open; resume only when they ask.
 
 ## 1. Classify (one shape)
 

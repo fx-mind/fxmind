@@ -157,7 +157,7 @@ Also installs `.cursor/rules/fxmind-auto-task.mdc` (`alwaysApply`) and adds sess
 |------|------|
 | `gate-guard` | Auto-starts Task; blocks edits until A/B; blocks Write to gates JSON |
 | `drift-watcher` | Detects stale memories; rebuilds JSON graph after memory edits |
-| `learn-prompt` | Reminds to finish Gate C |
+| `learn-prompt` | Reminds to finish Gate C (once; skipped on user stop/abort) |
 | `graph-freshness` | On session start, rebuilds stale `knowledge-graph.json` + index |
 | `update-notifier` | On session start, prompts agent to offer `fxmind --update -y` when a newer version exists |
 | `pre-commit` (git) | Blocks commit when a staged (non-deleted) file is missing but still listed in a memory `paths[]` |

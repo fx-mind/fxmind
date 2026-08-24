@@ -16,7 +16,8 @@
     "stop": [
       {
         "command": "node .cursor/hooks/learn-prompt.js",
-        "timeout": 10
+        "timeout": 10,
+        "loop_limit": 1
       }
     ]
   }

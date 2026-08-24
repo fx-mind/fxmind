@@ -116,5 +116,10 @@ describe("hooks sessionStart wiring", () => {
     assert.ok(fs.existsSync(path.join(dir, ".cursor", "hooks", "update-notifier.js")));
     assert.ok(fs.existsSync(path.join(dir, ".cursor", "hooks", "graph-freshness.js")));
     assert.ok(fs.existsSync(path.join(dir, ".cursor", "hooks", "lib", "update-check.js")));
+    assert.ok(fs.existsSync(path.join(dir, ".cursor", "hooks", "lib", "stop-followup.js")));
+    const stop = (hooksJson.hooks.stop || []).find(
+      (e) => e.command === "node .cursor/hooks/learn-prompt.js",
+    );
+    assert.equal(stop?.loop_limit, 1);
   });
 });

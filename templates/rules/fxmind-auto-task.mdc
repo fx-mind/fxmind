@@ -34,6 +34,7 @@ When the user asks to **change code/config** — run Task automatically. Read **
 
 - question / analyze-only (until approved)
 - Explicit modes: learn, audit, **judge**, query, graph, memory health, reference, update
+- **User stop** (`pare` / `stop` / `pause` / `cancela`) — halt immediately. Do not continue Gates V/C or edits because a stop-hook reminder fired. Resume only if the user asks.
 
 ## Style
 

@@ -39,12 +39,12 @@ const HOOK_SCRIPTS = [
   "pre-commit.js",
 ];
 
-const HOOK_LIB_FILES = ["memory-drift.js", "update-check.js", "cleanup-tmp.js"];
+const HOOK_LIB_FILES = ["memory-drift.js", "update-check.js", "cleanup-tmp.js", "stop-followup.js"];
 
 const FXMIND_COMMANDS = {
   preToolUse: { command: "node .cursor/hooks/gate-guard.js", timeout: 15 },
   postToolUse: { command: "node .cursor/hooks/drift-watcher.js", timeout: 15 },
-  stop: { command: "node .cursor/hooks/learn-prompt.js", timeout: 15 },
+  stop: { command: "node .cursor/hooks/learn-prompt.js", timeout: 15, loop_limit: 1 },
   sessionStart: [
     { command: "node .cursor/hooks/update-notifier.js", timeout: 8 },
     { command: "node .cursor/hooks/graph-freshness.js", timeout: 12 },
@@ -59,7 +59,9 @@ function normalizeHookSpec(spec) {
   if (typeof spec === "string") {
     return { command: spec, timeout: 15 };
   }
-  return { command: spec.command, timeout: spec.timeout ?? 15 };
+  const out = { command: spec.command, timeout: spec.timeout ?? 15 };
+  if (spec.loop_limit != null) out.loop_limit = spec.loop_limit;
+  return out;
 }
 
 function readJson(filePath, fallback = null) {
@@ -275,14 +277,16 @@ function installHooks(targetRoot, options = {}) {
 
   for (const [event, spec] of Object.entries(FXMIND_COMMANDS)) {
     for (const normalized of normalizeHookSpecs(spec).map(normalizeHookSpec)) {
-      const { command, timeout } = normalized;
+      const { command, timeout, loop_limit: loopLimit } = normalized;
       if (!Array.isArray(existing.hooks[event])) {
         existing.hooks[event] = [];
       }
       existing.hooks[event] = existing.hooks[event].filter(
         (entry) => typeof entry === "object" && entry.command !== command,
       );
-      existing.hooks[event].push({ command, timeout });
+      const entry = { command, timeout };
+      if (loopLimit != null) entry.loop_limit = loopLimit;
+      existing.hooks[event].push(entry);
     }
   }
 
@@ -408,7 +412,7 @@ Usage:
 Cursor hooks:
   preToolUse   → .cursor/hooks/gate-guard.js      (auto-start Task + enforce Gates A/B; block Write to gates JSON)
   postToolUse  → .cursor/hooks/drift-watcher.js   (memory drift + graph-pending flag)
-  stop         → .cursor/hooks/learn-prompt.js    (remind to finish Gate C)
+  stop         → .cursor/hooks/learn-prompt.js    (remind Gate C once; never after user stop)
   sessionStart → .cursor/hooks/update-notifier.js (new fxmind version → agent asks user to update)
 
 Git pre-commit:
