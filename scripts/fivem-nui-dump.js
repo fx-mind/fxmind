@@ -1,5 +1,5 @@
 /**
- * FiveM NUI state dump — read/trigger `.fxmind/nui-dump.json` for MCP agents.
+ * FiveM NUI state dump — read/trigger `.fxmind/state/nui-dump.json` for MCP agents.
  *
  * Agent lifecycle:
  *   1) fxmind_fivem_nui_wire   — auto-patch fxmanifest + inject DOM probe into ui_page
@@ -10,9 +10,26 @@
 const fs = require("fs");
 const path = require("path");
 const fivemRcon = require("./fivem-rcon");
+const { resolveLocal, writeLocal, projectRel, REL } = require("./lib/layout");
 
-const DUMP_REL = path.join(".fxmind", "nui-dump.json");
-const WIRE_REL = path.join(".fxmind", "nui-wire.json");
+function dumpPath(root) {
+  return resolveLocal(root, "nuiDump");
+}
+
+function dumpWritePath(root) {
+  return writeLocal(root, "nuiDump");
+}
+
+function wirePath(root) {
+  return resolveLocal(root, "nuiWire");
+}
+
+function wireWritePath(root) {
+  return writeLocal(root, "nuiWire");
+}
+
+const DUMP_REL = projectRel(REL.nuiDump);
+const WIRE_REL = projectRel(REL.nuiWire);
 const BRIDGE_NAME = "fxmind-nui-bridge";
 const DEFAULT_TIMEOUT_MS = 3000;
 const POLL_MS = 120;
@@ -32,10 +49,6 @@ function projectRoot(overrides = {}) {
       process.env.CLAUDE_PROJECT_DIR ||
       process.cwd(),
   );
-}
-
-function dumpPath(root) {
-  return path.join(path.resolve(root), DUMP_REL);
 }
 
 function findBridgeDumpFallbacks(root) {
@@ -211,7 +224,7 @@ async function nuiDump(options = {}) {
 }
 
 function wireStatePath(root) {
-  return path.join(path.resolve(root), WIRE_REL);
+  return wirePath(root);
 }
 
 function readWireState(root) {
@@ -225,7 +238,7 @@ function readWireState(root) {
 }
 
 function writeWireState(root, state) {
-  const file = wireStatePath(root);
+  const file = wireWritePath(root);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
@@ -374,7 +387,7 @@ function removeManifestHook(manifestAbs, { forceExisting = false } = {}) {
 
 /**
  * Auto-configure a resource so the agent can dump NUI state.
- * Writes markers + temporary probe; track in .fxmind/nui-wire.json.
+ * Writes markers + temporary probe; track in .fxmind/state/nui-wire.json.
  */
 function wireNuiDump(options = {}) {
   const root = projectRoot(options);

@@ -6,7 +6,7 @@ Route only — read `memory/<topic>.md` before rescanning repo. Internal format:
 |-------|------|----------|---------|
 | _(none yet)_ | — | — | — |
 
-Catalog: `.fxmind/topic-catalog.md` (`craft`, `item`, `loja`, `nui`, `grupos`, …)
+Catalog: `.fxmind/policy/topic-catalog.md` (`craft`, `item`, `loja`, `nui`, `grupos`, …)
 
 Commands: `/fxmind learn <topic>` · `/fxmind learn list` · `/fxmind memory health [fix] [topic]` · `/fxmind graph` · `/fxmind query "<question>"` · `/fxmind path <a> <b>` · `/fxmind explain <topic>`
 

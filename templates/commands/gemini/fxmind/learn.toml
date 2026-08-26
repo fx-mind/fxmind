@@ -6,15 +6,15 @@ Generate or update a **topic memory** at **`.fxmind/memory/<topic>.md`**.
 **Do NOT implement code** — only scan, write markdown, update index and reference links.
 
 **Topic / args:** {{args}}
-- `list` → read `.fxmind/memory/_index.md` + `.fxmind/topic-catalog.md` and reply with tables
+- `list` → read `.fxmind/memory/_index.md` + `.fxmind/policy/topic-catalog.md` and reply with tables
 - Otherwise normalize slug (lowercase, hyphens) → `memory/<slug>.md`
 
 ## Load
 
 - `.fxmind/skills/fivem-development/SKILL.md` (+ topic refs as needed)
 - Framework skill if detected
-- `.fxmind/topic-catalog.md` — search hints
-- `.fxmind/memory.template.md` — output skeleton
+- `.fxmind/policy/topic-catalog.md` — search hints
+- `.fxmind/templates/memory.md` — output skeleton
 - `.fxmind/reference.md` at project root if present
 - Existing `.fxmind/memory/<topic>.md` — merge if present
 

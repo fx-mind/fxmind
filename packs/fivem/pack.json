@@ -13,9 +13,8 @@
     "fivem-react-nui"
   ],
   "templateFiles": [
-    "topic-catalog.md",
-    "audit.template.md",
-    "reference.example.mdc",
-    "minimum-evidence.md"
+    { "src": "topic-catalog.md", "dest": "policy/topic-catalog.md" },
+    { "src": "reference.example.mdc", "dest": "templates/reference.example.mdc" },
+    { "src": "minimum-evidence.md", "dest": "policy/minimum-evidence.md" }
   ]
 }

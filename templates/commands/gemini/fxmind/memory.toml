@@ -15,11 +15,11 @@ Parse (case-insensitive):
 
 ## Load
 
-- `.fxmind/memory-health.template.md` — report skeleton
-- `.fxmind/memory.template.md` — compact target format
+- `.fxmind/templates/memory-health.md` — report skeleton
+- `.fxmind/templates/memory.md` — compact target format
 - `.fxmind/memory/_index.md`
-- `.fxmind/topic-catalog.md`
-- `.fxmind/knowledge-graph.json` — if present (graph drift)
+- `.fxmind/policy/topic-catalog.md`
+- `.fxmind/graph/knowledge-graph.json` — if present (graph drift)
 - `.fxmind/reference.md` at project root (section `## Memórias por tópico`)
 - All `.fxmind/memory/*.md` except `_index.md` (or single topic if scoped)
 
@@ -36,7 +36,7 @@ Verdict per topic: **OK** | **Stale** | **Broken**
 
 ## Report
 
-Save `.fxmind/memory-health.md` using template. Every finding needs evidence.
+Save `.fxmind/reports/memory-health.md` using template. Every finding needs evidence.
 
 ## Fix mode (when `fix` in args)
 

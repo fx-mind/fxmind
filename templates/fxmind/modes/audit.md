@@ -9,9 +9,9 @@ Audit the target Lua/JS resource(s) for **security**, **performance**, and **pat
 
 ## Full procedure is external
 
-The complete audit matrix (view-cache V-a..V-j, broadcast, globals, manager events, severity/phase, report sections, rules) lives in **`.fxmind/audit-procedure.md`** — **read it now** before continuing. It is intentionally kept out of the command body to save context on non-audit invocations.
+The complete audit matrix (view-cache V-a..V-j, broadcast, globals, manager events, severity/phase, report sections, rules) lives in **`.fxmind/audits/procedure.md`** — **read it now** before continuing. It is intentionally kept out of the command body to save context on non-audit invocations.
 
-If `.fxmind/audit-procedure.md` is missing, run `fxmind --update -y` (or `npx --yes github:fx-mind/fxmind --update -y`) to restore it, then retry. Do not improvise the matrix from memory.
+If `.fxmind/audits/procedure.md` is missing, run `fxmind --update -y` (or `npx --yes github:fx-mind/fxmind --update -y`) to restore it, then retry. Do not improvise the matrix from memory.
 
 ## Audit scope
 

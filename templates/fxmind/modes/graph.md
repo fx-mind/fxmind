@@ -20,7 +20,7 @@ If `fxmind` is not installed globally:
 npx --yes github:fx-mind/fxmind graph
 ```
 
-The builder reads `.fxmind/memory/_index.md`, `.fxmind/memory/*.md`, and `.fxmind/topic-catalog.md`, then writes `.fxmind/knowledge-graph.json` + `.fxmind/knowledge-graph.html` (replacing only the `GRAPH_DATA` payload).
+The builder reads `.fxmind/memory/_index.md`, `.fxmind/memory/*.md`, and `.fxmind/policy/topic-catalog.md`, then writes `.fxmind/graph/knowledge-graph.json` + `.fxmind/graph/knowledge-graph.html` (replacing only the `GRAPH_DATA` payload).
 
 ## Reply
 

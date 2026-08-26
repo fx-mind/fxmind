@@ -1,7 +1,7 @@
 description = "Explain a topic node and its connections in the knowledge graph"
 
 prompt = """
-Explain a **topic node** and everything connected to it in `.fxmind/knowledge-graph.json`.
+Explain a **topic node** and everything connected to it in `.fxmind/graph/knowledge-graph.json`.
 
 **Topic / args:** {{args}}
 
@@ -9,7 +9,7 @@ Explain a **topic node** and everything connected to it in `.fxmind/knowledge-gr
 
 ## Load
 
-1. `.fxmind/knowledge-graph.json` (or `GRAPH_DATA` from HTML fallback)
+1. `.fxmind/graph/knowledge-graph.json` (or `GRAPH_DATA` from HTML fallback)
 2. `.fxmind/memory/<topic>.md` for the matched node
 
 ## Match node

@@ -8,7 +8,7 @@
  *   FXMIND_RCON_HOST       default 127.0.0.1
  *   FXMIND_RCON_PORT       default from endpoint_add_udp/tcp or 30120
  *   FXMIND_RCON_PASSWORD   overrides cfg
- *   FXMIND_FIVEM_LOG       default .fxmind/fivem-console.log (RCON activity log)
+ *   FXMIND_FIVEM_LOG       default .fxmind/state/fivem-console.log (RCON activity log)
  *   FXMIND_RCON_TIMEOUT_MS default 3000
  *
  * The activity log is written by execRcon itself — do NOT tee FXServer stdout
@@ -18,6 +18,7 @@
 const dgram = require("dgram");
 const fs = require("fs");
 const path = require("path");
+const { resolveLocal, writeLocal, ensureDirFor, projectRel, REL } = require("./lib/layout");
 
 const ALLOWED_COMMANDS = new Set([
   "ensure",
@@ -50,7 +51,11 @@ const NO_REPLY_ERROR =
 const UDP_HEADER = Buffer.from([0xff, 0xff, 0xff, 0xff]);
 
 function installMarkerPath(root) {
-  return path.join(path.resolve(root), ".fxmind", "rcon.json");
+  return resolveLocal(root, "rcon");
+}
+
+function installMarkerWritePath(root) {
+  return writeLocal(root, "rcon");
 }
 
 function isFivemInstalled(root) {
@@ -72,7 +77,8 @@ function writeInstallMarker(root, { execCfg, password, port, host }) {
   };
   if (port) data.port = port;
   if (host) data.host = host;
-  fs.writeFileSync(installMarkerPath(root), `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  fs.mkdirSync(path.dirname(installMarkerWritePath(root)), { recursive: true });
+  fs.writeFileSync(installMarkerWritePath(root), `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
 function projectRoot(overrides = {}) {
@@ -124,13 +130,13 @@ function resolveFromProjectCfg(root) {
     }
   }
   // Optional local override file (gitignored)
-  const localJson = path.join(root, ".fxmind", "rcon.json");
+  const localJson = resolveLocal(root, "rcon");
   if (fs.existsSync(localJson)) {
     try {
       const data = JSON.parse(fs.readFileSync(localJson, "utf8"));
       if (data.password) {
         password = String(data.password);
-        source = ".fxmind/rcon.json";
+        source = projectRel(REL.rcon);
       }
       if (data.port) port = Number(data.port);
       if (data.host) {
@@ -169,7 +175,7 @@ function rconConfig(overrides = {}) {
     overrides.logPath || process.env.FXMIND_FIVEM_LOG || "",
   ).trim();
   if (!logPath) {
-    logPath = path.join(root, ".fxmind", "fivem-console.log");
+    logPath = writeLocal(root, "fivemLog");
   }
   return {
     host,
@@ -314,7 +320,7 @@ function execRcon(command, overrides = {}) {
     return Promise.resolve({
       ok: false,
       error:
-        "RCON password not found — run fxmind fivem install (writes dev/dev.cfg and .fxmind/rcon.json)",
+        "RCON password not found — run fxmind fivem install (writes dev/dev.cfg and .fxmind/state/rcon.json)",
       config: publicConfig(config),
     });
   }
@@ -454,7 +460,7 @@ function publicConfig(config) {
 }
 
 /**
- * Tail .fxmind/fivem-console.log (RCON exchanges) and optional server-debug.log.
+ * Tail .fxmind/state/fivem-console.log (RCON exchanges) and optional server-debug.log.
  */
 function consoleTail(options = {}) {
   const config = rconConfig(options);
@@ -467,7 +473,7 @@ function consoleTail(options = {}) {
   }
   const lines = Math.min(Math.max(Number(options.lines) || 80, 1), 500);
   const terminalLog = path.resolve(config.logPath);
-  const debugLog = path.resolve(config.root, ".fxmind", "server-debug.log");
+  const debugLog = resolveLocal(config.root, "serverDebugLog");
 
   const parts = [];
   for (const filePath of [terminalLog, debugLog]) {
@@ -718,7 +724,7 @@ function copyNuiBridgeResource(root) {
 
 function ensureNuiDumpCfg(cfgAbs, root) {
   let text = fs.existsSync(cfgAbs) ? fs.readFileSync(cfgAbs, "utf8") : "";
-  const dumpAbs = path.join(root, ".fxmind", "nui-dump.json").replace(/\\/g, "/");
+  const dumpAbs = writeLocal(root, "nuiDump").replace(/\\/g, "/");
   const changes = [];
 
   if (!/^\s*ensure\s+fxmind-nui-bridge\s*$/im.test(text)) {
@@ -763,11 +769,12 @@ function ensureNuiDumpCfg(cfgAbs, root) {
 function ensureGitignoreLines(root) {
   const gitignorePath = path.join(root, ".gitignore");
   const lines = [
-    ".fxmind/fivem-console.log",
+    ".fxmind/state/",
+    ".fxmind/state/fivem-console.log",
     ".fxmind/server-debug.log",
-    ".fxmind/nui-dump.json",
-    ".fxmind/nui-wire.json",
-    ".fxmind/rcon.json",
+    ".fxmind/state/nui-dump.json",
+    ".fxmind/state/nui-wire.json",
+    ".fxmind/state/rcon.json",
   ];
   let content = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, "utf8") : "";
   const added = [];
@@ -952,7 +959,7 @@ function installFivemDev(options = {}) {
     password: rcon.password,
     port,
   });
-  steps.push({ step: "install-marker", path: ".fxmind/rcon.json", action: "written" });
+  steps.push({ step: "install-marker", path: ".fxmind/state/rcon.json", action: "written" });
 
   const config = rconConfig({ root, password: rcon.password });
   const needsRestart = rcon.changed;

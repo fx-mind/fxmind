@@ -7,7 +7,7 @@ Generate or update a **topic memory** at `.fxmind/memory/<topic>.md` (shared by 
 ## Step 1 — Resolve topic
 
 1. Parse `$ARGUMENTS` after `learn` (e.g. `craft`, `item-usavel`).
-2. If `learn list` → read `.fxmind/memory/_index.md` and `.fxmind/topic-catalog.md`; reply with table; stop.
+2. If `learn list` → read `.fxmind/memory/_index.md` and `.fxmind/policy/topic-catalog.md`; reply with table; stop.
 3. Normalize slug: lowercase, hyphens, no spaces → `memory/<slug>.md`.
 
 ## Step 2 — Load context
@@ -18,8 +18,8 @@ Read from `.fxmind/skills/`:
 |------|---------|
 | `fivem-development/` (`communication`…`security`) | Patterns, anti-bugs |
 | Framework skill (`vrp-framework`, etc.) | If detected |
-| `.fxmind/topic-catalog.md` | Search hints for known topics |
-| `.fxmind/memory.template.md` | Output skeleton |
+| `.fxmind/policy/topic-catalog.md` | Search hints for known topics |
+| `.fxmind/templates/memory.md` | Output skeleton |
 | `.fxmind/reference.md` at project root | If exists — project paths |
 | `.fxmind/memory/<topic>.md` | If exists — **merge** (preserve valid content, update paths) |
 
@@ -32,7 +32,7 @@ Read from `.fxmind/skills/`:
 
 ## Step 4 — Write memory
 
-Save to `.fxmind/memory/<topic>.md` using `memory.template.md` structure (**~25–60 lines**, token-efficient):
+Save to `.fxmind/memory/<topic>.md` using `.fxmind/templates/memory.md` structure (**~25–60 lines**, token-efficient):
 
 - Frontmatter **required**: `topic`, `updated`, `lang: en-compact`.
 - Frontmatter **required for routing**: non-empty `paths[]` **or** `triggers[]` (preferably both).
@@ -64,6 +64,6 @@ Reply in **their language** (usually PT-BR): summary of what was learned (3–5 
 
 - **Never invent** paths, events, or APIs.
 - **Do not** edit Lua/JS during learn mode.
-- **Do not** leave files in `.fxmind/tmp/` — learn is read-only; use grep/read in place.
+- **Do not** leave files in `.fxmind/state/tmp/` — learn is read-only; use grep/read in place.
 - Cursor Agent: use **AskQuestion** if critical context is missing; otherwise ask in chat.
 - **Memory file:** compact technical English (`lang: en-compact`). **Chat reply:** user's language.

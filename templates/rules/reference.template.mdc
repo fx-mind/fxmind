@@ -13,7 +13,7 @@ Use estes caminhos e padrões ao trabalhar neste repositório (FiveM / <framewor
 - Fluxos detalhados e checklists longos → **`/fxmind learn <topic>`** → `.fxmind/memory/<topic>.md` (não duplique aqui).
 - Memórias são **memória compartilhada do projeto** (`.fxmind/memory/`) — salvas em inglês técnico compacto (`lang: en-compact`); esta rule só aponta links, não cola o conteúdo.
 - Após refactors ou deletes na base → **`/fxmind memory health`** (ou `fix`) para validar paths/eventos e sincronizar índice.
-- Após aprender tópicos → **`/fxmind graph`** para atualizar `.fxmind/knowledge-graph.json`; use **`/fxmind query`** para recuperar contexto entre tópicos.
+- Após aprender tópicos → **`/fxmind graph`** para atualizar `.fxmind/graph/knowledge-graph.json`; use **`/fxmind query`** para recuperar contexto entre tópicos.
 
 ## Framework / grupos / permissões
 

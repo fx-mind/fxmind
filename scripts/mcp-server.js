@@ -12,7 +12,7 @@
  *   fxmind_db_explore / fxmind_db_analyze
  *
  * Gates are session state — use fxmind_start_task + fxmind_record_gate only.
- * Never Write .fxmind/fxmind-gates.json from the agent.
+ * Never Write .fxmind/state/fxmind-gates.json from the agent.
  */
 
 const tools = require("./fxmind-tools");
@@ -71,7 +71,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_graph",
     description:
-      "Rebuild knowledge-graph.json + memory-index.json from memories (HTML optional). Use after learn.",
+      "Rebuild .fxmind/graph/knowledge-graph.json + memory-index.json from memories (HTML optional). Use after learn.",
     inputSchema: {
       type: "object",
       properties: {
@@ -193,7 +193,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_fivem_install",
     description:
-      "Dev-only: configure local FiveM RCON + Cursor fivem-start task. Writes rcon_password only to dev/dev.cfg and .fxmind/rcon.json (never server.cfg). Run once per project before fxmind_fivem_cmd. After adding password, user must restart FXServer.",
+      "Dev-only: configure local FiveM RCON + Cursor fivem-start task. Writes rcon_password only to dev/dev.cfg and .fxmind/state/rcon.json (never server.cfg). Run once per project before fxmind_fivem_cmd. After adding password, user must restart FXServer.",
     inputSchema: {
       type: "object",
       properties: {
@@ -232,7 +232,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_fivem_console_tail",
     description:
-      "Read .fxmind/fivem-console.log and optional server-debug.log. Requires fxmind fivem install (.fxmind/rcon.json). Call fxmind_fivem_status first when possible. Never auto-runs install.",
+      "Read .fxmind/state/fivem-console.log and optional server-debug.log. Requires fxmind fivem install (.fxmind/state/rcon.json). Call fxmind_fivem_status first when possible. Never auto-runs install.",
     inputSchema: {
       type: "object",
       properties: {
@@ -258,7 +258,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_fivem_nui_dump",
     description:
-      "Read structured NUI state for agent vision (better than screenshots). Prefer after fxmind_fivem_nui_wire. Triggers RCON fxmind_nui_dump (unless trigger=false), then reads .fxmind/nui-dump.json. Call fxmind_fivem_status first when triggering. Player must be in-game with the NUI open. After debugging, call fxmind_fivem_nui_unwire.",
+      "Read structured NUI state for agent vision (better than screenshots). Prefer after fxmind_fivem_nui_wire. Triggers RCON fxmind_nui_dump (unless trigger=false), then reads .fxmind/state/nui-dump.json. Call fxmind_fivem_status first when triggering. Player must be in-game with the NUI open. After debugging, call fxmind_fivem_nui_unwire.",
     inputSchema: {
       type: "object",
       properties: {
@@ -281,7 +281,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_fivem_nui_unwire",
     description:
-      "Remove temporary NUI dump wiring added by fxmind_fivem_nui_wire (markers, probe script, wire state, dump file). MANDATORY cleanup after using nui_dump / when the task ends. If resource omitted, uses .fxmind/nui-wire.json.",
+      "Remove temporary NUI dump wiring added by fxmind_fivem_nui_wire (markers, probe script, wire state, dump file). MANDATORY cleanup after using nui_dump / when the task ends. If resource omitted, uses .fxmind/state/nui-wire.json.",
     inputSchema: {
       type: "object",
       properties: {
@@ -291,7 +291,7 @@ const TOOL_DEFS = [
         },
         clearDump: {
           type: "boolean",
-          description: "Also delete .fxmind/nui-dump.json (default true).",
+          description: "Also delete .fxmind/state/nui-dump.json (default true).",
           default: true,
         },
       },

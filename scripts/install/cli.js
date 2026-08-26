@@ -51,7 +51,7 @@ Without global install:
   ${npxInstall("--claude -y")}       Claude Code only
   ${npxInstall("--codex -y")}        Codex only
   ${npxInstall("--gemini -y")}       Gemini CLI only
-  ${npxInstall("--opencode -y")}     OpenCode only
+  ${npxInstall("--opencode -y")}     OpenCode only (skills + explore/reader/general/scout)
   ${npxInstall("--copilot -y")}      VS Code Copilot only
   ${npxInstall("--agent cursor,claude,gemini -y")}  Multiple agents
   ${npxInstall("--no-packs -y")}     Core /fxmind only — no domain skills
@@ -109,7 +109,7 @@ Options:
   --claude           Install for Claude Code only
   --codex            Install for Codex only
   --gemini           Install for Gemini CLI only
-  --opencode         Install for OpenCode only
+  --opencode         Install for OpenCode only (includes explore/reader/general/scout)
   --copilot          Install for VS Code Copilot only
   --agent <list>     Comma-separated: cursor, claude, codex, gemini, opencode, copilot
   --no-command       Skip /fxmind helper

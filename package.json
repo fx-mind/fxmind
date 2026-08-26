@@ -37,6 +37,6 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "node --test scripts/*.test.js scripts/lib/*.test.js"
+    "test": "node --test scripts/*.test.js scripts/lib/*.test.js scripts/install/*.test.js"
   }
 }

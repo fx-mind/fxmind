@@ -8,8 +8,10 @@ const path = require("path");
 const https = require("https");
 const { execSync } = require("child_process");
 
-/** Keep in sync with LAYOUT_VERSION in install.js */
-const CURRENT_LAYOUT_VERSION = 2;
+const { LAYOUT_VERSION } = require("./layout");
+
+/** Keep in sync with LAYOUT_VERSION in lib/layout.js */
+const CURRENT_LAYOUT_VERSION = LAYOUT_VERSION;
 const SHARED_DIR = ".fxmind";
 
 const REMOTE_PACKAGE_URL =

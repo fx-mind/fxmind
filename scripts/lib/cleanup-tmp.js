@@ -1,21 +1,30 @@
 /**
- * Ephemeral scratch under .fxmind/tmp — not part of fxmind artifacts; gitignored.
+ * Ephemeral scratch under .fxmind/state/tmp — not part of fxmind artifacts; gitignored.
  */
 const fs = require("fs");
 const path = require("path");
 
-const SHARED_DIR = ".fxmind";
-const TMP_REL = path.join(SHARED_DIR, "tmp");
-const GATES_REL = path.join(SHARED_DIR, "fxmind-gates.json");
+const { resolveLocal, writeLocal, fxmindDir, projectRel, REL } = require("./layout");
+
+const TMP_REL = projectRel(REL.tmp);
+const LEGACY_TMP_REL = path.join(".fxmind", "tmp");
 const LEGACY_GATES_REL = ".fxmind-gates.json";
 
 function gatesPath(projectRoot) {
   const resolved = path.resolve(projectRoot);
-  const primary = path.join(resolved, GATES_REL);
-  if (fs.existsSync(primary)) {
-    return primary;
+  const canonical = writeLocal(resolved, "gates");
+  if (fs.existsSync(canonical)) {
+    return canonical;
   }
-  return path.join(resolved, LEGACY_GATES_REL);
+  const v2 = resolveLocal(resolved, "gates");
+  if (v2 && fs.existsSync(v2)) {
+    return v2;
+  }
+  const repoRoot = path.join(resolved, LEGACY_GATES_REL);
+  if (fs.existsSync(repoRoot)) {
+    return repoRoot;
+  }
+  return canonical;
 }
 
 function readGates(projectRoot) {
@@ -39,22 +48,33 @@ function shouldRetainFxmindTmp(projectRoot) {
   return !gates.gates?.C?.complete;
 }
 
+function tmpDirs(projectRoot) {
+  const resolved = path.resolve(projectRoot);
+  return [
+    writeLocal(resolved, "tmp"),
+    path.join(fxmindDir(resolved), "tmp"),
+  ];
+}
+
 function cleanupFxmindTmp(projectRoot) {
   if (shouldRetainFxmindTmp(projectRoot)) {
     return { removed: false, retained: true, path: TMP_REL };
   }
 
-  const tmpDir = path.join(path.resolve(projectRoot), TMP_REL);
-  if (!fs.existsSync(tmpDir)) {
-    return { removed: false, retained: false, path: TMP_REL };
+  let removed = false;
+  for (const tmpDir of tmpDirs(projectRoot)) {
+    if (!fs.existsSync(tmpDir)) {
+      continue;
+    }
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    removed = true;
   }
-
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-  return { removed: true, retained: false, path: TMP_REL };
+  return { removed, retained: false, path: TMP_REL };
 }
 
 module.exports = {
   TMP_REL,
+  LEGACY_TMP_REL,
   shouldRetainFxmindTmp,
   cleanupFxmindTmp,
 };

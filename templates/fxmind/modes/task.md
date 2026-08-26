@@ -4,7 +4,7 @@
 
 Load memory → implement → **verify** → learn. Verify details live in **`.fxmind/modes/task-verify.md`** (read after Implement / before Gate C).
 
-> **Gates = MCP only** (`fxmind_start_task`, `fxmind_record_gate`). Never Write `.fxmind/fxmind-gates.json`. MCP off → STOP and ask user to enable **fxmind**.
+> **Gates = MCP only** (`fxmind_start_task`, `fxmind_record_gate`). Never Write `.fxmind/state/fxmind-gates.json`. MCP off → STOP and ask user to enable **fxmind**.
 >
 > Do not narrate step numbers to the user.
 >
@@ -79,7 +79,7 @@ QUALITY:
 2. Surprise → say it, update Done/Scope; do not force the old plan.
 3. Max **3** fix→verify retries → hand-back.
 4. No commit/push; no weaken checks; no secrets; no silent scope expand; no deps unless asked.
-4b. **Scratch files:** prefer OS temp or in-repo test paths under `resources/`. If you must use `.fxmind/tmp/`, delete that folder before **Gate C** (or when abandoning the task). Never commit `tmp/` — it is gitignored session scratch, not fxmind data.
+4b. **Scratch files:** prefer OS temp or in-repo test paths under `resources/`. If you must use `.fxmind/state/tmp/`, delete that folder before **Gate C** (or when abandoning the task). Never commit `tmp/` — it is gitignored session scratch, not fxmind data.
 5. Outward AUTH for push/deploy-remote/publish/send. **ensure/restart = local verify, no AUTH.**
 6. FiveM (local dev only): call `fxmind_fivem_status` first. If `available: true` → after resource edit use `fxmind_fivem_cmd` + `fxmind_fivem_console_tail`. For NUI bugs: **`fxmind_fivem_nui_wire` → dump → `fxmind_fivem_nui_unwire`** (agent configures and must remove before Gate C; never leave probe). If `installed: false` or `passwordSet: false` → `fxmind_fivem_install` once (writes dev/dev.cfg + nui-bridge), ask restart **fivem-start**, stop. If MCP tools missing or `available: false` → skip automation; ask user to run ensure/restart manually. Live debug: tagged prints → ensure (when available) → user reproduces → tail / nui_dump or pasted console → fix → remove prints / unwire.
 7. Ask when missing: target resource, expected behavior, job/permission, client vs server vs NUI, destructive/money/inventory rules. One pointed question with your recommended reading when only the user can settle.
@@ -104,7 +104,7 @@ After applying a user correction, AskQuestion: Pitfalls / `fxmind_record_correct
 
 Requires V (MCP enforces). Learn reusable knowledge → memory + validate; else "mudança pontual".
 
-Before recording Gate C: remove `.fxmind/tmp/` if you created scratch files there (shell `rm -rf .fxmind/tmp` or delete files). Hooks also prune `tmp` after Gate C or when no task is active.
+Before recording Gate C: remove `.fxmind/state/tmp/` if you created scratch files there (shell `rm -rf .fxmind/state/tmp` or delete files). Hooks also prune `tmp` after Gate C or when no task is active.
 
 **Quality pitfalls:** if self-review found a reusable gap not yet in the pack, call **`fxmind_record_correction`** (category = matching skill file: `performance`, `security`, etc.) in addition to user-correction flow.
 
@@ -119,4 +119,4 @@ Memory rules: template + `lang: en-compact`; grep-confirmed frontmatter; `paths[
 
 - Never invent paths/events/APIs/permissions.
 - When FiveM MCP is available (`fxmind_fivem_status.available: true`), use `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` — do not ask the user. When MCP or FXServer is unavailable, skip and ask the user to run ensure/restart manually (paste console output only if Gate V needs it).
-- Pack minimum evidence (when present): `.fxmind/minimum-evidence.md` before acting in that domain.
+- Pack minimum evidence (when present): `.fxmind/policy/minimum-evidence.md` before acting in that domain.

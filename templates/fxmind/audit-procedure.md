@@ -1,6 +1,6 @@
 # fxmind — Audit procedure (loaded on demand)
 
-This file is installed at `.fxmind/audit-procedure.md` and read **only** when the
+This file is installed at `.fxmind/audits/procedure.md` and read **only** when the
 agent runs `/fxmind audit`. It is intentionally kept out of the main `/fxmind`
 command body to save context on every other invocation.
 

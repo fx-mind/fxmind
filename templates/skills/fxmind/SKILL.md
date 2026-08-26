@@ -27,13 +27,13 @@ The full `/fxmind` command body is a slim router — read **`.fxmind/fxmind.md`*
 1. **Task** (any implementation request, with or without `/fxmind task`) → read **`.fxmind/modes/task.md`**.
 2. **Judge** (`judge`, "did that actually work?", verify claims) → read **`.fxmind/modes/judge.md`**.
 3. **Other modes** (`learn`, `audit`, `graph`, `query`, `path`, `explain`, `reference`, `memory health`, `update`, `help`) → read **`.fxmind/modes/<mode>.md`**.
-4. **Graph** → just run `fxmind graph` (builds + opens `.fxmind/knowledge-graph.html`).
+4. **Graph** → just run `fxmind graph` (builds + opens `.fxmind/graph/knowledge-graph.html`).
 5. **Project memories** → `.fxmind/memory/_index.md` then relevant `memory/<topic>.md`.
 6. **Installed pack skills** → `.fxmind/skills/_index.md` and `.fxmind/packs.json`.
 7. **Global store** → if `.fxmind/store.json` has `mode: global`, memories live in `~/.fxmind/projects/<id>/` (paths via symlink). Cross-project memories may appear in graph/query links.
-8. **Failure modes** → `.fxmind/failure-modes.md`
+8. **Failure modes** → `.fxmind/policy/failure-modes.md`
 9. **Task verify** → `.fxmind/modes/task-verify.md` (after Implement)
-10. **Minimum evidence** (FiveM pack) → `.fxmind/minimum-evidence.md` when present
+10. **Minimum evidence** (FiveM pack) → `.fxmind/policy/minimum-evidence.md` when present
 
 ## MCP fast path
 
@@ -84,7 +84,7 @@ Each gate MUST end with its marker. Do NOT proceed to the next phase without the
 - Call **`fxmind_start_task`** at task start.
 - After each marker → **`fxmind_record_gate`** with `gate: "A"|"B"|"V"|"C"`.
 - Gate C clears `taskActive` automatically.
-- Do **not** Write/Edit `.fxmind/fxmind-gates.json` — the `gate-guard` hook blocks it.
+- Do **not** Write/Edit `.fxmind/state/fxmind-gates.json` — the `gate-guard` hook blocks it.
 - If MCP is unavailable: chat markers are the source of truth for the user; hooks cannot be satisfied without MCP/CLI (`fxmind hooks gates`).
 
 After learn/Gate C memory writes, call **`fxmind_validate_memories`** (or run `fxmind memory validate`) and fix errors before finishing.
@@ -104,14 +104,27 @@ After learn/Gate C memory writes, call **`fxmind_validate_memories`** (or run `f
 
 Only read skills listed in `.fxmind/skills/_index.md` — skip missing paths.
 
+## OpenCode subagents
+
+When this project is installed with `--opencode`, use Task:
+
+| Need | Subagent |
+|------|----------|
+| Find files / grep | `explore` |
+| Read known paths | `reader` |
+| Bounded edit | `general` |
+| External docs / natives | `scout` |
+
+Do not ask `explore` to fetch the web, `scout` to grep this repo, `reader` to discover files, or `general` to redesign the feature. Orchestration: `.opencode/instructions/delegate-io.md`.
+
 ## Shared memory (never per-agent)
 
 | Path | Role |
 |------|------|
 | `.fxmind/memory/<topic>.md` | Topic memories |
 | `.fxmind/audits/<resource>.md` | Audit reports (**never** `.fxmind/audit-*.md` at root) |
-| `.fxmind/knowledge-graph.json` | Graph for query/path/explain |
-| `.fxmind/topic-catalog.md` | Learn search hints |
+| `.fxmind/graph/knowledge-graph.json` | Graph for query/path/explain |
+| `.fxmind/policy/topic-catalog.md` | Learn search hints |
 | `.fxmind/reference.md` | Project map — paths, flows, anti-bug notes (all agents) |
 | `.fxmind/store.json` | Global store pointer when enabled |
 | `.fxmind/packs.json` | Installed packs + `storage: global|local` |

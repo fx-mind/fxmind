@@ -24,7 +24,8 @@ Craft system handler craft recipe items.
 `,
     "utf8",
   );
-  fs.writeFileSync(path.join(fx, "topic-catalog.md"), "| Tópico | Triggers | Hints |\n|---|---|---|\n", "utf8");
+  fs.mkdirSync(path.join(fx, "policy"), { recursive: true });
+  fs.writeFileSync(path.join(fx, "policy", "topic-catalog.md"), "| Tópico | Triggers | Hints |\n|---|---|---|\n", "utf8");
 }
 
 describe("queryGraph auto-rebuild", () => {
@@ -39,7 +40,7 @@ describe("queryGraph auto-rebuild", () => {
     assert.equal(isGraphStale(dir), true);
     const result = tools.queryGraph(dir, "craft recipe");
     assert.equal(result.ok, true);
-    assert.ok(fs.existsSync(path.join(dir, ".fxmind", "knowledge-graph.json")));
+    assert.ok(fs.existsSync(path.join(dir, ".fxmind", "graph", "knowledge-graph.json")));
     assert.ok(result.memories !== undefined || result.expanded !== undefined);
   });
 });

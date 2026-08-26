@@ -5,11 +5,10 @@ const fs = require("fs");
 const path = require("path");
 
 const { resolveDataRoot, resolveMemoryDir } = require("../global-store");
-
-const SHARED_DIR = ".fxmind";
+const { resolveLocal, resolveInDataRoot } = require("./layout");
 
 function graphJsonPath(projectRoot) {
-  return path.join(resolveDataRoot(projectRoot), "knowledge-graph.json");
+  return resolveInDataRoot(resolveDataRoot(projectRoot), "graphJson");
 }
 
 function isGraphStale(projectRoot) {
@@ -34,7 +33,7 @@ function isGraphStale(projectRoot) {
     }
   }
 
-  const catalogPath = path.join(resolved, SHARED_DIR, "topic-catalog.md");
+  const catalogPath = resolveLocal(resolved, "topicCatalog");
   if (fs.existsSync(catalogPath) && fs.statSync(catalogPath).mtimeMs > graphMtime) {
     return true;
   }

@@ -2,7 +2,7 @@
 /**
  * fxmind learn-prompt — Cursor stop hook.
  *
- * If a fxmind task is active (`.fxmind/fxmind-gates.json` taskActive=true) and Gates
+ * If a fxmind task is active (`.fxmind/state/fxmind-gates.json` taskActive=true) and Gates
  * A & B are complete but Gate C is not, emit a follow-up message reminding the
  * agent to finish post-task learning (Gate C) and suggest /fxmind graph.
  *
@@ -15,8 +15,11 @@ const fs = require("fs");
 const path = require("path");
 const { shouldFollowup, lastUserTextFromPayload } = require("./lib/stop-followup.js");
 
+const { writeLocal, fxmindDir } = require("./lib/layout.js");
+
 const PROJECT_ROOT = process.cwd();
-const GATES_FILE = path.join(PROJECT_ROOT, ".fxmind", "fxmind-gates.json");
+const GATES_FILE = writeLocal(PROJECT_ROOT, "gates");
+const V2_GATES_FILE = path.join(fxmindDir(PROJECT_ROOT), "fxmind-gates.json");
 const LEGACY_GATES_FILE = path.join(PROJECT_ROOT, ".fxmind-gates.json");
 
 function readStdin(ms = 2000) {
@@ -43,12 +46,20 @@ function readStdin(ms = 2000) {
 }
 
 function migrateLegacyGates() {
-  if (fs.existsSync(GATES_FILE) || !fs.existsSync(LEGACY_GATES_FILE)) {
+  if (fs.existsSync(GATES_FILE)) {
+    return;
+  }
+  const source = fs.existsSync(V2_GATES_FILE)
+    ? V2_GATES_FILE
+    : fs.existsSync(LEGACY_GATES_FILE)
+      ? LEGACY_GATES_FILE
+      : null;
+  if (!source) {
     return;
   }
   fs.mkdirSync(path.dirname(GATES_FILE), { recursive: true });
-  fs.copyFileSync(LEGACY_GATES_FILE, GATES_FILE);
-  fs.unlinkSync(LEGACY_GATES_FILE);
+  fs.copyFileSync(source, GATES_FILE);
+  fs.unlinkSync(source);
 }
 
 function readGates() {

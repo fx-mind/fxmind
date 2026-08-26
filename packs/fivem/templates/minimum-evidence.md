@@ -16,7 +16,7 @@ Binding for agents when the task is FiveM resource work. **Open these before edi
 | Broadcast / TriggerClientEvent(-1) / manager:* | `fivem-development/performance.md` (§ broadcast) + memory if any |
 | View cache / NUI / React | `fivem-react-nui/SKILL.md` + performance view-cache rows |
 | Security / money / inventory / admin | `fivem-development/security.md` |
-| Audit request | `.fxmind/audit-procedure.md` (not this file) |
+| Audit request | `.fxmind/audits/procedure.md` (not this file) |
 
 ## Authority order (FiveM)
 

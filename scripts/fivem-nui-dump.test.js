@@ -38,7 +38,7 @@ function scaffoldNuiResource(dir, name = "demo_nui") {
 }
 
 describe("fivem nui dump", () => {
-  it("readNuiDump returns structured dump from .fxmind/nui-dump.json", () => {
+  it("readNuiDump returns structured dump from .fxmind/state/nui-dump.json", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fxnui-"));
     writeInstallMarker(dir);
     const payload = {
@@ -102,7 +102,7 @@ describe("fivem nui dump", () => {
     assert.match(html, /FXMIND-NUI-DUMP-START/);
     assert.match(html, /fxmind-nui-probe\.js/);
     assert.ok(fs.existsSync(path.join(res, "web", "fxmind-nui-probe.js")));
-    assert.ok(fs.existsSync(path.join(dir, ".fxmind", "nui-wire.json")));
+    assert.ok(fs.existsSync(path.join(dir, ".fxmind", "state", "nui-wire.json")));
 
     fs.writeFileSync(
       path.join(dir, ".fxmind", "nui-dump.json"),
@@ -122,7 +122,7 @@ describe("fivem nui dump", () => {
     const htmlAfter = fs.readFileSync(path.join(res, "web", "index.html"), "utf8");
     assert.doesNotMatch(htmlAfter, /FXMIND-NUI-DUMP/);
     assert.equal(fs.existsSync(path.join(res, "web", "fxmind-nui-probe.js")), false);
-    assert.equal(fs.existsSync(path.join(dir, ".fxmind", "nui-wire.json")), false);
+    assert.equal(fs.existsSync(path.join(dir, ".fxmind", "state", "nui-wire.json")), false);
     assert.equal(fs.existsSync(path.join(dir, ".fxmind", "nui-dump.json")), false);
   });
 

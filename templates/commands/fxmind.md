@@ -46,7 +46,7 @@ If the fxmind MCP server is registered, prefer these tools over the manual mode 
 | Read Gate A/B/V/C status | `fxmind_gate_status` |
 | Record a Gate marker (START/A/B/V/C) | `fxmind_record_gate` |
 
-For Task mode, use **`fxmind_start_task`** then **`fxmind_record_gate`** for each gate (A → B → **V** → C) — never Write `.fxmind/fxmind-gates.json`. `fxmind_query` replaces the graph-router step (Gate B). For `graph`, `fxmind_graph` replaces the CLI shell-out.
+For Task mode, use **`fxmind_start_task`** then **`fxmind_record_gate`** for each gate (A → B → **V** → C) — never Write `.fxmind/state/fxmind-gates.json`. `fxmind_query` replaces the graph-router step (Gate B). For `graph`, `fxmind_graph` replaces the CLI shell-out.
 
 ## Shared memory (`.fxmind/`)
 
@@ -60,15 +60,17 @@ All agents read and write the **same project memory** under `.fxmind/` at the pr
 | `.fxmind/memory/_index.md` | Memory router |
 | `.fxmind/modes/<mode>.md` | On-demand mode specs (read only the matched one) |
 | `.fxmind/modes/task-verify.md` | Gate V + Judge triggers (load after Implement) |
-| `.fxmind/failure-modes.md` | Behavioral failure map (judge / Task self-audit) |
-| `.fxmind/minimum-evidence.md` | Pack binding evidence set (FiveM when installed) |
-| `.fxmind/audit-procedure.md` | Heavy audit matrix (read only on `audit`) |
-| `.fxmind/topic-catalog.md` | Learn search hints |
-| `.fxmind/knowledge-graph.json` | Topic graph for query/path/explain |
+| `.fxmind/policy/failure-modes.md` | Behavioral failure map (judge / Task self-audit) |
+| `.fxmind/policy/minimum-evidence.md` | Pack binding evidence set (FiveM when installed) |
+| `.fxmind/audits/procedure.md` | Heavy audit matrix (read only on `audit`) |
+| `.fxmind/policy/topic-catalog.md` | Learn search hints |
+| `.fxmind/graph/knowledge-graph.json` | Topic graph for query/path/explain |
 | `.fxmind/audits/<resource>.md` | Audit reports |
-| `.fxmind/*.template.md` | Report/memory skeletons (read-only) |
+| `.fxmind/templates/` | Report/memory skeletons (read-only) |
+| `.fxmind/reports/memory-health.md` | Memory health report (generated) |
+| `.fxmind/state/` | Session/runtime (gates, logs, cache — gitignored) |
 
-**Read policy:** always prefer `.fxmind/memory/` and `.fxmind/knowledge-graph.json`. If a topic exists only under a legacy per-agent folder (`.cursor/fivem/memory/`, `.gemini/fivem/memory/`, `.opencode/fivem/memory/`), read it as fallback and suggest re-running `fxmind -y` or `/fxmind memory health fix` to consolidate.
+**Read policy:** always prefer `.fxmind/memory/` and `.fxmind/graph/knowledge-graph.json`. If a topic exists only under a legacy per-agent folder (`.cursor/fivem/memory/`, `.gemini/fivem/memory/`, `.opencode/fivem/memory/`), read it as fallback and suggest re-running `fxmind -y` or `/fxmind memory health fix` to consolidate.
 
 **Write policy:** `learn`, `memory health fix`, and `graph` write only to `.fxmind/` — never to per-agent memory folders. `audit` writes only to `.fxmind/audits/`.
 

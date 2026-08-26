@@ -1,7 +1,7 @@
 description = "Query knowledge graph — BFS context retrieval from topic memories"
 
 prompt = """
-Run **graph query** against `.fxmind/knowledge-graph.json` and related memories.
+Run **graph query** against `.fxmind/graph/knowledge-graph.json` and related memories.
 
 **Question / args:** {{args}}
 
@@ -13,8 +13,8 @@ Parse optional flags (case-insensitive):
 
 ## Step 1 — Load graph
 
-1. Read `.fxmind/knowledge-graph.json` if it exists
-2. If missing → read embedded `GRAPH_DATA` from `.fxmind/knowledge-graph.html` (extract `const GRAPH_DATA = ...`)
+1. Read `.fxmind/graph/knowledge-graph.json` if it exists
+2. If missing → read embedded `GRAPH_DATA` from `.fxmind/graph/knowledge-graph.html` (extract `const GRAPH_DATA = ...`)
 3. If neither exists → reply: run `/fxmind:learn <topic>` then `/fxmind:graph` first; stop
 
 ## Step 2 — Vocabulary expansion (required)

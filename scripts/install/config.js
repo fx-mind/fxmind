@@ -1,8 +1,9 @@
 /**
  * install/config — shared constants for the fxmind installer.
- * No runtime deps beyond path; safe to require from any install module.
+ * Safe to require from any install module (path + layout only).
  */
 const path = require("path");
+const { SHARED_DIR, LAYOUT_VERSION } = require("../lib/layout");
 
 const DEFAULT_AGENTS = ["cursor"];
 
@@ -19,7 +20,16 @@ const FXMIND_TEMPLATES_DIR = path.join("templates", "fxmind");
 const GEMINI_COMMANDS_DIR = path.join("templates", "commands", "gemini");
 const COPILOT_COMMANDS_DIR = path.join("templates", "commands", "copilot");
 const COPILOT_PROMPT_FILE = "fxmind.prompt.md";
+/** Core files copied into .fxmind/ — dest is relative to .fxmind/. */
 const CORE_TEMPLATE_FILES = [
+  { src: "reference.template.mdc", dest: "templates/reference.mdc", srcDir: "rules" },
+  { src: "memory.template.md", dest: "templates/memory.md" },
+  { src: "memory-health.template.md", dest: "templates/memory-health.md" },
+  { src: "audit-procedure.md", dest: "audits/procedure.md" },
+  { src: "failure-modes.md", dest: "policy/failure-modes.md" },
+  { src: "knowledge-graph.html", dest: "graph/knowledge-graph.html" },
+];
+const LEGACY_TEMPLATE_FILES = [
   "reference.template.mdc",
   "memory.template.md",
   "memory-index.template.md",
@@ -27,12 +37,17 @@ const CORE_TEMPLATE_FILES = [
   "audit-procedure.md",
   "failure-modes.md",
   "knowledge-graph.html",
-];
-const LEGACY_TEMPLATE_FILES = [
   "reference.example.mdc",
   "audit.template.md",
   "topic-catalog.md",
+  "minimum-evidence.md",
 ];
+const PACK_TEMPLATE_DEST = {
+  "topic-catalog.md": "policy/topic-catalog.md",
+  "minimum-evidence.md": "policy/minimum-evidence.md",
+  "reference.example.mdc": "templates/reference.example.mdc",
+  "audit.template.md": null,
+};
 const LEGACY_FIVEM_FILES = [
   "knowledge-graph.template.html",
   "knowledge-graph.data.json",
@@ -56,11 +71,16 @@ const LEGACY_FIVEM_FILES = [
   path.join("scripts", "update-knowledge-graph.js"),
   path.join("scripts", "update-knowledge-graph.py"),
 ];
-const SHARED_DIR = ".fxmind";
+const OPENCODE_SUBAGENT_NAMES = ["explore", "reader", "general", "scout"];
+const OPENCODE_INSTRUCTION_FILE = "delegate-io.md";
+const OPENCODE_INSTRUCTION_REL = path.join(".opencode", "instructions", OPENCODE_INSTRUCTION_FILE);
+const OPENCODE_AGENTS_TEMPLATE_DIR = path.join("templates", "opencode", "agents");
+const OPENCODE_INSTRUCTIONS_TEMPLATE_DIR = path.join("templates", "opencode", "instructions");
+const OPENCODE_CONFIG_REL = "opencode.json";
+const OPENCODE_INSTRUCTION_CONFIG_REL = ".opencode/instructions/delegate-io.md";
+
 const PACK_SKILLS_DIR = path.join(SHARED_DIR, "skills");
 const AUDITS_DIR = path.join(SHARED_DIR, "audits");
-/** Bump when shared layout changes (e.g. audits/ folder). */
-const LAYOUT_VERSION = 2;
 const LEGACY_SHARED_DIRS = [".fivem"];
 
 const LEGACY_AGENT_FIVEM_DIRS = [
@@ -99,6 +119,8 @@ const AGENTS = {
     label: "OpenCode",
     skillsDir: path.join(".opencode", "skills"),
     commandsDir: path.join(".opencode", "commands"),
+    agentsDir: path.join(".opencode", "agents"),
+    instructionsDir: path.join(".opencode", "instructions"),
     commandMode: "file",
   },
   copilot: {
@@ -126,6 +148,7 @@ module.exports = {
   COPILOT_PROMPT_FILE,
   CORE_TEMPLATE_FILES,
   LEGACY_TEMPLATE_FILES,
+  PACK_TEMPLATE_DEST,
   LEGACY_FIVEM_FILES,
   SHARED_DIR,
   PACK_SKILLS_DIR,
@@ -134,4 +157,11 @@ module.exports = {
   LEGACY_SHARED_DIRS,
   LEGACY_AGENT_FIVEM_DIRS,
   AGENTS,
+  OPENCODE_SUBAGENT_NAMES,
+  OPENCODE_INSTRUCTION_FILE,
+  OPENCODE_INSTRUCTION_REL,
+  OPENCODE_AGENTS_TEMPLATE_DIR,
+  OPENCODE_INSTRUCTIONS_TEMPLATE_DIR,
+  OPENCODE_CONFIG_REL,
+  OPENCODE_INSTRUCTION_CONFIG_REL,
 };

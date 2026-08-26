@@ -6,7 +6,7 @@
 
 **Read-only by default.** Fixes only if the user asks after the verdict.
 
-> Checklist: `.fxmind/failure-modes.md`. Security/perf matrix → `/fxmind audit` (different mode).
+> Checklist: `.fxmind/policy/failure-modes.md`. Security/perf matrix → `/fxmind audit` (different mode).
 
 ## When this mode is mandatory
 

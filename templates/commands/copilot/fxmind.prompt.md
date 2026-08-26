@@ -49,7 +49,7 @@ If the fxmind MCP server is registered in `.vscode/mcp.json`, prefer its tools o
 | Read Gate A/B/V/C status | `fxmind_gate_status` |
 | Record a Gate marker (START/A/B/V/C) | `fxmind_record_gate` |
 
-For Task mode, use **`fxmind_start_task`** then **`fxmind_record_gate`** for each gate (A → B → **V** → C) — never Write `.fxmind/fxmind-gates.json`.
+For Task mode, use **`fxmind_start_task`** then **`fxmind_record_gate`** for each gate (A → B → **V** → C) — never Write `.fxmind/state/fxmind-gates.json`.
 
 ## Shared memory (`.fxmind/`)
 

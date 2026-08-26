@@ -10,10 +10,17 @@ const {
   loadForeignMemories,
   projectIdForRoot,
 } = require("./global-store");
-
-const SHARED_DIR = ".fxmind";
+const {
+  SHARED_DIR,
+  REL,
+  resolveLocal,
+  writeLocal,
+  resolveInDataRoot,
+  writeInDataRoot,
+  ensureDirFor,
+} = require("./lib/layout");
 const GRAPH_CACHE_SCHEMA = 1;
-const GRAPH_CACHE_FILE = "graph-cache.json";
+const GRAPH_CACHE_FILE = REL.graphCache;
 const GENERIC_TOPIC_TOKENS = new Set([
   "config", "script", "module", "system", "core", "main", "utils", "util",
   "handler", "server", "client", "shared", "resource", "data", "file", "files",
@@ -499,9 +506,9 @@ function syncKnowledgeGraphHtmlAt(htmlPath, graphData) {
 }
 
 function syncKnowledgeGraphHtml(targetRoot, graphData) {
-  const localHtml = path.join(targetRoot, SHARED_DIR, "knowledge-graph.html");
+  const localHtml = resolveLocal(targetRoot, "graphHtml");
   const dataRoot = resolveDataRoot(targetRoot);
-  const globalHtml = path.join(dataRoot, "knowledge-graph.html");
+  const globalHtml = resolveInDataRoot(dataRoot, "graphHtml");
 
   if (!syncKnowledgeGraphHtmlAt(localHtml, graphData) && !syncKnowledgeGraphHtmlAt(globalHtml, graphData)) {
     return false;
@@ -579,8 +586,8 @@ function extractMemoryBody(content) {
   return match ? match[1] : content;
 }
 
-function loadGraphCache(dataRoot) {
-  const cachePath = path.join(dataRoot, GRAPH_CACHE_FILE);
+function loadGraphCache(projectRoot) {
+  const cachePath = resolveLocal(projectRoot, "graphCache");
   if (!fs.existsSync(cachePath)) {
     return null;
   }
@@ -595,9 +602,9 @@ function loadGraphCache(dataRoot) {
   }
 }
 
-function saveGraphCache(dataRoot, files) {
-  const cachePath = path.join(dataRoot, GRAPH_CACHE_FILE);
-  fs.mkdirSync(dataRoot, { recursive: true });
+function saveGraphCache(projectRoot, files) {
+  const cachePath = writeLocal(projectRoot, "graphCache");
+  ensureDirFor(cachePath);
   fs.writeFileSync(
     cachePath,
     `${JSON.stringify({ schemaVersion: GRAPH_CACHE_SCHEMA, files }, null, 2)}\n`,
@@ -624,7 +631,7 @@ function buildGraphData(projectRoot, options = {}) {
     );
   }
 
-  const cache = useCache ? loadGraphCache(dataRoot) : null;
+  const cache = useCache ? loadGraphCache(projectRootResolved) : null;
   const cacheFiles = cache?.files || {};
   const nextCacheFiles = {};
 
@@ -668,12 +675,12 @@ function buildGraphData(projectRoot, options = {}) {
   }
 
   if (useCache) {
-    saveGraphCache(dataRoot, nextCacheFiles);
+    saveGraphCache(projectRootResolved, nextCacheFiles);
   }
 
   learnedNodes.sort((a, b) => a.id.localeCompare(b.id));
 
-  const catalogPath = path.join(localFxmindDir, "topic-catalog.md");
+  const catalogPath = resolveLocal(projectRootResolved, "topicCatalog");
   const catalogRows = fs.existsSync(catalogPath)
     ? parseTopicCatalog(fs.readFileSync(catalogPath, "utf8"))
     : [];
@@ -738,8 +745,9 @@ function writeGraph(projectRoot, graphData, options = {}) {
     options.updateHtml !== false || process.env.FXMIND_GRAPH_UPDATE_HTML === "1";
 
   const dataRoot = resolveDataRoot(projectRoot);
-  const jsonPath = path.join(dataRoot, "knowledge-graph.json");
-  const localHtml = path.join(projectRoot, SHARED_DIR, "knowledge-graph.html");
+  const jsonPath = writeInDataRoot(dataRoot, "graphJson");
+  const localHtml = writeLocal(projectRoot, "graphHtml");
+  ensureDirFor(jsonPath);
 
   fs.writeFileSync(jsonPath, `${JSON.stringify(graphData, null, 2)}\n`, "utf8");
   if (updateHtml) {
@@ -754,10 +762,17 @@ function writeGraph(projectRoot, graphData, options = {}) {
     // optional — fxmind-tools may not be available in odd load orders
   }
 
+  const htmlExisting = resolveLocal(projectRoot, "graphHtml");
+  const globalHtml = resolveInDataRoot(dataRoot, "graphHtml");
+
   return {
     jsonPath: path.relative(projectRoot, jsonPath),
     htmlPath: path.relative(projectRoot, localHtml),
-    absoluteHtmlPath: fs.existsSync(localHtml) ? localHtml : path.join(dataRoot, "knowledge-graph.html"),
+    absoluteHtmlPath: fs.existsSync(htmlExisting)
+      ? htmlExisting
+      : fs.existsSync(globalHtml)
+        ? globalHtml
+        : localHtml,
     memoryIndex,
   };
 }
@@ -779,12 +794,12 @@ Options:
 Reads:
   .fxmind/memory/_index.md
   .fxmind/memory/*.md
-  .fxmind/topic-catalog.md
+  .fxmind/policy/topic-catalog.md
 
 Writes:
-  .fxmind/knowledge-graph.json
-  .fxmind/knowledge-graph.html (unless --no-html)
-  .fxmind/memory-index.json
+  .fxmind/graph/knowledge-graph.json
+  .fxmind/graph/knowledge-graph.html (unless --no-html)
+  .fxmind/graph/memory-index.json
 `);
 }
 

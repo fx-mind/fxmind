@@ -39,7 +39,7 @@ const HOOK_SCRIPTS = [
   "pre-commit.js",
 ];
 
-const HOOK_LIB_FILES = ["memory-drift.js", "update-check.js", "cleanup-tmp.js", "stop-followup.js"];
+const HOOK_LIB_FILES = ["memory-drift.js", "update-check.js", "cleanup-tmp.js", "stop-followup.js", "layout.js"];
 
 const FXMIND_COMMANDS = {
   preToolUse: { command: "node .cursor/hooks/gate-guard.js", timeout: 15 },
@@ -405,7 +405,7 @@ Usage:
   fxmind hooks pre-commit [--strict]                      Run pre-commit drift check on staged files
   fxmind hooks drift-check <file>                         Check memories referencing <file>
   fxmind hooks graph [--no-open]                          Rebuild knowledge graph
-  fxmind hooks gates                                      Show Gate A/B/V/C status from .fxmind/fxmind-gates.json
+  fxmind hooks gates                                      Show Gate A/B/V/C status from .fxmind/state/fxmind-gates.json
   fxmind hooks validate-memories [--strict]               Validate memory frontmatter + duplicates
   fxmind hooks -h                                         This help
 

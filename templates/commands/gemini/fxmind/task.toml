@@ -10,6 +10,6 @@ Read **`.fxmind/modes/task.md`** (source of truth). After Implement, read **`.fx
 Classify first: question | analyze-only | plan-first | trivial | task.
 - trivial → `fxmind_start_task` with trivial=true (auto A+B)
 - else → start_task → A → B → implement → V → judge if required → C
-MCP rejects Gate C without V. Minimum evidence: `.fxmind/minimum-evidence.md` when present.
-Never Write `.fxmind/fxmind-gates.json`.
+MCP rejects Gate C without V. Minimum evidence: `.fxmind/policy/minimum-evidence.md` when present.
+Never Write `.fxmind/state/fxmind-gates.json`.
 """

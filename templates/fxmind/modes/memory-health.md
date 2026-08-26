@@ -21,13 +21,13 @@ If no `memory/` files exist → reply suggesting `/fxmind learn <topic>` first; 
 
 | File | Purpose |
 |------|---------|
-| `.fxmind/memory-health.template.md` | Report structure |
-| `.fxmind/memory.template.md` | Target compact format |
+| `.fxmind/templates/memory-health.md` | Report structure |
+| `.fxmind/templates/memory.md` | Target compact format |
 | `.fxmind/memory/_index.md` | Index integration |
-| `.fxmind/topic-catalog.md` | Catalog orphans (info) |
+| `.fxmind/policy/topic-catalog.md` | Catalog orphans (info) |
 | `.fxmind/reference.md` | Section `## Memórias por tópico` |
 | `.fxmind/memory/<topic>.md` | Each topic to verify |
-| `.fxmind/knowledge-graph.json` | If present — graph drift vs memories |
+| `.fxmind/graph/knowledge-graph.json` | If present — graph drift vs memories |
 
 ## Step 3 — Verify each memory (evidence required)
 
@@ -85,14 +85,14 @@ If graph drift detected → recommend `/fxmind graph` refresh.
 
 ## Step 4 — Write report
 
-Save `.fxmind/memory-health.md` using `memory-health.template.md`: summary counts (OK / Stale / Broken / Integration / Token), per-topic table + detail blocks with grep evidence, integration section, recommended actions. Write report in **user's language**; memory files stay compact English.
+Save `.fxmind/reports/memory-health.md` using `.fxmind/templates/memory-health.md`: summary counts (OK / Stale / Broken / Integration / Token), per-topic table + detail blocks with grep evidence, integration section, recommended actions. Write report in **user's language**; memory files stay compact English.
 
 ## Step 5 — Fix mode (when `fix` in args)
 
 Only after verification — **never invent** replacements:
 
 1. **Prune** lines referencing missing paths/events (grep-confirmed dead refs).
-2. **Rewrite** to `memory.template.md` — compact English, `lang: en-compact`, ~25–60 lines; refresh frontmatter arrays from surviving grep evidence.
+2. **Rewrite** to `.fxmind/templates/memory.md` — compact English, `lang: en-compact`, ~25–60 lines; refresh frontmatter arrays from surviving grep evidence.
 3. **Re-scan** repo for that topic (catalog hints + surviving valid paths) to refresh `Files`, `Recipe`, `Example`, `Pitfalls`.
 4. **Sync** `_index.md` and `.fxmind/reference.md` one-row links.
 5. **Broken topics** mostly empty after prune → keep minimal stub + flag **re-learn**: `/fxmind learn <topic>` — do not guess new APIs.
@@ -101,7 +101,7 @@ Update frontmatter `updated` on changed memories.
 
 ## Step 6 — Reply
 
-Reply in **user's language**: summary table (topics × verdict), path `.fxmind/memory-health.md`, auto-fixed topics (fix mode), topics needing `/fxmind learn <topic>` (manual), suggest `/fxmind graph` if memories changed.
+Reply in **user's language**: summary table (topics × verdict), path `.fxmind/reports/memory-health.md`, auto-fixed topics (fix mode), topics needing `/fxmind learn <topic>` (manual), suggest `/fxmind graph` if memories changed.
 
 ## Memory health rules
 

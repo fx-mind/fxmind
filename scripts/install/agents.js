@@ -447,6 +447,7 @@ function installCommand(targetRoot, agent) {
 
 function installAgentsLayer(targetRoot, agents, options) {
   const installed = [];
+  const { installOpenCodeSubagents } = require("./opencode");
 
   for (const agent of agents) {
     if (options.command) {
@@ -458,6 +459,14 @@ function installAgentsLayer(targetRoot, agents, options) {
     if (options.command) {
       for (const dest of installCommand(targetRoot, agent)) {
         installed.push({ agent: agent.label, path: dest, kind: "command" });
+      }
+    }
+
+    if (options.command && agent.id === "opencode") {
+      for (const dest of installOpenCodeSubagents(targetRoot)) {
+        const normalized = dest.replace(/\\/g, "/");
+        const kind = normalized.includes("/instructions/") ? "instruction" : "subagent";
+        installed.push({ agent: agent.label, path: normalized, kind });
       }
     }
   }

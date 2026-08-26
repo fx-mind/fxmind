@@ -23,6 +23,7 @@ const {
   LEGACY_SHARED_DIRS,
   LEGACY_AGENT_FIVEM_DIRS,
 } = require("./config");
+const { migrateProjectLayout } = require("../lib/layout");
 
 function getManagedSkillNames(skills, includeCommand) {
   const names = new Set();
@@ -90,6 +91,11 @@ function cleanLegacyFivemFiles(targetRoot, relativeDestDir) {
 }
 
 function cleanUnselectedAgents(targetRoot, selectedAgentIds, managedSkills) {
+  if (!selectedAgentIds.includes("opencode")) {
+    const { uninstallOpenCodeSubagents } = require("./opencode");
+    uninstallOpenCodeSubagents(targetRoot);
+  }
+
   for (const [agentId, agent] of Object.entries(AGENTS)) {
     if (selectedAgentIds.includes(agentId)) {
       continue;
@@ -403,8 +409,9 @@ function parseGraphMeta(filePath) {
 }
 
 function syncKnowledgeGraphHtml(targetRoot, graphData) {
-  const htmlPath = path.join(targetRoot, SHARED_DIR, "knowledge-graph.html");
-  if (!fs.existsSync(htmlPath)) {
+  const { resolveLocal } = require("../lib/layout");
+  const htmlPath = resolveLocal(targetRoot, "graphHtml");
+  if (!htmlPath || !fs.existsSync(htmlPath)) {
     return;
   }
 
@@ -495,7 +502,8 @@ function migrateAndCleanLegacyAgentArtifacts(targetRoot) {
     }
 
     const legacyGraph = path.join(legacyFull, "knowledge-graph.json");
-    const sharedGraph = path.join(sharedDir, "knowledge-graph.json");
+    const sharedGraph = path.join(sharedDir, "graph", "knowledge-graph.json");
+    fs.mkdirSync(path.dirname(sharedGraph), { recursive: true });
     if (fs.existsSync(legacyGraph)) {
       const legacyMeta = parseGraphMeta(legacyGraph);
       const sharedMeta = parseGraphMeta(sharedGraph);
@@ -525,7 +533,8 @@ function migrateAndCleanLegacyAgentArtifacts(targetRoot) {
 
     for (const name of ["memory-health.md"]) {
       const legacyPath = path.join(legacyFull, name);
-      const sharedPath = path.join(sharedDir, name);
+      const sharedPath = path.join(sharedDir, "reports", name);
+      fs.mkdirSync(path.dirname(sharedPath), { recursive: true });
       if (shouldPreferLegacyArtifact(legacyPath, sharedPath)) {
         fs.copyFileSync(legacyPath, sharedPath);
         migrated.push(path.relative(targetRoot, sharedPath));
@@ -711,6 +720,13 @@ function installCorrectionsDir(targetRoot) {
 
 function refreshSharedAuditLayout(targetRoot) {
   const installed = [];
+  for (const step of migrateProjectLayout(targetRoot)) {
+    installed.push(
+      step.to
+        ? `${SHARED_DIR}/${step.from} → ${SHARED_DIR}/${step.to}`
+        : `${SHARED_DIR}/${step.from} (removed)`,
+    );
+  }
   installed.push(installAuditsDir(targetRoot));
   installed.push(installCorrectionsDir(targetRoot));
 

@@ -7,7 +7,7 @@
  *  - driftCheck / buildGraph / queryGraph
  *  - startTask / gateStatus / recordGate / resetGates
  *  - recordCorrection / listCorrections / exportCorrections / promoteCorrection
- *  - appendMetric (local .fxmind/metrics.jsonl)
+ *  - appendMetric (local .fxmind/state/metrics.jsonl)
  */
 
 const fs = require("fs");
@@ -15,15 +15,25 @@ const path = require("path");
 const crypto = require("crypto");
 
 const { SHARED_DIR, resolveDataRoot } = require("./global-store");
+const {
+  resolveLocal,
+  writeLocal,
+  resolveInDataRoot,
+  writeInDataRoot,
+  ensureDirFor,
+  projectRel,
+  REL,
+  PROJECT_GITIGNORE_LINES,
+} = require("./lib/layout");
 const { buildGraphData, writeGraph } = require("./build-graph");
 const { isGraphStale, ensureGraphFresh } = require("./lib/graph-freshness");
 
 const SCHEMA_VERSION = 1;
 const GATES_FILE = "fxmind-gates.json";
-const GATES_REL = path.join(SHARED_DIR, GATES_FILE);
+const GATES_REL = projectRel(REL.gates);
 const LEGACY_GATES_REL = ".fxmind-gates.json";
-const MEMORY_INDEX_FILE = "memory-index.json";
-const METRICS_FILE = "metrics.jsonl";
+const MEMORY_INDEX_FILE = REL.memoryIndexJson;
+const METRICS_FILE = REL.metrics;
 const CORRECTIONS_DIR = "corrections";
 
 const CORRECTION_CATEGORIES = [
@@ -72,11 +82,15 @@ function memoryDir(targetRoot) {
 }
 
 function memoryIndexPath(targetRoot) {
-  return path.join(fxmindDir(targetRoot), MEMORY_INDEX_FILE);
+  return resolveInDataRoot(resolveDataRoot(targetRoot), "memoryIndexJson");
+}
+
+function memoryIndexWritePath(targetRoot) {
+  return writeInDataRoot(resolveDataRoot(targetRoot), "memoryIndexJson");
 }
 
 function metricsPath(targetRoot) {
-  return path.join(fxmindDir(targetRoot), METRICS_FILE);
+  return writeLocal(targetRoot, "metrics");
 }
 
 function correctionsDir(targetRoot) {
@@ -592,7 +606,7 @@ function buildMemoryIndex(targetRoot) {
 
 function writeMemoryIndex(targetRoot) {
   const index = buildMemoryIndex(targetRoot);
-  const outPath = memoryIndexPath(targetRoot);
+  const outPath = memoryIndexWritePath(targetRoot);
   writeJson(outPath, index);
   return {
     path: path.relative(path.resolve(targetRoot), outPath).replace(/\\/g, "/"),
@@ -694,8 +708,8 @@ function buildGraph(targetRoot, options = {}) {
 }
 
 function loadGraphData(targetRoot) {
-  const jsonPath = path.join(resolveDataRoot(targetRoot), "knowledge-graph.json");
-  if (fs.existsSync(jsonPath)) {
+  const jsonPath = resolveInDataRoot(resolveDataRoot(targetRoot), "graphJson");
+  if (jsonPath && fs.existsSync(jsonPath)) {
     return readJson(jsonPath);
   }
   return null;
@@ -825,7 +839,7 @@ function queryGraph(targetRoot, question, options = {}) {
 }
 
 function gatesPath(targetRoot) {
-  return path.join(fxmindDir(targetRoot), GATES_FILE);
+  return writeLocal(targetRoot, "gates");
 }
 
 function legacyGatesPath(targetRoot) {
@@ -834,13 +848,31 @@ function legacyGatesPath(targetRoot) {
 
 function migrateLegacyGates(targetRoot) {
   const next = gatesPath(targetRoot);
-  const legacy = legacyGatesPath(targetRoot);
-  if (fs.existsSync(next) || !fs.existsSync(legacy)) {
+  const fromRoot = path.join(fxmindDir(targetRoot), GATES_FILE);
+  const fromRepo = legacyGatesPath(targetRoot);
+
+  if (fs.existsSync(next)) {
+    if (fs.existsSync(fromRepo)) {
+      fs.unlinkSync(fromRepo);
+    }
     return false;
   }
+
+  const source = fs.existsSync(fromRoot) && fromRoot !== next
+    ? fromRoot
+    : fs.existsSync(fromRepo)
+      ? fromRepo
+      : null;
+  if (!source) {
+    return false;
+  }
+
   fs.mkdirSync(path.dirname(next), { recursive: true });
-  fs.copyFileSync(legacy, next);
-  fs.unlinkSync(legacy);
+  fs.copyFileSync(source, next);
+  fs.unlinkSync(source);
+  if (source !== fromRepo && fs.existsSync(fromRepo)) {
+    fs.unlinkSync(fromRepo);
+  }
   return true;
 }
 
@@ -948,19 +980,7 @@ function resetGates(targetRoot) {
   return data;
 }
 
-/** Lines to ensure in the project .gitignore */
-const PROJECT_GITIGNORE_LINES = [
-  ".fxmind/fxmind-gates.json",
-  ".fxmind-gates.json",
-  ".fxmind/metrics.jsonl",
-  ".fxmind/fivem-console.log",
-  ".fxmind/server-debug.log",
-  ".fxmind/nui-dump.json",
-  ".fxmind/nui-wire.json",
-  ".fxmind/rcon.json",
-  ".fxmind/graph-cache.json",
-  ".fxmind/tmp/",
-];
+/** Lines to ensure in the project .gitignore — see lib/layout.js */
 
 function ensureProjectGitignore(targetRoot) {
   const gitignorePath = path.join(path.resolve(targetRoot), ".gitignore");

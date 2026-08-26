@@ -41,7 +41,9 @@ function createPackScaffold(packId, options = {}) {
       siblingPath: `../${id}-skill/skills`,
     },
     defaultSkills: options.defaultSkills || [],
-    templateFiles: options.templateFiles || [],
+    templateFiles: options.templateFiles || [
+      { src: "topic-catalog.md", dest: "policy/topic-catalog.md" },
+    ],
   };
 
   fs.writeFileSync(

@@ -324,6 +324,8 @@ function installOpenCodeMcp(configPath) {
   existing.mcp = existing.mcp || {};
   existing.mcp[MCP_SERVER_KEY] = resolveOpenCodeMcpLaunch();
   writeJson(configPath, existing);
+  const { mergeOpenCodeSubagentConfig } = require("./install/opencode");
+  mergeOpenCodeSubagentConfig(path.dirname(configPath));
 }
 
 function removeLegacyOpenCodeMcpJson(projectRoot) {

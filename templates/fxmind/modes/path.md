@@ -6,7 +6,7 @@ Parse `$ARGUMENTS` after `path`: `<topic-a> <topic-b>` (e.g. `path craft inventa
 
 ### Step 1 — Load graph
 
-Read `.fxmind/knowledge-graph.json` (fallback: extract `GRAPH_DATA` from `.fxmind/knowledge-graph.html`). If neither exists → tell user to run `/fxmind graph`; stop.
+Read `.fxmind/graph/knowledge-graph.json` (fallback: extract `GRAPH_DATA` from `.fxmind/graph/knowledge-graph.html`). If neither exists → tell user to run `/fxmind graph`; stop.
 
 ### Step 2 — Match nodes
 

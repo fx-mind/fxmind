@@ -2,7 +2,7 @@
 
 Refresh **installed knowledge packs**, **Agent Skills**, **pack templates**, and the **`/fxmind` helper** when fxmind or pack skills changed upstream.
 
-This mode runs the fxmind CLI — it does **not** edit memories, `memory/_index.md`, or `knowledge-graph.json`.
+This mode runs the fxmind CLI — it does **not** edit memories, `memory/_index.md`, or `graph/knowledge-graph.json`.
 
 ### Session notifier (Cursor)
 
@@ -24,7 +24,7 @@ If fxmind is installed globally: `fxmind --update -y`.
 
 Optional: `--target <dir>` when not in project root; `--agent cursor,claude` only if user wants to limit agents.
 
-The updater: reads `.fxmind/packs.json`; pulls latest skills from the pack repo cache; re-copies pack skills into `.fxmind/skills/`; refreshes pack templates and core `/fxmind` templates + modes; removes legacy pack skills from agent skill folders; preserves `.fxmind/memory/*` and existing `knowledge-graph.json`.
+The updater: reads `.fxmind/packs.json`; pulls latest skills from the pack repo cache; re-copies pack skills into `.fxmind/skills/`; refreshes pack templates and core `/fxmind` templates + modes; removes legacy pack skills from agent skill folders; preserves `.fxmind/memory/*` and existing `graph/knowledge-graph.json`. Also migrates the v2 flat-root layout into `templates/`, `policy/`, `graph/`, `state/`, and `reports/`.
 
 ### Step 3 — Confirm
 

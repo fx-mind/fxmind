@@ -13,9 +13,11 @@
  */
 const fs = require("fs");
 const path = require("path");
+const { writeLocal, fxmindDir } = require("./lib/layout.js");
 
 const PROJECT_ROOT = process.cwd();
-const GATES_FILE = path.join(PROJECT_ROOT, ".fxmind", "fxmind-gates.json");
+const GATES_FILE = writeLocal(PROJECT_ROOT, "gates");
+const V2_GATES_FILE = path.join(fxmindDir(PROJECT_ROOT), "fxmind-gates.json");
 const LEGACY_GATES_FILE = path.join(PROJECT_ROOT, ".fxmind-gates.json");
 
 const ALLOW_PREFIXES = [
@@ -54,12 +56,20 @@ function readStdin() {
 }
 
 function migrateLegacyGates() {
-  if (fs.existsSync(GATES_FILE) || !fs.existsSync(LEGACY_GATES_FILE)) {
+  if (fs.existsSync(GATES_FILE)) {
+    return;
+  }
+  const source = fs.existsSync(V2_GATES_FILE)
+    ? V2_GATES_FILE
+    : fs.existsSync(LEGACY_GATES_FILE)
+      ? LEGACY_GATES_FILE
+      : null;
+  if (!source) {
     return;
   }
   fs.mkdirSync(path.dirname(GATES_FILE), { recursive: true });
-  fs.copyFileSync(LEGACY_GATES_FILE, GATES_FILE);
-  fs.unlinkSync(LEGACY_GATES_FILE);
+  fs.copyFileSync(source, GATES_FILE);
+  fs.unlinkSync(source);
 }
 
 function readGates() {
@@ -91,7 +101,7 @@ function toRel(filePath) {
 function isGatesFile(filePath) {
   const rel = toRel(filePath);
   return (
-    rel === ".fxmind/fxmind-gates.json" ||
+    rel === ".fxmind/state/fxmind-gates.json" ||
     rel === ".fxmind-gates.json" ||
     rel.endsWith("/fxmind-gates.json")
   );
@@ -159,7 +169,7 @@ async function main() {
   if (isGatesFile(filePath)) {
     ask(
       "fxmind: do not edit fxmind-gates.json directly — use the MCP tool fxmind_record_gate.",
-      "Blocked: gates are session state managed by Node. Call MCP fxmind_start_task (or fxmind_record_gate with gate=START) then fxmind_record_gate for A/B/C. Do not Write/Edit .fxmind/fxmind-gates.json.",
+      "Blocked: gates are session state managed by Node. Call MCP fxmind_start_task (or fxmind_record_gate with gate=START) then fxmind_record_gate for A/B/C. Do not Write/Edit .fxmind/state/fxmind-gates.json.",
     );
   }
 
@@ -206,7 +216,7 @@ async function main() {
 
   ask(
     `fxmind: code edit blocked — Gate${missing.length > 1 ? "s" : ""} ${missing.join(" & ")} not recorded. Use MCP fxmind_record_gate.`,
-    `Task active but Gate ${missing.join(" and ")} missing. Call fxmind_record_gate with gate="${missing[0]}"${missing[1] ? ` then gate="${missing[1]}"` : ""} (output 🛑 GATE markers in chat too). Do not Write .fxmind/fxmind-gates.json. Then retry editing ${filePath || "code"}.`,
+    `Task active but Gate ${missing.join(" and ")} missing. Call fxmind_record_gate with gate="${missing[0]}"${missing[1] ? ` then gate="${missing[1]}"` : ""} (output 🛑 GATE markers in chat too). Do not Write .fxmind/state/fxmind-gates.json. Then retry editing ${filePath || "code"}.`,
   );
 }
 

@@ -57,4 +57,4 @@ Otherwise Gate V alone is enough. Judge is read-only unless the user asks to app
 
 **Outcome first:** what happened → evidence → honest caveats. Hostile reread before send.
 
-Failure map: `.fxmind/failure-modes.md`.
+Failure map: `.fxmind/policy/failure-modes.md`.

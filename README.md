@@ -41,6 +41,7 @@ Restart your agent IDE/CLI after install or update.
 | **2D graph** | Visual topic map (`fxmind graph`) |
 | **Hooks** (Cursor) | Task gates + stale-memory detection |
 | **MCP** | Programmatic tools (`fxmind_query`, `fxmind_graph`, …) |
+| **OpenCode subagents** | `explore` / `reader` / `general` / `scout` under `.opencode/agents/` |
 
 **Split:** terminal (`fxmind …`) installs and builds; chat (`/fxmind …`) learns, audits, and implements.
 
@@ -82,16 +83,22 @@ fxmind -h                  # all options
 
 ```
 .fxmind/
-├── memory/              # topic memories (source of truth)
-├── memory-index.json    # compiled frontmatter index (from fxmind graph)
-├── skills/              # pack skills
-├── modes/               # /fxmind mode specs (loaded on demand)
-├── knowledge-graph.json # graph for query/path/explain
+├── fxmind.md            # /fxmind command router
 ├── packs.json           # installed packs manifest
-└── fxmind.md            # /fxmind command router
+├── packs.lock.json      # reproducible pack pins
+├── memory/              # topic memories (source of truth)
+├── modes/               # /fxmind mode specs (loaded on demand)
+├── skills/              # pack skills
+├── audits/              # reports + procedure.md
+├── corrections/         # skill-improvement backlog
+├── templates/           # memory/report skeletons (read-only)
+├── policy/              # failure-modes, topic-catalog, minimum-evidence
+├── graph/               # knowledge-graph.json/html + memory-index.json
+├── reports/             # generated human reports (memory-health)
+└── state/               # session/runtime (gitignored)
 ```
 
-Session-only (gitignored): `fxmind-gates.json`, `metrics.jsonl`, `.fxmind/tmp/` (agent scratch — auto-cleaned when safe).
+Session-only (gitignored): `.fxmind/state/` — gates, metrics, RCON, logs, graph cache, `tmp/`.
 
 **Corrections backlog** (commit these — skill feed): `.fxmind/corrections/` — human fixes of agent mistakes, separate from topic memories. Export with `fxmind corrections export` → edit the matching `fivem-development/<category>.md`.
 ---
@@ -109,9 +116,9 @@ Just ask for the change in natural language — Task mode runs **automatically**
 7. **Judge** — when task-verify says mandatory (blast radius / money-permission / INTENT)
 8. **Gate C** — post-task learn → `fxmind_record_gate` C (clears session)
 
-Prove claims: **`/fxmind judge`**. Behavioral map: `.fxmind/failure-modes.md`. FiveM evidence: `.fxmind/minimum-evidence.md`.
+Prove claims: **`/fxmind judge`**. Behavioral map: `.fxmind/policy/failure-modes.md`. FiveM evidence: `.fxmind/policy/minimum-evidence.md`.
 
-**Gates are session state (MCP only).** Agents must not Write `.fxmind/fxmind-gates.json` — `gate-guard` blocks it. The file is gitignored (ephemeral).
+**Gates are session state (MCP only).** Agents must not Write `.fxmind/state/fxmind-gates.json` — `gate-guard` blocks it. The file is gitignored (ephemeral).
 
 `/fxmind task <request>` still works as an explicit shortcut.
 
@@ -124,11 +131,11 @@ Memories stay as **Markdown** (source of truth, git-friendly). The graph build a
 | File | Role |
 |------|------|
 | `.fxmind/memory/*.md` | Topic knowledge (edit / review in PRs) |
-| `.fxmind/knowledge-graph.json` | Query graph (agents use this + `memory-index.json`) |
-| `.fxmind/knowledge-graph.html` | Optional 2D visualization for humans (`fxmind graph`) |
-| `.fxmind/memory-index.json` | Fast frontmatter index + validation summary |
-| `.fxmind/graph-cache.json` | Local build cache (gitignored) |
-| `.fxmind/tmp/` | Ephemeral agent scratch (gitignored; removed when task inactive or Gate C done) |
+| `.fxmind/graph/knowledge-graph.json` | Query graph (agents use this + `memory-index.json`) |
+| `.fxmind/graph/knowledge-graph.html` | Optional 2D visualization for humans (`fxmind graph`) |
+| `.fxmind/graph/memory-index.json` | Fast frontmatter index + validation summary |
+| `.fxmind/state/graph-cache.json` | Local build cache (gitignored) |
+| `.fxmind/state/tmp/` | Ephemeral agent scratch (gitignored; removed when task inactive or Gate C done) |
 
 **Agents and MCP tools depend on JSON + index, not HTML.** Automatic rebuilds (after learn, drift-watcher, session start, stale `fxmind_query`) refresh JSON + index only unless you run `fxmind graph` (browser) or pass `updateHtml: true` / set `FXMIND_GRAPH_UPDATE_HTML=1`.
 
@@ -239,6 +246,8 @@ On macOS/Linux the install writes `"command": "fxmind-mcp"` (no `args`) instead 
 }
 ```
 
+`--opencode` also installs subagents under `.opencode/agents/` (`explore`, `reader`, `general`, `scout`) and `.opencode/instructions/delegate-io.md`. They override OpenCode’s built-in explore/general/scout with fxmind-aware prompts (`.fxmind/memory/`, pack skills). `reader` is fxmind-only. Models are not hardcoded — set them in `opencode.json` if you want faster subagent models. Restart OpenCode after install.
+
 The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP spawn under Git Bash / MSYS2.
 
 | MCP tool | Action |
@@ -265,7 +274,7 @@ Opt out: set `"autoUpdateCheck": false` in `.fxmind/packs.json`, or `FXMIND_NO_U
 
 ### Local FiveM RCON (dev, no txAdmin)
 
-Dev-only: RCON works only after **`fxmind fivem install`**, which writes **`dev/dev.cfg`** and `.fxmind/rcon.json` (never production `server.cfg`). Commands require a running **fivem-start** console that responds over UDP.
+Dev-only: RCON works only after **`fxmind fivem install`**, which writes **`dev/dev.cfg`** and `.fxmind/state/rcon.json` (never production `server.cfg`). Commands require a running **fivem-start** console that responds over UDP.
 
 One-shot setup (agent or human):
 
@@ -280,8 +289,8 @@ Writes `rcon_password` into **dev/dev.cfg**, `.vscode/fivem-start.ps1` (interact
 | First-time / RCON not installed | `fxmind fivem install` then restart **fivem-start** |
 | `fxmind_fivem_status.available: false` | Start fivem-start or run console commands manually — do not claim ensure succeeded |
 | `ensure` / `restart` | UDP RCON (`fxmind fivem ensure` / MCP) |
-| Full log for `tail` / MCP | RCON exchanges → `.fxmind/fivem-console.log`; optional `server-debug.log` |
-| NUI vision for agents | `fxmind fivem nui-dump` / MCP `fxmind_fivem_nui_dump` → `.fxmind/nui-dump.json` |
+| Full log for `tail` / MCP | RCON exchanges → `.fxmind/state/fivem-console.log`; optional `server-debug.log` |
+| NUI vision for agents | `fxmind fivem nui-dump` / MCP `fxmind_fivem_nui_dump` → `.fxmind/state/nui-dump.json` |
 
 `fivem install` also copies **`fxmind-nui-bridge`** and sets `fxmind_nui_dump_path`. Agents should **auto-wire** (no manual script edits):
 

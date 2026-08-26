@@ -23,7 +23,7 @@ Copied by `fxmind fivem install` into `resources/[local]/fxmind-nui-bridge` (or 
 
 ```cfg
 ensure fxmind-nui-bridge
-set fxmind_nui_dump_path "<abs>/.fxmind/nui-dump.json"
+set fxmind_nui_dump_path "<abs>/.fxmind/state/nui-dump.json"
 ```
 
 ## Optional permanent wire

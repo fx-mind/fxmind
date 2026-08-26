@@ -15,6 +15,7 @@ const {
   FXMIND_TEMPLATES_DIR,
   CORE_TEMPLATE_FILES,
   LEGACY_TEMPLATE_FILES,
+  PACK_TEMPLATE_DEST,
   SHARED_DIR,
   PACK_SKILLS_DIR,
   AUDITS_DIR,
@@ -31,31 +32,56 @@ const {
   installAuditsDir,
   installCorrectionsDir,
 } = require("./legacy");
+const { migrateProjectLayout } = require("../lib/layout");
+
+function coreTemplateEntry(entry) {
+  if (typeof entry === "string") {
+    return {
+      src: entry,
+      dest: entry,
+      srcDir: entry === "reference.template.mdc" ? REFERENCE_TEMPLATES_DIR : FXMIND_TEMPLATES_DIR,
+    };
+  }
+  return {
+    src: entry.src,
+    dest: entry.dest,
+    srcDir: entry.srcDir === "rules" ? REFERENCE_TEMPLATES_DIR : FXMIND_TEMPLATES_DIR,
+  };
+}
+
+function normalizePackTemplateFile(entry) {
+  if (typeof entry === "string") {
+    const dest = Object.prototype.hasOwnProperty.call(PACK_TEMPLATE_DEST, entry)
+      ? PACK_TEMPLATE_DEST[entry]
+      : entry;
+    return { src: entry, dest };
+  }
+  return { src: entry.src, dest: entry.dest };
+}
 
 function installSharedFxmind(targetRoot, packIds, installOptions = {}) {
   const preserveUserData = Boolean(installOptions.preserveUserData);
   const relativeDestDir = SHARED_DIR;
   const destDir = path.join(targetRoot, relativeDestDir);
+  migrateProjectLayout(targetRoot);
+  fs.mkdirSync(destDir, { recursive: true });
+  for (const name of ["templates", "policy", "graph", "state", "reports", "memory", "modes"]) {
+    fs.mkdirSync(path.join(destDir, name), { recursive: true });
+  }
   const removed = cleanLegacyFivemFiles(targetRoot, relativeDestDir);
-  const templates = CORE_TEMPLATE_FILES.map((fileName) => [
-    fileName === "reference.template.mdc"
-      ? REFERENCE_TEMPLATES_DIR
-      : FXMIND_TEMPLATES_DIR,
-    fileName,
-  ]);
   const installed = [];
 
-  for (const [srcDir, fileName] of templates) {
-    const src = path.join(PACKAGE_ROOT, srcDir, fileName);
+  for (const entry of CORE_TEMPLATE_FILES.map(coreTemplateEntry)) {
+    const src = path.join(PACKAGE_ROOT, entry.srcDir, entry.src);
     if (!fs.existsSync(src)) {
       continue;
     }
 
-    const dest = path.join(destDir, fileName);
+    const dest = path.join(destDir, entry.dest);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
 
-    if (fileName === "knowledge-graph.html") {
-      const graphJsonPath = path.join(destDir, "knowledge-graph.json");
+    if (entry.src === "knowledge-graph.html") {
+      const graphJsonPath = path.join(destDir, "graph", "knowledge-graph.json");
       let graphData = null;
 
       if (preserveUserData && fs.existsSync(graphJsonPath)) {
@@ -85,10 +111,10 @@ function installSharedFxmind(targetRoot, packIds, installOptions = {}) {
         .replace("/*__GRAPH_DATA__*/", graphJsonStr);
       fs.writeFileSync(dest, html, "utf8");
 
-      const jsonDest = path.join(destDir, "knowledge-graph.json");
-      if (!preserveUserData || !fs.existsSync(jsonDest)) {
-        fs.writeFileSync(jsonDest, `${graphJsonStr}\n`, "utf8");
-        installed.push(path.relative(targetRoot, jsonDest));
+      if (!preserveUserData || !fs.existsSync(graphJsonPath)) {
+        fs.mkdirSync(path.dirname(graphJsonPath), { recursive: true });
+        fs.writeFileSync(graphJsonPath, `${graphJsonStr}\n`, "utf8");
+        installed.push(path.relative(targetRoot, graphJsonPath));
       }
     } else {
       fs.copyFileSync(src, dest);
@@ -107,12 +133,16 @@ function installSharedFxmind(targetRoot, packIds, installOptions = {}) {
   for (const packId of packIds) {
     const pack = getPack(packId);
     for (const fileName of pack.templateFiles || []) {
-      const src = path.join(pack.templatesDir, fileName);
+      const { src: srcName, dest: destRel } = normalizePackTemplateFile(fileName);
+      if (!destRel) {
+        continue;
+      }
+      const src = path.join(pack.templatesDir, srcName);
       if (!fs.existsSync(src)) {
         continue;
       }
 
-      const dest = path.join(destDir, fileName);
+      const dest = path.join(destDir, destRel);
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       fs.copyFileSync(src, dest);
       installed.push(path.relative(targetRoot, dest));
@@ -183,10 +213,22 @@ function writePacksManifest(targetRoot, packIds, meta = {}) {
 }
 
 function getAllTemplateFileNames(packIds) {
-  const names = new Set([...CORE_TEMPLATE_FILES, ...LEGACY_TEMPLATE_FILES]);
+  const names = new Set(LEGACY_TEMPLATE_FILES);
+  for (const entry of CORE_TEMPLATE_FILES) {
+    if (typeof entry === "string") {
+      names.add(entry);
+    } else {
+      names.add(entry.src);
+      names.add(entry.dest);
+    }
+  }
   for (const packId of packIds) {
     for (const fileName of getPack(packId).templateFiles || []) {
-      names.add(fileName);
+      const { src, dest } = normalizePackTemplateFile(fileName);
+      names.add(src);
+      if (dest) {
+        names.add(dest);
+      }
     }
   }
   return [...names];
@@ -368,6 +410,7 @@ module.exports = {
   installSharedFxmind,
   writePacksManifest,
   getAllTemplateFileNames,
+  normalizePackTemplateFile,
   listModeTemplateFiles,
   installModeFiles,
   cleanLegacyAgentFivemTemplates,

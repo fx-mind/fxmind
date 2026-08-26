@@ -65,6 +65,16 @@ const {
   runMigrateCli,
 } = require("./install/subcommands");
 
+function formatAgentKind(kind) {
+  const labels = {
+    skill: "skill   ",
+    command: "command ",
+    subagent: "agent   ",
+    instruction: "instr   ",
+  };
+  return labels[kind] || `${kind} `;
+}
+
 async function main() {
   const argv = process.argv.slice(2);
 
@@ -242,9 +252,7 @@ async function main() {
         console.log(`[${entry.agent}]`);
         lastAgentLabel = entry.agent;
       }
-      console.log(
-        `  ✓ ${entry.kind === "skill" ? "skill   " : "command "} → ${entry.path}`,
-      );
+      console.log(`  ✓ ${formatAgentKind(entry.kind)} → ${entry.path}`);
     }
     if (lastAgentLabel) {
       console.log("");
@@ -438,9 +446,7 @@ async function main() {
       console.log(`[${entry.agent}]`);
       lastAgentLabel = entry.agent;
     }
-    console.log(
-      `  ✓ ${entry.kind === "skill" ? "skill   " : "command "} → ${entry.path}`,
-    );
+    console.log(`  ✓ ${formatAgentKind(entry.kind)} → ${entry.path}`);
   }
   if (lastAgentLabel) {
     console.log("");

@@ -6,7 +6,7 @@ Parse `$ARGUMENTS` after `explain`: `<topic>` slug or name.
 
 ### Step 1 — Load graph and memory
 
-1. Load `.fxmind/knowledge-graph.json` (fallback: extract `GRAPH_DATA` from `.fxmind/knowledge-graph.html`).
+1. Load `.fxmind/graph/knowledge-graph.json` (fallback: extract `GRAPH_DATA` from `.fxmind/graph/knowledge-graph.html`).
 2. Load `.fxmind/memory/<topic>.md` for matched node.
 
 ### Step 2 — Match node

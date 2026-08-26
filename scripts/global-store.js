@@ -3,6 +3,8 @@ const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
 
+const { migrateLayoutInDir } = require("./lib/layout");
+
 const SHARED_DIR = ".fxmind";
 const GLOBAL_ROOT = path.join(os.homedir(), ".fxmind");
 const GLOBAL_PROJECTS_DIR = path.join(GLOBAL_ROOT, "projects");
@@ -14,8 +16,9 @@ const STORE_FILE = "store.json";
 const PROJECT_DATA_LINKS = [
   "memory",
   "audits",
-  "knowledge-graph.json",
-  "knowledge-graph.html",
+  "corrections",
+  "graph",
+  "reports",
 ];
 
 function normalizeProjectRoot(projectRoot) {
@@ -207,39 +210,26 @@ function wireProjectLinks(projectRoot, globalProjectDir) {
   fs.mkdirSync(localFxmind, { recursive: true });
   fs.mkdirSync(globalProjectDir, { recursive: true });
 
+  for (const stale of ["knowledge-graph.json", "knowledge-graph.html"]) {
+    const stalePath = path.join(localFxmind, stale);
+    if (fs.existsSync(stalePath)) {
+      try {
+        if (fs.lstatSync(stalePath).isSymbolicLink()) {
+          fs.unlinkSync(stalePath);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   const linkModes = {};
 
   for (const name of PROJECT_DATA_LINKS) {
     const globalPath = path.join(globalProjectDir, name);
     const localPath = path.join(localFxmind, name);
-
-    if (name === "memory" || name === "audits") {
-      fs.mkdirSync(globalPath, { recursive: true });
-      linkModes[name] = createSymlink(globalPath, localPath, "dir");
-      continue;
-    }
-
-    if (!fs.existsSync(globalPath)) {
-      if (name.endsWith(".html")) {
-        continue;
-      }
-      if (name.endsWith(".json")) {
-        writeJson(globalPath, {
-          nodes: [],
-          links: [],
-          meta: {
-            generatedAt: "",
-            agent: "shared",
-            fxmindDir: SHARED_DIR,
-            counts: { learned: 0, catalog: 0, links: 0, tokens: 0 },
-          },
-        });
-      }
-    }
-
-    if (fs.existsSync(globalPath)) {
-      linkModes[name] = createSymlink(globalPath, localPath, "file");
-    }
+    fs.mkdirSync(globalPath, { recursive: true });
+    linkModes[name] = createSymlink(globalPath, localPath, "dir");
   }
 
   const sharedSkillsLink = path.join(localFxmind, "skills");
@@ -279,7 +269,9 @@ function setupGlobalStore(projectRoot, meta = {}) {
   const localFxmind = path.join(resolvedRoot, SHARED_DIR);
 
   fs.mkdirSync(globalProjectDir, { recursive: true });
+  migrateLayoutInDir(localFxmind);
   migrateLocalDataToGlobal(localFxmind, globalProjectDir);
+  migrateLayoutInDir(globalProjectDir);
   registerProject(resolvedRoot, meta);
   writeProjectStore(resolvedRoot, projectId, globalProjectDir);
   const linkModes = wireProjectLinks(resolvedRoot, globalProjectDir);

@@ -49,8 +49,10 @@ Beta references alpha id in text.
 `,
     "utf8",
   );
-  fs.writeFileSync(path.join(fx, "topic-catalog.md"), "| Tópico | Triggers | Hints |\n|---|---|---|\n", "utf8");
-  fs.writeFileSync(path.join(fx, "knowledge-graph.html"), "<html>const GRAPH_DATA = /*__GRAPH_DATA__*/;</html>", "utf8");
+  fs.mkdirSync(path.join(fx, "policy"), { recursive: true });
+  fs.writeFileSync(path.join(fx, "policy", "topic-catalog.md"), "| Tópico | Triggers | Hints |\n|---|---|---|\n", "utf8");
+  fs.mkdirSync(path.join(fx, "graph"), { recursive: true });
+  fs.writeFileSync(path.join(fx, "graph", "knowledge-graph.html"), "<html>const GRAPH_DATA = /*__GRAPH_DATA__*/;</html>", "utf8");
 }
 
 describe("inferLinks", () => {
@@ -91,7 +93,7 @@ describe("graph cache", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fxgraph-"));
     writeMinimalProject(dir);
     buildGraphData(dir, { useCache: true });
-    const cachePath = path.join(dir, ".fxmind", GRAPH_CACHE_FILE);
+    const cachePath = path.join(dir, ".fxmind", "state", "graph-cache.json");
     assert.ok(fs.existsSync(cachePath));
     const cache = JSON.parse(fs.readFileSync(cachePath, "utf8"));
     assert.ok(cache.files.alpha);
@@ -109,19 +111,19 @@ describe("writeGraph updateHtml", () => {
   });
 
   it("skips HTML when updateHtml is false", () => {
-    const htmlPath = path.join(dir, ".fxmind", "knowledge-graph.html");
+    const htmlPath = path.join(dir, ".fxmind", "graph", "knowledge-graph.html");
     const before = fs.readFileSync(htmlPath, "utf8");
     const data = buildGraphData(dir);
     writeGraph(dir, data, { updateHtml: false });
     const after = fs.readFileSync(htmlPath, "utf8");
     assert.equal(before, after);
-    assert.ok(fs.existsSync(path.join(dir, ".fxmind", "knowledge-graph.json")));
+    assert.ok(fs.existsSync(path.join(dir, ".fxmind", "graph", "knowledge-graph.json")));
   });
 
   it("syncs HTML when updateHtml is true", () => {
     const data = buildGraphData(dir);
     writeGraph(dir, data, { updateHtml: true });
-    const html = fs.readFileSync(path.join(dir, ".fxmind", "knowledge-graph.html"), "utf8");
+    const html = fs.readFileSync(path.join(dir, ".fxmind", "graph", "knowledge-graph.html"), "utf8");
     assert.match(html, /"nodes"/);
   });
 

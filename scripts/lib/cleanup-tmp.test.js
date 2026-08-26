@@ -64,11 +64,13 @@ describe("cleanup-tmp", () => {
 });
 
 describe("ensureProjectGitignore tmp", () => {
-  it("adds .fxmind/tmp/ line", () => {
+  it("adds .fxmind/state/ gitignore line", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fxgi-"));
     const result = ensureProjectGitignore(dir);
+    assert.ok(result.added.includes(".fxmind/state/"));
     assert.ok(result.added.includes(".fxmind/tmp/"));
     const content = fs.readFileSync(path.join(dir, ".gitignore"), "utf8");
+    assert.match(content, /\.fxmind\/state\//);
     assert.match(content, /\.fxmind\/tmp\//);
   });
 });

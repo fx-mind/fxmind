@@ -94,7 +94,7 @@ describe("fivem rcon allowlist", () => {
     assert.equal(first.execCfg, "dev/dev.cfg");
     assert.match(fs.readFileSync(path.join(dir, "dev", "dev.cfg"), "utf8"), /rcon_password/);
     assert.ok(fivem.isFivemInstalled(dir));
-    assert.ok(fs.existsSync(path.join(dir, ".fxmind", "rcon.json")));
+    assert.ok(fs.existsSync(path.join(dir, ".fxmind", "state", "rcon.json")));
     assert.ok(fs.existsSync(path.join(dir, ".vscode", "fivem-start.ps1")));
     const ps1 = fs.readFileSync(path.join(dir, ".vscode", "fivem-start.ps1"), "utf8");
     assert.doesNotMatch(ps1, /2>&1\s*\|\s*ForEach-Object/);
