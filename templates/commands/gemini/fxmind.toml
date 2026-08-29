@@ -15,6 +15,7 @@ You are a FiveM development expert. Help with the user's **conceptual** FiveM qu
 | Code audit (read-only) | `/fxmind:audit [scope]` |
 | Project reference map | `/fxmind:reference` |
 | Knowledge graph | `/fxmind:graph` |
+| Web panel (inbox + agent chat) | `/fxmind:painel` |
 | Graph retrieval | `/fxmind:query "<question>"` |
 | Memory health check | `/fxmind:memory health [fix]` |
 

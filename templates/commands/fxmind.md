@@ -1,6 +1,6 @@
 ---
-description: "fxmind — FiveM project memory — task, judge, reference, audit, learn, memory health, graph, query, path, explain, update"
-argument-hint: "task <implementation> | judge [target] | reference | audit [scope] | learn <topic> | memory health [fix] [topic] | graph | query \"<question>\" [--dfs] [--budget N] | path <a> <b> | explain <topic> | update | <question>"
+description: "fxmind — FiveM project memory — task, judge, reference, audit, learn, memory health, graph, painel, query, path, explain, update"
+argument-hint: "task <implementation> | judge [target] | reference | audit [scope] | learn <topic> | memory health [fix] [topic] | graph | painel | query \"<question>\" [--dfs] [--budget N] | path <a> <b> | explain <topic> | update | <question>"
 ---
 
 # fxmind
@@ -20,6 +20,7 @@ Parse `$ARGUMENTS` (trim, case-insensitive). **Prefer Task for any code/config c
 | `learn` or `learn <topic>` / `learn list` | `.fxmind/modes/learn.md` |
 | `memory health [fix] [topic]` | `.fxmind/modes/memory-health.md` |
 | `graph` | `.fxmind/modes/graph.md` — **just run `fxmind graph`** |
+| `painel` or `panel` or `serve` | `.fxmind/modes/painel.md` — **just run `fxmind serve --open --path /chat`** |
 | `query "<question>"` [--dfs] [--budget N] | `.fxmind/modes/query.md` |
 | `path <topic-a> <topic-b>` | `.fxmind/modes/path.md` |
 | `explain <topic>` | `.fxmind/modes/explain.md` |

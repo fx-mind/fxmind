@@ -9,9 +9,11 @@
   "files": [
     "scripts",
     "templates",
-    "packs"
+    "packs",
+    "web/dist"
   ],
   "dependencies": {
+    "@cursor/sdk": "^1.0.30",
     "@inquirer/prompts": "^7.5.1",
     "mysql2": "^3.23.0"
   },
@@ -37,6 +39,8 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "node --test scripts/*.test.js scripts/lib/*.test.js scripts/install/*.test.js"
+    "test": "node --test scripts/*.test.js scripts/lib/*.test.js scripts/install/*.test.js",
+    "build:web": "npm install --prefix web && npm run build --prefix web",
+    "prepublishOnly": "npm run build:web"
   }
 }

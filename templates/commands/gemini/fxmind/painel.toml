@@ -1,0 +1,17 @@
+description = "Open the FxMind web panel in the browser (inbox + agent chat)"
+
+prompt = """
+Open the FxMind web panel.
+
+**Preferred:** from the project root run:
+```bash
+fxmind serve --open --path /chat
+```
+(or `npx --yes github:fx-mind/fxmind serve --open --path /chat`)
+
+If already running, the CLI reuses port 3847 and only opens the browser.
+
+Do not enter Task/Learn/Audit. Do not edit project source.
+
+Reply with the URL (`http://127.0.0.1:3847/chat`).
+"""

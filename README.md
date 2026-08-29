@@ -39,6 +39,7 @@ Restart your agent IDE/CLI after install or update.
 | **`/fxmind`** | Chat command + **auto Task** for code changes (no slash required) |
 | **Packs** | Domain skills under `.fxmind/skills/` (e.g. FiveM) |
 | **2D graph** | Visual topic map (`fxmind graph`) |
+| **Web panel** | Local control plane (`fxmind serve`) — projects, memories, query, gates, PortSpace inbox |
 | **Hooks** (Cursor) | Task gates + stale-memory detection |
 | **MCP** | Programmatic tools (`fxmind_query`, `fxmind_graph`, …) |
 | **OpenCode subagents** | `explore` / `reader` / `general` / `scout` under `.opencode/agents/` |
@@ -58,6 +59,7 @@ Restart your agent IDE/CLI after install or update.
 | `/fxmind query "…"` | Search the knowledge graph |
 | `/fxmind audit [scope]` | Code audit → `.fxmind/audits/` |
 | `/fxmind graph` | Rebuild the 2D knowledge graph |
+| `/fxmind painel` | Open the local web panel (inbox + agent chat) |
 | `/fxmind memory health` | Verify memories against the codebase |
 | `/fxmind update` | Prompts to run `fxmind --update -y` in the terminal |
 
@@ -69,6 +71,7 @@ Gemini uses `/fxmind:task`, `/fxmind:learn`, etc. VS Code Copilot uses `/fxmind`
 fxmind -y                  # install (Cursor + fivem pack by default)
 fxmind --update -y         # refresh templates/skills/hooks/MCP/fivem-start (keeps memories)
 fxmind graph               # open 2D graph in the browser
+fxmind serve --open        # local web panel (control plane)
 fxmind hooks status        # show hooks + MCP status
 fxmind -h                  # all options
 ```
@@ -76,6 +79,23 @@ fxmind -h                  # all options
 **Agents** — `--cursor`, `--claude`, `--gemini`, `--opencode`, `--codex`, `--copilot`, or `--agent cursor,copilot -y`.
 
 **Packs** — `--pack fivem`, `--no-packs` (core only), `--all-packs`.
+
+---
+
+## Web panel
+
+Local control plane (projects, memories, graph query, gates, PortSpace inbox stub):
+
+```bash
+cd fxmind && npm run build:web   # once (or after UI changes)
+fxmind serve --open              # http://127.0.0.1:3847
+```
+
+PortSpace connection is stored in `~/.fxmind/panel.json` (API URL + integration key; key is never returned to the browser after save). Cursor agent chat uses `CURSOR_API_KEY` (same file or env). Optional: `npm install @cursor/sdk` in the fxmind package so the panel can spawn local agents.
+
+`/fxmind painel` (in agent chat) runs `fxmind serve --open --path /chat`. Click a demanda to inject it into a dedicated agent thread — several threads run in parallel.
+
+Dev UI: `npm run dev --prefix web` with `fxmind serve` on port 3847 (Vite proxies `/api`).
 
 ---
 

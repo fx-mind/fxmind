@@ -134,6 +134,13 @@ async function main() {
     process.exit(runMigrateCli(argv.slice(1)));
   }
 
+  if (argv[0] === "serve") {
+    const { runServeCli } = require("./serve");
+    const code = runServeCli(argv.slice(1));
+    if (code !== 0) process.exit(code);
+    return;
+  }
+
   const options = parseArgs(argv);
 
   if (options.version) {

@@ -26,8 +26,9 @@ The full `/fxmind` command body is a slim router — read **`.fxmind/fxmind.md`*
 
 1. **Task** (any implementation request, with or without `/fxmind task`) → read **`.fxmind/modes/task.md`**.
 2. **Judge** (`judge`, "did that actually work?", verify claims) → read **`.fxmind/modes/judge.md`**.
-3. **Other modes** (`learn`, `audit`, `graph`, `query`, `path`, `explain`, `reference`, `memory health`, `update`, `help`) → read **`.fxmind/modes/<mode>.md`**.
+3. **Other modes** (`learn`, `audit`, `graph`, `painel`, `query`, `path`, `explain`, `reference`, `memory health`, `update`, `help`) → read **`.fxmind/modes/<mode>.md`**.
 4. **Graph** → just run `fxmind graph` (builds + opens `.fxmind/graph/knowledge-graph.html`).
+4b. **Painel** (`painel` / `panel`) → just run `fxmind serve --open --path /chat`.
 5. **Project memories** → `.fxmind/memory/_index.md` then relevant `memory/<topic>.md`.
 6. **Installed pack skills** → `.fxmind/skills/_index.md` and `.fxmind/packs.json`.
 7. **Global store** → if `.fxmind/store.json` has `mode: global`, memories live in `~/.fxmind/projects/<id>/` (paths via symlink). Cross-project memories may appear in graph/query links.
