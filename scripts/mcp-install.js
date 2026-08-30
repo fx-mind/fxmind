@@ -263,8 +263,45 @@ function pruneStaleMcpConfigs(targetRoot, activeAgentIds) {
   return removed;
 }
 
-function buildCodexMcpToml(entry) {
-  return `\n[mcp_servers.fxmind]\ncommand = ${tomlString(entry.command)}\n`;
+function codexMcpArgs(entry) {
+  if (!Array.isArray(entry.args) || entry.args.length === 0) return [];
+  if (process.platform !== "win32" || entry.command !== "node" || !process.env.APPDATA) {
+    return entry.args;
+  }
+  const serverPath = path.join(
+    process.env.APPDATA,
+    "npm",
+    "node_modules",
+    "fxmind",
+    "scripts",
+    "mcp-server.js",
+  );
+  return fs.existsSync(serverPath) ? [serverPath] : entry.args;
+}
+
+function buildCodexMcpToml(entry, projectRoot) {
+  const lines = [
+    "",
+    "[mcp_servers.fxmind]",
+    `command = ${tomlString(entry.command)}`,
+  ];
+  const args = codexMcpArgs(entry);
+  if (args.length) {
+    lines.push(`args = ${JSON.stringify(args)}`);
+  }
+
+  const env = { ...(entry.env || {}) };
+  if (projectRoot) {
+    env.FXMIND_TARGET = path.resolve(projectRoot).replace(/\\/g, "/");
+  }
+  const envEntries = Object.entries(env).filter(([, value]) => value != null && value !== "");
+  if (envEntries.length) {
+    lines.push("", "[mcp_servers.fxmind.env]");
+    for (const [key, value] of envEntries) {
+      lines.push(`${key} = ${tomlString(value)}`);
+    }
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 function removeCodexMcpSection(content) {
@@ -399,7 +436,7 @@ function mcpStatusOpenCode(configPath) {
 }
 
 function installCodexMcp(configPath, entry) {
-  const block = buildCodexMcpToml(entry);
+  const block = buildCodexMcpToml(entry, path.dirname(path.dirname(configPath)));
   const existing = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "";
   const cleaned = removeCodexMcpSection(existing);
   const next = cleaned.length ? `${cleaned}${block}` : `${block.trimStart()}\n`;

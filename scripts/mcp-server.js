@@ -10,6 +10,8 @@
  *   fxmind_fivem_nui_wire / fxmind_fivem_nui_dump / fxmind_fivem_nui_unwire
  *   fxmind_db_status / fxmind_db_query / fxmind_db_schema / fxmind_db_sample
  *   fxmind_db_explore / fxmind_db_analyze
+ *   fxmind_panel_wait / fxmind_panel_pending / fxmind_panel_reply / fxmind_panel_fail
+ *   fxmind_subagent_run
  *
  * Gates are session state — use fxmind_start_task + fxmind_record_gate only.
  * Never Write .fxmind/state/fxmind-gates.json from the agent.
@@ -20,6 +22,7 @@ const fivemRcon = require("./fivem-rcon");
 const fivemNuiDump = require("./fivem-nui-dump");
 const fxmindMysql = require("./fxmind-mysql");
 const { checkForUpdate } = require("./lib/update-check");
+const panelHost = require("./lib/panel-host");
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_INFO = { name: "fxmind", version: "1.4.0" };
@@ -369,7 +372,112 @@ const TOOL_DEFS = [
       required: ["table_name"],
     },
   },
+  {
+    name: "fxmind_panel_wait",
+    description:
+      "Host-chat dispatcher for /fxmind painel. Long-poll the local panel (localhost:3847) until demandas are clicked, then claim them. Returns { jobs: [{ id, title, prompt, projectRoot }] }. Empty jobs = keep waiting. Do not use an API key.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        timeoutMs: {
+          type: "number",
+          description: "Wait up to this many ms (default 20000, max 25000).",
+          default: 20000,
+        },
+      },
+    },
+  },
+  {
+    name: "fxmind_panel_pending",
+    description:
+      "List queued panel chat jobs without claiming them. Also heartbeats so the panel shows this chat as connected.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "fxmind_panel_reply",
+    description:
+      "Post the host agent result into a panel thread after finishing a demanda (or follow-up).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        threadId: { type: "string", description: "Panel thread id (job.id)." },
+        content: { type: "string", description: "Assistant reply shown in the panel chat." },
+      },
+      required: ["threadId", "content"],
+    },
+  },
+  {
+    name: "fxmind_panel_fail",
+    description: "Mark a panel thread as failed with an error message.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        threadId: { type: "string" },
+        error: { type: "string" },
+      },
+      required: ["threadId", "error"],
+    },
+  },
+  {
+    name: "fxmind_subagent_run",
+    description:
+      "Delegates a scoped sub-task to a fxmind subagent (explore, reader, general, or scout) and blocks until it returns final text. Works from ANY CLI (OpenCode, Codex, Claude Code, Cursor Agent, Hermes) and the subagent itself may run on a DIFFERENT provider than the one calling this tool — whichever is configured per subagent in the panel's Settings → Subagentes (defaults to the best installed provider). Use 'explore' for broad read-only discovery, 'reader' when you already know the exact paths, 'general' for a narrowly-scoped bounded edit/command, 'scout' for external docs/APIs outside this repo. Prefer this over doing the sub-task inline when a specialized or cheaper model is configured for that role.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agent: {
+          type: "string",
+          description: "Subagent id: explore | reader | general | scout.",
+        },
+        prompt: { type: "string", description: "The scoped task/question for the subagent." },
+        paths: {
+          type: "array",
+          items: { type: "string" },
+          description: "Known file paths to hand over (mainly for 'reader').",
+        },
+      },
+      required: ["agent", "prompt"],
+    },
+  },
 ];
+
+let activeHostThreadId = null;
+
+function hostToolDetail(args = {}) {
+  const value =
+    args.question ||
+    args.query ||
+    args.file ||
+    args.table_name ||
+    args.gate ||
+    args.resource ||
+    args.note ||
+    args.command ||
+    "";
+  if (typeof value === "string") return value.slice(0, 240);
+  try {
+    return JSON.stringify(value).slice(0, 240);
+  } catch {
+    return "";
+  }
+}
+
+function reportHostMcp(threadId, toolName, args, status) {
+  const name = String(toolName || "");
+  if (!threadId || !name || name.startsWith("fxmind_panel_")) {
+    return Promise.resolve();
+  }
+  return panelHost
+    .activity(threadId, {
+      kind: "mcp",
+      name,
+      server: SERVER_INFO.name,
+      label: name,
+      detail: hostToolDetail(args),
+      status,
+    })
+    .catch(() => {});
+}
 
 function dispatchTool(name, args) {
   const root = targetRoot();
@@ -508,6 +616,30 @@ function dispatchTool(name, args) {
     case "fxmind_db_analyze":
       return fxmindMysql.analyzeTable({ table_name: args.table_name });
 
+    case "fxmind_panel_wait":
+      return panelHost.wait(args.timeoutMs);
+
+    case "fxmind_panel_pending":
+      return panelHost.pending();
+
+    case "fxmind_panel_reply":
+      return panelHost.reply(args.threadId, args.content);
+
+    case "fxmind_panel_fail":
+      return panelHost.fail(args.threadId, args.error);
+
+    case "fxmind_subagent_run": {
+      // Lazy require: panel-cli.js pulls in the panel's thread store on
+      // load, which every agent session spinning up this stdio server
+      // shouldn't pay for unless a subagent is actually invoked.
+      const panelCli = require("./lib/panel-cli");
+      return panelCli.runSubagentTask(root, {
+        agent: args.agent,
+        prompt: args.prompt || "",
+        paths: Array.isArray(args.paths) ? args.paths : [],
+      });
+    }
+
     default:
       return { ok: false, error: `Unknown tool: ${name}` };
   }
@@ -553,26 +685,43 @@ function handleMessage(msg) {
   if (method === "tools/call") {
     const toolName = msg.params?.name;
     const args = msg.params?.arguments || {};
+    const isPanelTool = String(toolName || "").startsWith("fxmind_panel_");
+    const trackedThreadId = isPanelTool ? null : activeHostThreadId;
     Promise.resolve()
+      .then(() => reportHostMcp(trackedThreadId, toolName, args, "running"))
       .then(() => dispatchTool(toolName, args))
       .then((result) => {
-        send({
-          jsonrpc: "2.0",
-          id,
-          result: {
-            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-            isError: result && result.ok === false,
-          },
+        if (toolName === "fxmind_panel_wait" && result?.jobs?.length) {
+          activeHostThreadId = String(result.jobs[0].id || "");
+        }
+        if (
+          toolName === "fxmind_panel_reply" ||
+          toolName === "fxmind_panel_fail"
+        ) {
+          activeHostThreadId = null;
+        }
+        const status = result && result.ok === false ? "error" : "done";
+        return reportHostMcp(trackedThreadId, toolName, args, status).then(() => {
+          send({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+              isError: result && result.ok === false,
+            },
+          });
         });
       })
       .catch((error) => {
-        send({
-          jsonrpc: "2.0",
-          id,
-          result: {
-            content: [{ type: "text", text: `Error: ${error.message}` }],
-            isError: true,
-          },
+        return reportHostMcp(trackedThreadId, toolName, args, "error").then(() => {
+          send({
+            jsonrpc: "2.0",
+            id,
+            result: {
+              content: [{ type: "text", text: `Error: ${error.message}` }],
+              isError: true,
+            },
+          });
         });
       });
     return;
@@ -587,21 +736,32 @@ function handleMessage(msg) {
   }
 }
 
-let buffer = "";
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => {
-  buffer += chunk;
-  let idx;
-  while ((idx = buffer.indexOf("\n")) >= 0) {
-    const line = buffer.slice(0, idx).trim();
-    buffer = buffer.slice(idx + 1);
-    if (!line) continue;
-    try {
-      handleMessage(JSON.parse(line));
-    } catch {
-      // ignore malformed lines
+function startServer() {
+  let buffer = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => {
+    buffer += chunk;
+    let idx;
+    while ((idx = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, idx).trim();
+      buffer = buffer.slice(idx + 1);
+      if (!line) continue;
+      try {
+        handleMessage(JSON.parse(line));
+      } catch {
+        // ignore malformed lines
+      }
     }
-  }
-});
+  });
 
-process.stdin.on("end", () => process.exit(0));
+  process.stdin.on("end", () => process.exit(0));
+}
+
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = {
+  SERVER_INFO,
+  TOOL_DEFS,
+};

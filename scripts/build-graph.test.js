@@ -8,6 +8,7 @@ const {
   buildGraphData,
   writeGraph,
   inferLinks,
+  resourceFromPath,
   syncKnowledgeGraphHtml,
   GRAPH_CACHE_FILE,
 } = require("./build-graph");
@@ -23,11 +24,16 @@ function writeMinimalProject(root) {
 topic: alpha
 updated: 2026-01-01
 lang: en-compact
-paths: [resources/alpha/server.lua]
-triggers: [alpha]
-events: [alpha:run]
-exports: [doAlpha]
-resources: [alpha-res]
+paths:
+  - resources/alpha/server.lua
+triggers:
+  - alpha
+events:
+  - alpha:run
+exports:
+  - doAlpha
+resources:
+  - alpha-res
 ---
 Alpha body mentions beta sometimes.
 `,
@@ -39,11 +45,16 @@ Alpha body mentions beta sometimes.
 topic: beta
 updated: 2026-01-01
 lang: en-compact
-paths: [resources/beta/client.lua]
-triggers: [beta]
-events: [alpha:run]
-exports: [doBeta]
-resources: [alpha-res]
+paths:
+  - resources/beta/client.lua
+triggers:
+  - beta
+events:
+  - alpha:run
+exports:
+  - doBeta
+resources:
+  - alpha-res
 ---
 Beta references alpha id in text.
 `,
@@ -86,19 +97,123 @@ describe("inferLinks", () => {
     assert.ok(types.has("event-flow"));
     assert.equal(links.length, 1);
   });
+
+  it("links different events from the same event domain", () => {
+    const links = inferLinks([
+      {
+        id: "cacheaside",
+        _content: "",
+        _events: ["garages:user_vehicles"],
+        _resources: ["cacheaside"],
+        _paths: ["resources/[system]/cacheaside/"],
+        _exports: [],
+        _symbols: [],
+      },
+      {
+        id: "garage",
+        _content: "",
+        _events: ["garages:OpenGarage", "garages:Spawn"],
+        _resources: ["garages"],
+        _paths: ["resources/[novos]/garages/"],
+        _exports: [],
+        _symbols: [],
+      },
+    ]);
+    assert.deepEqual(links, [
+      {
+        source: "cacheaside",
+        target: "garage",
+        type: "event-domain",
+        confidence: "inferred",
+      },
+    ]);
+  });
+
+  it("does not link generic event namespaces", () => {
+    const links = inferLinks([
+      {
+        id: "first",
+        _content: "",
+        _events: ["player:connected"],
+        _resources: [],
+        _paths: [],
+        _exports: [],
+        _symbols: [],
+      },
+      {
+        id: "second",
+        _content: "",
+        _events: ["player:dropped"],
+        _resources: [],
+        _paths: [],
+        _exports: [],
+        _symbols: [],
+      },
+    ]);
+    assert.deepEqual(links, []);
+  });
+
+  it("does not treat resource categories as shared resources", () => {
+    const links = inferLinks([
+      { id: "admin", _content: "", _events: [], _resources: ["[scripts]"], _paths: [], _exports: [], _symbols: [] },
+      { id: "hud", _content: "", _events: [], _resources: ["[scripts]"], _paths: [], _exports: [], _symbols: [] },
+    ]);
+    assert.deepEqual(links, []);
+  });
+
+  it("keeps links between concrete shared resources", () => {
+    const links = inferLinks([
+      { id: "voice", _content: "", _events: [], _resources: ["hud"], _paths: [], _exports: [], _symbols: [] },
+      { id: "hud", _content: "", _events: [], _resources: ["hud"], _paths: [], _exports: [], _symbols: [] },
+    ]);
+    assert.deepEqual(links.map((link) => link.type), ["shared-resource"]);
+  });
+
+  it("does not infer shared paths from prose fragments", () => {
+    const first = {
+      id: "first",
+      _content: "",
+      _events: [],
+      _resources: [],
+      _paths: ["lua", "resources/[scripts]/first/core.lua"],
+      _exports: [],
+      _symbols: [],
+    };
+    const second = {
+      id: "second",
+      _content: "",
+      _events: [],
+      _resources: [],
+      _paths: ["lua", "resources/[scripts]/second/core.lua"],
+      _exports: [],
+      _symbols: [],
+    };
+    assert.deepEqual(inferLinks([first, second]), []);
+  });
+
+  it("extracts the concrete resource after category folders", () => {
+    assert.equal(resourceFromPath("resources/[scripts]/admin/server-side/core.lua"), "admin");
+    assert.equal(
+      resourceFromPath("resources/[system]/[dependecias]/cerberus/config/config.lua"),
+      "cerberus",
+    );
+    assert.equal(resourceFromPath("resources/[system]/config/vehicles_export.lua"), null);
+  });
 });
 
 describe("graph cache", () => {
   it("writes graph-cache.json on build with useCache", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fxgraph-"));
     writeMinimalProject(dir);
-    buildGraphData(dir, { useCache: true });
+    const graph = buildGraphData(dir, { useCache: true });
     const cachePath = path.join(dir, ".fxmind", "state", "graph-cache.json");
     assert.ok(fs.existsSync(cachePath));
     const cache = JSON.parse(fs.readFileSync(cachePath, "utf8"));
     assert.ok(cache.files.alpha);
     assert.ok(cache.files.beta);
     assert.equal(cache.files.alpha.node._content, undefined);
+    assert.equal(graph.nodes.find((node) => node.id === "alpha").events, "alpha:run");
+    assert.equal(graph.nodes.find((node) => node.id === "alpha").resources, "alpha-res, alpha");
   });
 });
 
@@ -145,5 +260,17 @@ describe("isGraphStale / ensureGraphFresh", () => {
     const memFile = path.join(dir, ".fxmind", "memory", "alpha.md");
     fs.appendFileSync(memFile, "\n<!-- touch -->\n");
     assert.equal(isGraphStale(dir), true);
+  });
+
+  it("debounces rebuild when graph was built recently", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fxgraph-deb-"));
+    writeMinimalProject(dir);
+    ensureGraphFresh(dir, { updateHtml: false });
+    const memFile = path.join(dir, ".fxmind", "memory", "alpha.md");
+    fs.appendFileSync(memFile, "\n<!-- touch -->\n");
+    assert.equal(isGraphStale(dir), true);
+    const result = ensureGraphFresh(dir, { updateHtml: false });
+    assert.equal(result.debounced, true);
+    assert.equal(result.rebuilt, false);
   });
 });

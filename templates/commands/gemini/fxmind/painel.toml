@@ -1,17 +1,18 @@
-description = "Open the FxMind web panel in the browser (inbox + agent chat)"
+description = "Open the FxMind web panel and stay as the host agent chat"
 
 prompt = """
-Open the FxMind web panel.
+Open the FxMind web panel, then **stay in this chat** as the host. No API key. No `agent login`.
 
-**Preferred:** from the project root run:
+From the project root:
 ```bash
-fxmind serve --open --path /chat
+fxmind painel
 ```
-(or `npx --yes github:fx-mind/fxmind serve --open --path /chat`)
 
-If already running, the CLI reuses port 3847 and only opens the browser.
+Reply with `http://127.0.0.1:3847/chat`, then loop:
 
-Do not enter Task/Learn/Audit. Do not edit project source.
-
-Reply with the URL (`http://127.0.0.1:3847/chat`).
+1. `fxmind_panel_wait` (~20s)
+2. empty jobs → wait again
+3. one job → do it here, then `fxmind_panel_reply`
+4. several jobs → parallel Tasks, reply each thread
+5. repeat until the user stops
 """

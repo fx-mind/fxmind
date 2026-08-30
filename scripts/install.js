@@ -75,6 +75,16 @@ function formatAgentKind(kind) {
   return labels[kind] || `${kind} `;
 }
 
+function generatePanelBuild(reason) {
+  const { buildPanel, printBuildResult } = require("./lib/panel-build");
+  const result = buildPanel({
+    installDependencies: true,
+    strict: true,
+  });
+  printBuildResult(result, reason);
+  return result;
+}
+
 async function main() {
   const argv = process.argv.slice(2);
 
@@ -134,9 +144,24 @@ async function main() {
     process.exit(runMigrateCli(argv.slice(1)));
   }
 
+  if (argv[0] === "painel" || argv[0] === "panel") {
+    const { runServeCli, buildPainelArgs } = require("./serve");
+    const code = runServeCli(buildPainelArgs(argv.slice(1)));
+    if (code !== 0) process.exit(code);
+    return;
+  }
+
   if (argv[0] === "serve") {
+    const rest = argv.slice(1);
+    const apiOnly =
+      rest.includes("--api-only") || rest.includes("-h") || rest.includes("--help");
+    if (!apiOnly) {
+      console.error("Em produção use: fxmind painel");
+      console.error("Dev (API sem UI estática): fxmind serve --api-only");
+      process.exit(1);
+    }
     const { runServeCli } = require("./serve");
-    const code = runServeCli(argv.slice(1));
+    const code = runServeCli(rest);
     if (code !== 0) process.exit(code);
     return;
   }
@@ -161,8 +186,8 @@ async function main() {
   if (options.update) {
     maybeSelfUpdateAndReexec(argv, options);
 
-    if (options.interactive || options.allPacks || options.noPacks || options.explicitPacks) {
-      console.error("Error: --update cannot be combined with pack selection flags.");
+    if (options.interactive || options.allPacks || options.noPacks) {
+      console.error("Error: --update cannot be combined with interactive pack selection flags.");
       process.exit(1);
     }
 
@@ -176,6 +201,13 @@ async function main() {
     const skills = options.skills;
     const packs = options.packs;
     const agents = resolveAgents(options.agents);
+    if (options.replaceAgents) {
+      cleanUnselectedAgents(
+        options.target,
+        agents.map((agent) => agent.id),
+        getManagedSkillNames(skills, options.command),
+      );
+    }
     const manifestMeta = {
       agents: agents.map((agent) => agent.id),
       skills,
@@ -269,6 +301,7 @@ async function main() {
       installProjectCursorIntegration(options.target, options, agents, packs);
     }
 
+    generatePanelBuild("update");
     console.log("Update complete.");
     console.log("Refreshed: templates, skills, agent commands, hooks (Cursor), MCP, FiveM RCON/fivem-start (when applicable).");
     printLegacyAuditLayoutWarning(options.target);
@@ -463,6 +496,7 @@ async function main() {
     installProjectCursorIntegration(options.target, options, agents, packs);
   }
 
+  generatePanelBuild("installation");
   console.log("Done.");
   console.log("Restart your agent IDE/CLI or open a new session.");
   console.log(`Update packs/skills: ${npxInstall("--update -y")}  (or after global: fxmind --update -y)`);

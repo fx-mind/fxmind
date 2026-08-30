@@ -41,9 +41,12 @@ Recommended (install once globally, then use short command):
   fxmind --update -y
   fxmind graph               Build 3D knowledge graph + open browser
   fxmind graph --no-open     Build graph files only
-  fxmind serve [--open]      Local web panel (control plane on localhost)
+  fxmind painel [--open]      Painel web local (UI + API; abre /chat)
+  fxmind serve --api-only     Dev: só API (UI via npm run dev)
   fxmind -v                  Show version
   fxmind -h
+
+The web panel build is generated automatically after install and update.
 
 Without global install:
   ${npxInstall()}                    Interactive mode (packs, agents, skills)
@@ -61,9 +64,8 @@ Without global install:
   ${npxInstall("--all -y")}          All skills from selected pack(s)
   ${npxInstall("--update -y")}       Refresh global fxmind + project (packs, skills, hooks, MCP, fivem-start)
   ${npxInstall("graph")}             Build graph from .fxmind/memory/ + open browser
-  ${npxInstall("serve")}             Local web panel (build UI first: npm run build:web)
-  ${npxInstall("serve --open")}      Open panel in browser (/chat)
-  ${npxInstall("serve --open --path /chat")}  Same (used by /fxmind painel)
+  ${npxInstall("painel")}             Painel web local (produção)
+  ${npxInstall("serve --api-only")}   Dev: API only (UI via npm run dev)
   ${npxInstall("--global-store -y")} Install with global store (~/.fxmind/projects/<id>/)
   ${npxInstall("migrate")}            Move legacy audit-*.md → audits/
   ${npxInstall("global list")}       List projects in global store

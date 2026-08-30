@@ -1,0 +1,195 @@
+/**
+ * Capture git working-tree diffs for a finished panel run.
+ */
+
+const fs = require("fs");
+const path = require("path");
+const { execFileSync } = require("child_process");
+
+const FXMIND_NOISE_RE = [
+  /^\.fxmind(\/|$)/i,
+  /^\.agents(\/|$)/i,
+  /^\.opencode(\/|$)/i,
+  /^\.claude(\/|$)/i,
+  /^\.codex(\/|$)/i,
+  /^opencode\.json$/i,
+  /^\.mcp\.json$/i,
+  /^\.cursor\/(mcp\.json|skills\/)/i,
+];
+
+function git(root, args) {
+  try {
+    return execFileSync("git", args, {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 12_000,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (err) {
+    const msg = String(err?.stderr || err?.message || err);
+    if (/not a git repository/i.test(msg)) return null;
+    return "";
+  }
+}
+
+function normalizeRelPath(filePath) {
+  return String(filePath || "")
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/\/+$/, "");
+}
+
+function isFxmindNoisePath(filePath) {
+  const rel = normalizeRelPath(filePath);
+  if (!rel) return false;
+  return FXMIND_NOISE_RE.some((re) => re.test(rel));
+}
+
+function summarizeFiles(files) {
+  const changed = files.length;
+  const additions = files.reduce((n, f) => n + (f.additions || 0), 0);
+  const deletions = files.reduce((n, f) => n + (f.deletions || 0), 0);
+  const untracked = files.filter((f) => f.status === "untracked").length;
+  return {
+    summary: changed ? `${changed} arquivo(s) da demanda · +${additions} −${deletions}` : "Sem alterações da demanda",
+    stats: { changed, additions, deletions, untracked },
+  };
+}
+
+function filterTaskFiles(files) {
+  return (files || []).filter((file) => !isFxmindNoisePath(file.path));
+}
+
+function snapshot(root) {
+  if (!root) return null;
+  const head = git(root, ["rev-parse", "HEAD"]);
+  if (head === null) return { ok: false, error: "not a git repository" };
+  return {
+    ok: true,
+    head: String(head || "").trim(),
+    status: git(root, ["status", "--porcelain"]) || "",
+  };
+}
+
+function parsePatch(patch) {
+  const files = [];
+  let current = null;
+  for (const line of String(patch || "").split(/\r?\n/)) {
+    if (line.startsWith("diff --git ")) {
+      if (current) files.push(current);
+      const m = line.match(/b\/(.+)$/);
+      current = {
+        path: m ? m[1] : line.slice(11).trim(),
+        status: "modified",
+        additions: 0,
+        deletions: 0,
+        patch: `${line}\n`,
+      };
+      continue;
+    }
+    if (!current) continue;
+    current.patch += `${line}\n`;
+    if (line.startsWith("new file")) current.status = "added";
+    else if (line.startsWith("deleted file")) current.status = "deleted";
+    else if (line.startsWith("+") && !line.startsWith("+++")) current.additions += 1;
+    else if (line.startsWith("-") && !line.startsWith("---")) current.deletions += 1;
+  }
+  if (current) files.push(current);
+  return files;
+}
+
+function collect(root) {
+  if (!root) return { ok: false, error: "no project root" };
+  const head = git(root, ["rev-parse", "HEAD"]);
+  if (head === null) return { ok: false, error: "not a git repository", files: [], summary: "" };
+
+  const patch = git(root, ["diff", "HEAD"]) || "";
+  const porcelain = git(root, ["status", "--porcelain"]) || "";
+  const files = parsePatch(patch);
+
+  const untracked = [];
+  for (const line of porcelain.split(/\r?\n/)) {
+    if (!line.startsWith("?? ")) continue;
+    untracked.push(line.slice(3).trim());
+  }
+  for (const path of untracked) {
+    if (isFxmindNoisePath(path)) continue;
+    if (files.some((f) => f.path === path)) continue;
+    files.push({
+      path,
+      status: "untracked",
+      additions: 0,
+      deletions: 0,
+      patch: "",
+    });
+  }
+
+  const visible = filterTaskFiles(files);
+  const meta = summarizeFiles(visible);
+
+  return {
+    ok: true,
+    summary: meta.summary,
+    files: visible,
+    stats: meta.stats,
+  };
+}
+
+function resolveInsideRoot(root, relPath) {
+  const base = path.resolve(root);
+  const rel = normalizeRelPath(relPath);
+  if (!rel || rel.includes("..") || path.isAbsolute(rel) || /^[a-zA-Z]:/.test(rel)) {
+    return { ok: false, status: 400, error: "invalid path" };
+  }
+  const abs = path.resolve(base, rel);
+  const prefix = base.endsWith(path.sep) ? base : `${base}${path.sep}`;
+  if (abs !== base && !abs.startsWith(prefix)) {
+    return { ok: false, status: 400, error: "path outside project" };
+  }
+  return { ok: true, abs, rel };
+}
+
+function discardPath(root, relPath) {
+  if (!root) return { ok: false, status: 400, error: "no project root" };
+  const resolved = resolveInsideRoot(root, relPath);
+  if (!resolved.ok) return resolved;
+  if (isFxmindNoisePath(resolved.rel)) {
+    return { ok: false, status: 400, error: "fxmind files are hidden from the task diff" };
+  }
+
+  const porcelain = git(root, ["status", "--porcelain", "--", resolved.rel]);
+  if (porcelain === null) return { ok: false, error: "not a git repository" };
+  const line = String(porcelain || "")
+    .split(/\r?\n/)
+    .find(Boolean);
+  const untracked = Boolean(line && line.startsWith("??"));
+
+  if (!line) {
+    return { ok: false, status: 404, error: "file has no local changes" };
+  }
+  try {
+    if (untracked) {
+      if (fs.existsSync(resolved.abs)) {
+        fs.rmSync(resolved.abs, { recursive: true, force: true });
+      }
+    } else {
+      const restored = git(root, ["restore", "--worktree", "--staged", "--source=HEAD", "--", resolved.rel]);
+      if (restored === null) return { ok: false, error: "not a git repository" };
+    }
+  } catch (err) {
+    return { ok: false, status: 500, error: String(err.message || err) };
+  }
+
+  return { ok: true, discarded: resolved.rel };
+}
+
+module.exports = {
+  snapshot,
+  collect,
+  parsePatch,
+  isFxmindNoisePath,
+  filterTaskFiles,
+  summarizeFiles,
+  discardPath,
+};

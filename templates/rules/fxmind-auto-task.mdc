@@ -5,9 +5,13 @@ alwaysApply: true
 
 # fxmind — auto Task
 
-**Prerequisite:** MCP **fxmind** connected (`fxmind_start_task` visible). If missing → STOP; tell user to enable it (Windows: `fxmind hooks install` if mcp.json keeps dying).
+**Prerequisite:** MCP **fxmind** connected (`fxmind_start_task` visible). If missing → **STOP**; tell user to enable it (Windows: `fxmind hooks install` if mcp.json keeps dying). **Never** substitute grep/shell search for fxmind MCP tools.
+
+**Tool policy:** discovery, gates, graph, FiveM, DB, and corrections → **fxmind MCP only** (optimized for fast delivery). Read files only at paths from `fxmind_query` / memories.
 
 When the user asks to **change code/config** — run Task automatically. Read **`.fxmind/modes/task.md`** (verify details: **`.fxmind/modes/task-verify.md`**).
+
+If the FxMind context file contains **`PANEL_MODE: quick`**, use the panel quick path in task.md (trivial + short V/C). If **`PANEL_MODE: full`**, use the full pipeline.
 
 ## Classify first (one CLASS)
 

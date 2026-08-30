@@ -13,7 +13,6 @@
     "web/dist"
   ],
   "dependencies": {
-    "@cursor/sdk": "^1.0.30",
     "@inquirer/prompts": "^7.5.1",
     "mysql2": "^3.23.0"
   },
@@ -40,7 +39,9 @@
   },
   "scripts": {
     "test": "node --test scripts/*.test.js scripts/lib/*.test.js scripts/install/*.test.js",
-    "build:web": "npm install --prefix web && npm run build --prefix web",
+    "dev": "node scripts/dev-panel.js",
+    "build:web": "node scripts/lib/panel-build.js",
+    "postinstall": "node scripts/lib/panel-build.js --quiet",
     "prepublishOnly": "npm run build:web"
   }
 }

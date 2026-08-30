@@ -255,7 +255,10 @@ function resolveUpdateAgentIds(targetRoot, manifest) {
 
 function resolveUpdateOptions(options) {
   const manifest = readInstalledManifest(options.target);
-  const packIds = (manifest.packs || []).map((pack) => pack.id).filter(Boolean);
+  const manifestPackIds = (manifest.packs || []).map((pack) => pack.id).filter(Boolean);
+  const packIds = options.explicitPacks
+    ? (options.packs || []).filter(Boolean)
+    : manifestPackIds;
 
   if (packIds.length === 0) {
     throw new Error(
@@ -266,7 +269,9 @@ function resolveUpdateOptions(options) {
   validatePackIds(packIds);
   options.packs = packIds;
 
-  options.agents = resolveUpdateAgentIds(options.target, manifest);
+  options.agents = options.explicitAgents
+    ? [...new Set((options.agents || []).filter((agentId) => AGENTS[agentId]))]
+    : resolveUpdateAgentIds(options.target, manifest);
 
   refreshPackSkillsCaches(packIds, options);
   state.SKILL_SOURCES = buildSkillSources(packIds, options);

@@ -73,11 +73,18 @@ const LEGACY_FIVEM_FILES = [
 ];
 const OPENCODE_SUBAGENT_NAMES = ["explore", "reader", "general", "scout"];
 const OPENCODE_INSTRUCTION_FILE = "delegate-io.md";
+const OPENCODE_TOOLS_INSTRUCTION_FILE = "fxmind-tools-only.md";
 const OPENCODE_INSTRUCTION_REL = path.join(".opencode", "instructions", OPENCODE_INSTRUCTION_FILE);
+const OPENCODE_TOOLS_INSTRUCTION_REL = path.join(
+  ".opencode",
+  "instructions",
+  OPENCODE_TOOLS_INSTRUCTION_FILE,
+);
 const OPENCODE_AGENTS_TEMPLATE_DIR = path.join("templates", "opencode", "agents");
 const OPENCODE_INSTRUCTIONS_TEMPLATE_DIR = path.join("templates", "opencode", "instructions");
 const OPENCODE_CONFIG_REL = "opencode.json";
 const OPENCODE_INSTRUCTION_CONFIG_REL = ".opencode/instructions/delegate-io.md";
+const OPENCODE_TOOLS_INSTRUCTION_CONFIG_REL = ".opencode/instructions/fxmind-tools-only.md";
 
 const PACK_SKILLS_DIR = path.join(SHARED_DIR, "skills");
 const AUDITS_DIR = path.join(SHARED_DIR, "audits");
@@ -159,9 +166,11 @@ module.exports = {
   AGENTS,
   OPENCODE_SUBAGENT_NAMES,
   OPENCODE_INSTRUCTION_FILE,
-  OPENCODE_INSTRUCTION_REL,
+  OPENCODE_TOOLS_INSTRUCTION_FILE,
   OPENCODE_AGENTS_TEMPLATE_DIR,
   OPENCODE_INSTRUCTIONS_TEMPLATE_DIR,
   OPENCODE_CONFIG_REL,
   OPENCODE_INSTRUCTION_CONFIG_REL,
+  OPENCODE_TOOLS_INSTRUCTION_CONFIG_REL,
+  OPENCODE_TOOLS_INSTRUCTION_REL,
 };

@@ -41,9 +41,28 @@ function isGraphStale(projectRoot) {
   return false;
 }
 
+const DEBOUNCE_MS = 10 * 60 * 1000;
+
+function graphNoAuto() {
+  const value = process.env.FXMIND_GRAPH_NO_AUTO;
+  return Boolean(value && value !== "0" && String(value).toLowerCase() !== "false");
+}
+
+function shouldDebounceRebuild(projectRoot, options = {}) {
+  if (options.force) return false;
+  if (graphNoAuto()) return true;
+  const jsonPath = graphJsonPath(projectRoot);
+  if (!fs.existsSync(jsonPath)) return false;
+  const graphMtime = fs.statSync(jsonPath).mtimeMs;
+  return Date.now() - graphMtime < DEBOUNCE_MS;
+}
+
 function ensureGraphFresh(projectRoot, options = {}) {
   if (!isGraphStale(projectRoot)) {
     return { stale: false, rebuilt: false };
+  }
+  if (shouldDebounceRebuild(projectRoot, options)) {
+    return { stale: true, rebuilt: false, debounced: true };
   }
 
   const { buildGraphData, writeGraph } = require("../build-graph");
@@ -55,8 +74,28 @@ function ensureGraphFresh(projectRoot, options = {}) {
   return { stale: true, rebuilt: true, paths, counts: data.meta?.counts };
 }
 
+function scheduleGraphRebuildBackground(projectRoot, options = {}) {
+  if (graphNoAuto()) return;
+  const resolved = path.resolve(projectRoot);
+  setImmediate(() => {
+    try {
+      if (!isGraphStale(resolved)) return;
+      ensureGraphFresh(resolved, {
+        updateHtml: false,
+        useCache: true,
+        ...options,
+      });
+    } catch {
+      /* fail-open */
+    }
+  });
+}
+
 module.exports = {
   graphJsonPath,
   isGraphStale,
   ensureGraphFresh,
+  shouldDebounceRebuild,
+  scheduleGraphRebuildBackground,
+  DEBOUNCE_MS,
 };

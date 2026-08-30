@@ -1,31 +1,39 @@
 # Orchestration (OpenCode + fxmind)
 
-Prefer specialized subagents for I/O-heavy work. You keep architecture, intent, gates, and the answer to the user.
+**FxMind MCP tools are mandatory** for discovery, gates, graph, FiveM, and DB — they are optimized for fast delivery. You keep architecture, intent, gates, and the answer to the user.
 
-If Read / Glob / Grep / List are **denied** on this agent, Task is the only way to see the repo. Do not ask the user to paste files.
+If Read / Glob / Grep / List are **denied** on this agent, use **fxmind MCP** and **reader** subagent — not repo-wide grep.
 
-## Must use Task
+## Must use (in order)
 
-| Need | Subagent | How |
-|------|----------|-----|
-| Find files / grep / "where is X" | `explore` | Thoroughness: quick \| medium \| very thorough. Parallelize independent searches. |
-| Read known path(s) | `reader` | Pass exact paths + what to extract. Parallelize clusters. |
-| Bounded implement / commands / edits | `general` | One clear task each. Do not dump the whole feature. |
-| External docs / upstream source | `scout` | Only when the answer is outside this repo. |
+| Need | Who | How |
+|------|-----|-----|
+| Gate B / "where is X" | **you** | **`fxmind_query`** + preloaded context file — **never** grep |
+| Gates / task | **you** | `fxmind_start_task`, `fxmind_record_gate`, `fxmind_gate_status` |
+| Read known path(s) | `reader` | Repository-relative paths from fxmind_query/memories only |
+| Paths still missing after fxmind_query | `explore` | Must call **fxmind_query** first; no repo-wide grep |
+| Bounded edits | `general` | Paths already known from fxmind |
+| External docs | `scout` | Outside this repo only |
 
-If a file tool fails with deny, call a subagent immediately.
+## Panel / Gate B
+
+1. **`fxmind_query`** (or trust preloaded context).
+2. **`reader`** with paths from query/memories — parallelize independent files.
+3. **`explore`** only if step 1–2 still lack paths (explore uses fxmind MCP first).
+
+When **`PANEL_MODE: quick`**: no subagents — preloaded context + fxmind MCP only.
+
+Subagents must **not** call `fxmind_start_task`, `fxmind_record_gate`, or Judge.
+
+When delegating to `reader`, pass the paths exactly as they appear in FxMind
+memories/query. Keep them relative to the selected repository. Never turn them
+into absolute paths, append `*`, or trigger `external_directory`.
 
 ## Do not delegate
 
 - Deciding what the user meant
-- Gate / quality / security judgment (`/fxmind task`, `/fxmind judge`)
+- Gate / quality / security judgment
 - The final synthesis for the user
+- Repo-wide grep (use fxmind_query instead)
 
-## How to call
-
-Give the subagent: goal, paths or keywords, thoroughness, and "return paths + short excerpts only".
-When several lookups are independent, launch them in the same turn.
-
-Do not ask `explore` to fetch the web. Do not ask `scout` to grep this repo. Do not ask `reader` to discover files. Do not ask `general` to redesign the feature.
-
-Ground work in `.fxmind/memory/` and pack skills under `.fxmind/skills/` — same shared memory as every other agent.
+Ground work in `.fxmind/memory/` and `.fxmind/skills/`.

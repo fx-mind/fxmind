@@ -742,17 +742,19 @@ function scoreNode(node, tokens) {
  * nodes up to a token budget (chars/4).
  */
 function queryGraph(targetRoot, question, options = {}) {
+  const rebuild = options.rebuild !== false;
   let graph = loadGraphData(targetRoot);
-  if (!graph || isGraphStale(targetRoot)) {
+  const stale = !graph || isGraphStale(targetRoot);
+  if (rebuild && stale) {
     ensureGraphFresh(targetRoot, { updateHtml: false, useCache: true });
     graph = loadGraphData(targetRoot);
-  }
-  if (!graph) {
+  } else if (!graph) {
     return {
       ok: false,
       error: "Missing knowledge-graph.json — run fxmind graph or /fxmind learn first.",
     };
   }
+  const graphStale = stale && !rebuild;
 
   const budget = options.budget || 1500;
   const mode = options.dfs ? "dfs" : "bfs";
@@ -772,6 +774,7 @@ function queryGraph(targetRoot, question, options = {}) {
   if (ranked.length === 0) {
     return {
       ok: true,
+      graphStale,
       expanded: [],
       memories: [],
       note: "No graph nodes matched the question vocabulary.",
@@ -822,6 +825,7 @@ function queryGraph(targetRoot, question, options = {}) {
 
   const result = {
     ok: true,
+    graphStale,
     mode,
     expanded: order,
     startNodes: [...startIds],

@@ -20,7 +20,7 @@ Parse `$ARGUMENTS` (trim, case-insensitive). **Prefer Task for any code/config c
 | `learn` or `learn <topic>` / `learn list` | `.fxmind/modes/learn.md` |
 | `memory health [fix] [topic]` | `.fxmind/modes/memory-health.md` |
 | `graph` | `.fxmind/modes/graph.md` — **just run `fxmind graph`** |
-| `painel` or `panel` or `serve` | `.fxmind/modes/painel.md` — **just run `fxmind serve --open --path /chat`** |
+| `painel` or `panel` | `.fxmind/modes/painel.md` — run `fxmind painel`, **stay in this chat** as host (no API key) |
 | `query "<question>"` [--dfs] [--budget N] | `.fxmind/modes/query.md` |
 | `path <topic-a> <topic-b>` | `.fxmind/modes/path.md` |
 | `explain <topic>` | `.fxmind/modes/explain.md` |
@@ -46,6 +46,8 @@ If the fxmind MCP server is registered, prefer these tools over the manual mode 
 | Start Task session | `fxmind_start_task` |
 | Read Gate A/B/V/C status | `fxmind_gate_status` |
 | Record a Gate marker (START/A/B/V/C) | `fxmind_record_gate` |
+| Wait for panel demandas (host chat) | `fxmind_panel_wait` |
+| Reply into a panel thread | `fxmind_panel_reply` |
 
 For Task mode, use **`fxmind_start_task`** then **`fxmind_record_gate`** for each gate (A → B → **V** → C) — never Write `.fxmind/state/fxmind-gates.json`. `fxmind_query` replaces the graph-router step (Gate B). For `graph`, `fxmind_graph` replaces the CLI shell-out.
 

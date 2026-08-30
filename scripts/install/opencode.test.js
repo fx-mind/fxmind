@@ -23,7 +23,7 @@ describe("OpenCode subagents", () => {
     assert.ok(installed.includes(".opencode/agents/reader.md"));
     assert.ok(installed.includes(".opencode/agents/general.md"));
     assert.ok(installed.includes(".opencode/agents/scout.md"));
-    assert.ok(installed.includes(".opencode/instructions/delegate-io.md"));
+    assert.ok(installed.includes(".opencode/instructions/fxmind-tools-only.md"));
 
     const explore = fs.readFileSync(path.join(root, ".opencode", "agents", "explore.md"), "utf8");
     assert.match(explore, /mode: subagent/);
@@ -31,7 +31,21 @@ describe("OpenCode subagents", () => {
     assert.doesNotMatch(explore, /TxdBase/);
 
     const config = JSON.parse(fs.readFileSync(path.join(root, "opencode.json"), "utf8"));
-    assert.deepEqual(config.instructions, [".opencode/instructions/delegate-io.md"]);
+    assert.deepEqual(config.instructions, [
+      ".opencode/instructions/fxmind-tools-only.md",
+      ".opencode/instructions/delegate-io.md",
+    ]);
+    assert.equal(config.permission.grep, "deny");
+    assert.equal(config.permission.glob, "deny");
+    assert.equal(config.permission.external_directory, "allow");
+    assert.equal(config.permission.bash["grep *"], "deny");
+    assert.equal(config.permission.bash["*grep*"], "deny");
+    assert.equal(config.permission.bash["ls *"], "deny");
+    assert.equal(config.permission.bash["Get-ChildItem *"], "deny");
+    assert.equal(config.agent.explore.permission.glob, "allow");
+    assert.equal(config.agent.explore.model, "opencode/muse-spark-1.2-contributor-free");
+    assert.equal(config.agent.reader.model, "opencode/muse-spark-1.2-contributor-free");
+    assert.equal(config.agent.general.model, "opencode/muse-spark-1.2-contributor-free");
     assert.equal(config.agent.explore.mode, "subagent");
     assert.equal(config.agent.reader.mode, "subagent");
     assert.equal(config.agent.general.mode, "subagent");
@@ -66,7 +80,14 @@ describe("OpenCode subagents", () => {
     assert.equal(config.agent.explore.mode, "subagent");
     assert.equal(config.agent.build.mode, "primary");
     assert.equal(config.agent.reader.mode, "subagent");
-    assert.deepEqual(config.instructions, [".opencode/instructions/delegate-io.md"]);
+    assert.deepEqual(config.instructions, [
+      ".opencode/instructions/fxmind-tools-only.md",
+      ".opencode/instructions/delegate-io.md",
+    ]);
+    assert.equal(config.permission.grep, "deny");
+    assert.equal(config.permission.glob, "deny");
+    assert.equal(config.permission.external_directory, "allow");
+    assert.equal(config.permission.bash["ls *"], "deny");
   });
 
   it("uninstall removes managed agents and instruction without dropping mcp", () => {

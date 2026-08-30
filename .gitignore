@@ -1,9 +1,18 @@
 node_modules/
 web/node_modules/
 web/dist/
+# UI source lives in ../panel (workspace repo) — do not recreate here
+web/src/
+web/package.json
+web/package-lock.json
+web/vite.config.ts
+web/tsconfig.json
+web/index.html
 .DS_Store
 Thumbs.db
 *.log
 test/
 tests/
 test-sandbox/
+# local dogfooding state when fxmind is run against its own repo
+.fxmind/

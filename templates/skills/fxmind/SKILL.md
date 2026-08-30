@@ -13,6 +13,8 @@ You are the **fxmind** skill — the only skill that should live in the agent sk
 
 If the user asks to **change** code/config — classify (see `.fxmind/modes/task.md`) then run the pipeline. Verify details: **`.fxmind/modes/task-verify.md`**.
 
+**Panel context:** if the attached FxMind context file says `PANEL_MODE: quick`, treat implementation as **trivial** (see task.md § Panel quick mode). If `PANEL_MODE: full`, use the full pipeline.
+
 - **question** → answer only (no edit)
 - **analyze-only** → report + AskQuestion; no edit until approved ("analisa e corrige" = full task)
 - **trivial** → `fxmind_start_task` `{ trivial: true }` → edit → V → C
@@ -28,7 +30,7 @@ The full `/fxmind` command body is a slim router — read **`.fxmind/fxmind.md`*
 2. **Judge** (`judge`, "did that actually work?", verify claims) → read **`.fxmind/modes/judge.md`**.
 3. **Other modes** (`learn`, `audit`, `graph`, `painel`, `query`, `path`, `explain`, `reference`, `memory health`, `update`, `help`) → read **`.fxmind/modes/<mode>.md`**.
 4. **Graph** → just run `fxmind graph` (builds + opens `.fxmind/graph/knowledge-graph.html`).
-4b. **Painel** (`painel` / `panel`) → just run `fxmind serve --open --path /chat`.
+4b. **Painel** (`painel` / `panel`) → read `.fxmind/modes/painel.md`: open the panel, then **stay in this chat** as host (no API key, no `agent login`).
 5. **Project memories** → `.fxmind/memory/_index.md` then relevant `memory/<topic>.md`.
 6. **Installed pack skills** → `.fxmind/skills/_index.md` and `.fxmind/packs.json`.
 7. **Global store** → if `.fxmind/store.json` has `mode: global`, memories live in `~/.fxmind/projects/<id>/` (paths via symlink). Cross-project memories may appear in graph/query links.
@@ -36,9 +38,13 @@ The full `/fxmind` command body is a slim router — read **`.fxmind/fxmind.md`*
 9. **Task verify** → `.fxmind/modes/task-verify.md` (after Implement)
 10. **Minimum evidence** (FiveM pack) → `.fxmind/policy/minimum-evidence.md` when present
 
-## MCP fast path
+## MCP fast path (mandatory)
 
-If the fxmind MCP server is registered, prefer its tools over manual mode specs — they run in Node (faster, cheaper): `fxmind_list_memories`, `fxmind_validate_memories`, `fxmind_query`, `fxmind_graph`, `fxmind_drift_check`, `fxmind_start_task`, `fxmind_gate_status`, `fxmind_record_gate`, `fxmind_record_correction`, `fxmind_list_corrections`, `fxmind_fivem_install`, `fxmind_fivem_cmd`, `fxmind_fivem_console_tail`, `fxmind_fivem_status`, `fxmind_db_status`, `fxmind_db_query`, `fxmind_db_schema`, `fxmind_db_sample`, `fxmind_db_explore`, `fxmind_db_analyze`.
+**Always** use fxmind MCP tools when connected — they are optimized for fast delivery (Node, indexed graph, gates, FiveM, DB). **Do not** replace them with grep, find, or ad-hoc shell search.
+
+Required tools: `fxmind_list_memories`, `fxmind_validate_memories`, `fxmind_query`, `fxmind_graph`, `fxmind_drift_check`, `fxmind_start_task`, `fxmind_gate_status`, `fxmind_record_gate`, `fxmind_record_correction`, `fxmind_list_corrections`, `fxmind_fivem_install`, `fxmind_fivem_cmd`, `fxmind_fivem_console_tail`, `fxmind_fivem_status`, `fxmind_db_status`, `fxmind_db_query`, `fxmind_db_schema`, `fxmind_db_sample`, `fxmind_db_explore`, `fxmind_db_analyze`, `fxmind_panel_wait`, `fxmind_panel_pending`, `fxmind_panel_reply`, `fxmind_panel_fail`.
+
+If fxmind MCP is **not** in your tool list → **STOP** the task pipeline; ask the user to enable it (`fxmind hooks install` on Windows if mcp.json fails).
 
 **FiveM console — availability gate (before ensure/tail):**
 

@@ -24,6 +24,20 @@ Tie-breaks (order): (1) question beats edit; (2) analyze-only / plan-first beat 
 
 Never re-litigate decisions the user already made. If the answer is only your inference: say so (low-confidence) — do not costume rigor.
 
+### Panel quick mode
+
+When the FxMind context file contains **`PANEL_MODE: quick`** (panel composer toggle **Rápido**):
+
+- **CLASS = trivial** for implementation requests unless the user explicitly asks for a full audit/plan.
+- `fxmind_start_task` `{ trivial: true }` — Gates A+B auto-complete.
+- Skip QUALITY blocks, multi-round Gate B, and Judge unless the user asks for proof or the diff touches **3+ files**.
+- Gate V: Done criterion + twins on bugfix; FiveM automation only when `fxmind_fivem_status.available`.
+- Gate C: usually **"mudança pontual"**.
+- Do **not** call `fxmind_query` if the context file already lists relevant memories.
+- Do **not** delegate to OpenCode subagents.
+
+When the context contains **`PANEL_MODE: full`**, run the full pipeline below (OpenCode may delegate Gate B to `explore`/`reader` in parallel).
+
 ## 2. Start
 
 - Full task: **`fxmind_start_task`** `{ note }` then Gate A → B.
@@ -63,7 +77,9 @@ QUALITY:
 
 ## 4. Gate B (before any edit)
 
-1. Prefer **`fxmind_query`** (~1500). If it fails because the graph is missing/stale, call **`fxmind_graph`** with `{ updateHtml: false }` and retry; else fall back to `_index` + 3–5 memories + `reference.md`.
+**FxMind MCP only** — this is the optimized fast path. No manual grep/repo search.
+
+1. **`fxmind_query`** (~1500) — or trust preloaded hits in the panel context file. If graph missing/stale → **`fxmind_graph`** `{ updateHtml: false }` then retry. Else **`fxmind_list_memories`** + read `_index` + 3–5 topic files + `reference.md` via MCP/Read on known paths only.
 2. **Graph engineering (FiveM tasks):** load memories matching Gate A TOPICS; scan `.fxmind/corrections/` for entries whose category matches the domain (`performance`, `security`, `communication`, `architecture`, `style` — maps 1:1 to pack skill files). Read matching correction files before Implement.
 3. Primary sources for APIs/natives not opened this session.
 4. Evidence budget: 2 lookup rounds; 3rd needs a reason.
@@ -75,7 +91,7 @@ QUALITY:
 
 ## 5. Implement
 
-1. Orient (list/glob) then read real files; smallest correct change; match style.
+1. Orient from Gate B paths (`fxmind_query` / memories) — read those files first; no repo-wide grep. list/glob only for a known folder from memory.
 2. Surprise → say it, update Done/Scope; do not force the old plan.
 3. Max **3** fix→verify retries → hand-back.
 4. No commit/push; no weaken checks; no secrets; no silent scope expand; no deps unless asked.

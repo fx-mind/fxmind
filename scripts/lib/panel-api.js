@@ -6,12 +6,86 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { execFileSync } = require("child_process");
 const {
   REGISTRY_PATH,
   projectIdForRoot,
   listRegisteredProjects,
+  resolveDataRoot,
 } = require("../global-store");
+const { resolveInDataRoot } = require("./layout");
 const tools = require("../fxmind-tools");
+
+function normalizeRoot(dir) {
+  return path.resolve(dir).replace(/\\/g, "/");
+}
+
+const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+const MAX_PROJECT_ICON_BYTES = 5 * 1024 * 1024;
+const PREFERRED_ROOT_PNG_NAMES = [
+  "logo.png",
+  "icon.png",
+  "avatar.png",
+  "favicon.png",
+  "brand.png",
+];
+
+function isPngFile(filePath) {
+  let fd = null;
+  try {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile() || stat.size < PNG_SIGNATURE.length || stat.size > MAX_PROJECT_ICON_BYTES) {
+      return false;
+    }
+    fd = fs.openSync(filePath, "r");
+    const header = Buffer.alloc(PNG_SIGNATURE.length);
+    fs.readSync(fd, header, 0, header.length, 0);
+    return header.equals(PNG_SIGNATURE);
+  } catch {
+    return false;
+  } finally {
+    if (fd !== null) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
+function rootPngPath(root) {
+  try {
+    const candidates = fs
+      .readdirSync(path.resolve(root), { withFileTypes: true })
+      .filter((entry) => entry.isFile() && /\.png$/i.test(entry.name))
+      .map((entry) => path.join(path.resolve(root), entry.name))
+      .filter(isPngFile);
+    candidates.sort((a, b) => {
+      const aName = path.basename(a).toLowerCase();
+      const bName = path.basename(b).toLowerCase();
+      const aPriority = PREFERRED_ROOT_PNG_NAMES.indexOf(aName);
+      const bPriority = PREFERRED_ROOT_PNG_NAMES.indexOf(bName);
+      const normalizedA = aPriority === -1 ? 100 : aPriority;
+      const normalizedB = bPriority === -1 ? 100 : bPriority;
+      return normalizedA - normalizedB || aName.localeCompare(bName);
+    });
+    return candidates[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Nearest directory that contains `.fxmind/`, otherwise the resolved path. */
+function findProjectRoot(start = process.cwd()) {
+  let dir = path.resolve(start || process.cwd());
+  for (;;) {
+    if (fs.existsSync(path.join(dir, ".fxmind"))) return normalizeRoot(dir);
+    const parent = path.dirname(dir);
+    if (parent === dir) return normalizeRoot(start || process.cwd());
+    dir = parent;
+  }
+}
 
 function panelConfigPath() {
   return path.join(os.homedir(), ".fxmind", "panel.json");
@@ -24,6 +98,121 @@ function readJson(filePath, fallback = null) {
   } catch {
     return fallback;
   }
+}
+
+function graphValue(value) {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && "id" in value) return String(value.id);
+  return "";
+}
+
+function concreteResources(value) {
+  const values = Array.isArray(value)
+    ? value
+    : String(value || "").split(/[,;|]/);
+  return new Set(
+    values
+      .map((item) => String(item).trim().toLowerCase())
+      .filter((item) => item && !/^\[[^\]]+\]$/.test(item)),
+  );
+}
+
+function concretePaths(value) {
+  const pathExtensions = [
+    ".cfg", ".css", ".html", ".js", ".json", ".lua", ".md", ".sql", ".ts",
+    ".tsx", ".vue",
+  ];
+  const values = Array.isArray(value) ? value : String(value || "").split(/[,;|]/);
+  return values
+    .map((item) => String(item).trim().replace(/^["'`]|["'`]$/g, ""))
+    .filter((item) => {
+      if (
+        !item ||
+        item.length > 240 ||
+        item.startsWith("/") ||
+        /[\r\n—*]/.test(item) ||
+        /\s/.test(item)
+      ) {
+        return false;
+      }
+      const lower = item.toLowerCase();
+      return (
+        lower.includes("/") ||
+        lower.includes("\\") ||
+        pathExtensions.some((extension) => lower.endsWith(extension))
+      );
+    });
+}
+
+function linkablePaths(value) {
+  return concretePaths(value).filter((item) => /^(?:resources|\.fxmind)[/\\]/i.test(item));
+}
+
+function pathsSharePrefix(source, target) {
+  return linkablePaths(source).some((sourcePath) =>
+    linkablePaths(target).some(
+      (targetPath) =>
+        sourcePath === targetPath ||
+        sourcePath.includes(targetPath) ||
+        targetPath.includes(sourcePath),
+    ),
+  );
+}
+
+const GENERIC_EVENT_NAMESPACES = new Set([
+  "client", "core", "event", "events", "fivem", "main", "player", "resource",
+  "server", "shared", "system",
+]);
+
+function eventNamespaces(value) {
+  const values = Array.isArray(value) ? value : String(value || "").split(/[,;|]/);
+  return new Set(
+    values
+      .map((item) => String(item).trim().toLowerCase())
+      .map((item) => {
+        const separator = item.indexOf(":");
+        return separator >= 3 ? item.slice(0, separator) : "";
+      })
+      .filter(
+        (namespace) =>
+          namespace.length >= 3 &&
+          /^[a-z0-9_-]+$/.test(namespace) &&
+          !GENERIC_EVENT_NAMESPACES.has(namespace),
+      ),
+  );
+}
+
+function eventsShareNamespace(source, target) {
+  const sourceNamespaces = eventNamespaces(source);
+  return [...eventNamespaces(target)].some((namespace) => sourceNamespaces.has(namespace));
+}
+
+function isConfirmedGraphLink(link, nodesById) {
+  if (!link || typeof link !== "object") return false;
+  const relationType = String(link.type || link.kind || "").toLowerCase();
+  const source = nodesById.get(graphValue(link.source));
+  const target = nodesById.get(graphValue(link.target));
+  if (relationType === "event-domain") {
+    return Boolean(source && target && eventsShareNamespace(source.events, target.events));
+  }
+  if (
+    String(link.confidence || "").toLowerCase() === "inferred" ||
+    ["shared-symbol", "cross-mention", "domain-related"].includes(relationType)
+  ) {
+    return false;
+  }
+  if (relationType !== "shared-resource" && relationType !== "shared-path") {
+    return true;
+  }
+
+  if (!source || !target) return true;
+  if (relationType === "shared-path") {
+    return pathsSharePrefix(source.paths, target.paths);
+  }
+  const sourceResources = concreteResources(source.resources);
+  const targetResources = concreteResources(target.resources);
+  if (sourceResources.size === 0 || targetResources.size === 0) return false;
+  return [...sourceResources].some((resource) => targetResources.has(resource));
 }
 
 function writeJson(filePath, data) {
@@ -45,47 +234,68 @@ function writePanelConfig(data) {
   writeJson(panelConfigPath(), data);
 }
 
-function listProjects(cwd = process.cwd()) {
+function listProjects(cwd = process.cwd(), options = {}) {
   const registry = readJson(REGISTRY_PATH, { version: 1, projects: {} });
   const registered = listRegisteredProjects();
   const byId = new Map();
 
   for (const project of registered) {
+    const projectRoot = normalizeRoot(project.root);
     byId.set(project.id, {
       id: project.id,
       name: project.name,
-      root: project.root,
+      root: projectRoot,
       registeredAt: project.registeredAt,
       updatedAt: project.updatedAt,
       packs: project.packs || [],
+      hasFxmind: fs.existsSync(path.join(projectRoot, ".fxmind")),
+      hasRootPng: Boolean(rootPngPath(projectRoot)),
       source: "registry",
+      local: false,
     });
   }
 
-  const resolvedCwd = path.resolve(cwd).replace(/\\/g, "/");
-  const cwdId = projectIdForRoot(resolvedCwd);
-  if (!byId.has(cwdId)) {
-    byId.set(cwdId, {
-      id: cwdId,
-      name: path.basename(resolvedCwd) || "project",
-      root: resolvedCwd,
-      source: "cwd",
-    });
-  }
+  const localRoot = options.exact ? normalizeRoot(cwd) : findProjectRoot(cwd);
+  const localId = projectIdForRoot(localRoot);
+  const localName = path.basename(localRoot) || "project";
+  const existing = byId.get(localId);
+  byId.set(localId, {
+    id: localId,
+    name: existing?.name || localName,
+    root: localRoot,
+    registeredAt: existing?.registeredAt,
+    updatedAt: existing?.updatedAt,
+    packs: existing?.packs || [],
+    hasFxmind: fs.existsSync(path.join(localRoot, ".fxmind")),
+    hasRootPng: Boolean(rootPngPath(localRoot)),
+    source: "local",
+    local: true,
+  });
+
+  const projects = [...byId.values()].sort((a, b) => {
+    if (a.local && !b.local) return -1;
+    if (!a.local && b.local) return 1;
+    return a.name.localeCompare(b.name);
+  });
 
   return {
     registryVersion: registry.version ?? 1,
-    projects: [...byId.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    workspaceRoot: localRoot,
+    workspaceId: localId,
+    projects,
   };
 }
 
-function resolveProjectRoot(projectId, cwd = process.cwd()) {
+function resolveProjectRoot(projectId, cwd = process.cwd(), options = {}) {
   if (!projectId) {
     return { ok: false, status: 400, error: "project id required" };
   }
 
-  const { projects } = listProjects(cwd);
-  const match = projects.find((p) => p.id === projectId);
+  const { projects } = listProjects(cwd, options);
+  let match = projects.find((p) => p.id === projectId);
+  if (!match && !options.exact) {
+    match = listProjects(cwd, { exact: true }).projects.find((p) => p.id === projectId);
+  }
   if (!match) {
     return { ok: false, status: 404, error: "project not found" };
   }
@@ -94,8 +304,32 @@ function resolveProjectRoot(projectId, cwd = process.cwd()) {
   if (!fs.existsSync(root)) {
     return { ok: false, status: 404, error: "project root missing on disk" };
   }
+  try {
+    if (!fs.statSync(root).isDirectory()) {
+      return { ok: false, status: 400, error: "project root is not a directory" };
+    }
+  } catch {
+    return { ok: false, status: 404, error: "project root missing on disk" };
+  }
 
   return { ok: true, root, project: match };
+}
+
+/**
+ * Select a project from the global registry without walking up to a parent
+ * `.fxmind` directory. The folder picker and registry both represent an
+ * explicit repository choice, including repositories that are not installed.
+ */
+function selectProjectRoot(projectId, cwd = process.cwd(), options = {}) {
+  const resolved = resolveProjectRoot(projectId, cwd, options);
+  if (!resolved.ok) return resolved;
+  const root = normalizeRoot(resolved.root);
+  pushRecentRoot(root);
+  return {
+    ok: true,
+    root,
+    project: { ...resolved.project, root },
+  };
 }
 
 function getHealth() {
@@ -104,6 +338,10 @@ function getHealth() {
     service: "fxmind-panel",
     version: "1.0.0",
     timestamp: new Date().toISOString(),
+    features: {
+      subagents: true,
+      taskMode: true,
+    },
   };
 }
 
@@ -145,40 +383,109 @@ function putPortspaceSettings(body = {}) {
   return getPortspaceSettings();
 }
 
-function getCursorApiKey() {
-  const config = readPanelConfig();
-  const stored = String(config.cursor?.apiKey || "").trim();
-  return stored || String(process.env.CURSOR_API_KEY || "").trim();
-}
-
-function getCursorSettings() {
-  const key = getCursorApiKey();
-  const config = readPanelConfig();
-  return {
-    hasKey: Boolean(key),
-    keyPrefix: key ? keyPrefix(key) : "",
-    fromEnv: Boolean(String(process.env.CURSOR_API_KEY || "").trim()) && !config.cursor?.apiKey,
-    updatedAt: config.cursor?.updatedAt || null,
-  };
-}
-
-function putCursorSettings(body = {}) {
-  const config = readPanelConfig();
-  const prev = config.cursor || {};
-  let apiKey = prev.apiKey || "";
-
-  if (body.apiKey !== undefined) {
-    const next = String(body.apiKey || "").trim();
-    if (next) apiKey = next;
+function getGitBranch(root) {
+  try {
+    const branch = execFileSync(
+      "git",
+      ["rev-parse", "--abbrev-ref", "HEAD"],
+      { cwd: root, encoding: "utf8", windowsHide: true },
+    ).trim();
+    return branch || null;
+  } catch {
+    return null;
   }
-  if (body.clearKey === true) apiKey = "";
+}
 
-  config.cursor = {
-    apiKey,
-    updatedAt: new Date().toISOString(),
-  };
+function pushRecentRoot(root) {
+  const config = readPanelConfig();
+  const normalized = normalizeRoot(root);
+  const prev = Array.isArray(config.recentRoots) ? config.recentRoots : [];
+  const next = [normalized, ...prev.filter((r) => r !== normalized)].slice(0, 8);
+  config.recentRoots = next;
   writePanelConfig(config);
-  return getCursorSettings();
+  return next;
+}
+
+function getRecentRoots() {
+  const config = readPanelConfig();
+  return (config.recentRoots || []).filter((r) => fs.existsSync(r));
+}
+
+function browseFolderDialog() {
+  if (process.platform === "win32") {
+    const ps = [
+      "Add-Type -AssemblyName System.Windows.Forms",
+      "$d = New-Object System.Windows.Forms.FolderBrowserDialog",
+      "$d.Description = 'Selecione a pasta do projeto'",
+      "if ($d.ShowDialog() -eq 'OK') { Write-Output $d.SelectedPath }",
+    ].join("; ");
+    try {
+      const out = execFileSync(
+        "powershell.exe",
+        ["-NoProfile", "-STA", "-Command", ps],
+        { encoding: "utf8", timeout: 120_000, windowsHide: false },
+      ).trim();
+      return out || null;
+    } catch {
+      return null;
+    }
+  }
+  if (process.platform === "darwin") {
+    try {
+      const out = execFileSync(
+        "osascript",
+        ["-e", 'POSIX path of (choose folder with prompt "Selecione a pasta do projeto")'],
+        { encoding: "utf8", timeout: 120_000 },
+      ).trim();
+      return out || null;
+    } catch {
+      return null;
+    }
+  }
+  try {
+    execFileSync("which", ["zenity"], { encoding: "utf8" });
+    const out = execFileSync(
+      "zenity",
+      ["--file-selection", "--directory", "--title=Selecione a pasta do projeto"],
+      { encoding: "utf8", timeout: 120_000 },
+    ).trim();
+    return out || null;
+  } catch {
+    return null;
+  }
+}
+
+function bindWorkspaceRoot(root, options = {}) {
+  const resolved = options.exact ? normalizeRoot(root) : findProjectRoot(root);
+  if (!fs.existsSync(resolved)) {
+    throw new Error("workspace folder missing on disk");
+  }
+  try {
+    if (!fs.statSync(resolved).isDirectory()) {
+      throw new Error("workspace path is not a directory");
+    }
+  } catch (err) {
+    throw new Error(String(err.message || "workspace path is not a directory"));
+  }
+  pushRecentRoot(resolved);
+  return resolved;
+}
+
+function getWorkspaceInfo(cwd = process.cwd(), options = {}) {
+  const listed = listProjects(cwd, options);
+  return {
+    ...listed,
+    gitBranch: getGitBranch(listed.workspaceRoot),
+    recentRoots: getRecentRoots(),
+    memoryCount: (() => {
+      try {
+        return tools.listMemories(listed.workspaceRoot).length;
+      } catch {
+        return 0;
+      }
+    })(),
+    hasFxmind: fs.existsSync(path.join(listed.workspaceRoot, ".fxmind")),
+  };
 }
 
 async function fetchPortspaceInbox(configOverride = null) {
@@ -256,20 +563,20 @@ async function fetchPortspaceInbox(configOverride = null) {
   }
 }
 
-function getProjectMemories(projectId, cwd = process.cwd()) {
-  const resolved = resolveProjectRoot(projectId, cwd);
+function getProjectMemories(projectId, cwd = process.cwd(), options = {}) {
+  const resolved = resolveProjectRoot(projectId, cwd, options);
   if (!resolved.ok) return resolved;
   return { ok: true, memories: tools.listMemories(resolved.root) };
 }
 
-function validateProjectMemories(projectId, cwd = process.cwd()) {
-  const resolved = resolveProjectRoot(projectId, cwd);
+function validateProjectMemories(projectId, cwd = process.cwd(), options = {}) {
+  const resolved = resolveProjectRoot(projectId, cwd, options);
   if (!resolved.ok) return resolved;
   return { ok: true, ...tools.validateMemories(resolved.root) };
 }
 
-function queryProject(projectId, body = {}, cwd = process.cwd()) {
-  const resolved = resolveProjectRoot(projectId, cwd);
+function queryProject(projectId, body = {}, cwd = process.cwd(), options = {}) {
+  const resolved = resolveProjectRoot(projectId, cwd, options);
   if (!resolved.ok) return resolved;
 
   const question = String(body.question || "").trim();
@@ -286,16 +593,108 @@ function queryProject(projectId, body = {}, cwd = process.cwd()) {
   return { ok: true, ...result };
 }
 
-function getProjectGates(projectId, cwd = process.cwd()) {
-  const resolved = resolveProjectRoot(projectId, cwd);
+function getProjectGates(projectId, cwd = process.cwd(), options = {}) {
+  const resolved = resolveProjectRoot(projectId, cwd, options);
   if (!resolved.ok) return resolved;
   return { ok: true, gates: tools.gateStatus(resolved.root) };
 }
 
-function getProjectCorrections(projectId, cwd = process.cwd()) {
-  const resolved = resolveProjectRoot(projectId, cwd);
+function getProjectGraph(projectId, cwd = process.cwd(), options = {}) {
+  const resolved = resolveProjectRoot(projectId, cwd, options);
+  if (!resolved.ok) return resolved;
+  const graphPath = resolveInDataRoot(resolveDataRoot(resolved.root), "graphJson");
+  if (!graphPath || !fs.existsSync(graphPath)) {
+    return { ok: false, status: 404, error: "knowledge graph not found" };
+  }
+  try {
+    const graph = JSON.parse(fs.readFileSync(graphPath, "utf8"));
+    if (!graph || typeof graph !== "object") {
+      return { ok: false, status: 500, error: "invalid knowledge graph" };
+    }
+    const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+    const rawLinks = Array.isArray(graph.links)
+      ? graph.links
+      : Array.isArray(graph.edges)
+        ? graph.edges
+        : [];
+    const nodesById = new Map(nodes.map((node) => [String(node.id), node]));
+    const links = rawLinks.filter((link) => isConfirmedGraphLink(link, nodesById));
+    const meta = graph.meta && typeof graph.meta === "object" ? { ...graph.meta } : {};
+    if (meta.counts && typeof meta.counts === "object") {
+      meta.counts = { ...meta.counts, links: links.length };
+    }
+    return {
+      ok: true,
+      nodes,
+      links,
+      meta,
+    };
+  } catch {
+    return { ok: false, status: 500, error: "invalid knowledge graph" };
+  }
+}
+
+function getProjectIcon(projectId, cwd = process.cwd(), options = {}) {
+  const resolved = resolveProjectRoot(projectId, cwd, options);
+  if (!resolved.ok) return resolved;
+  const filePath = rootPngPath(resolved.root);
+  if (!filePath) {
+    return { ok: false, status: 404, error: "project root png not found" };
+  }
+  try {
+    return { ok: true, contentType: "image/png", data: fs.readFileSync(filePath) };
+  } catch {
+    return { ok: false, status: 404, error: "project root png is unavailable" };
+  }
+}
+
+function getProjectCorrections(projectId, cwd = process.cwd(), options = {}) {
+  const resolved = resolveProjectRoot(projectId, cwd, options);
   if (!resolved.ok) return resolved;
   return { ok: true, corrections: tools.listCorrections(resolved.root) };
+}
+
+function getProjectMemoryContent(projectId, slug, cwd = process.cwd(), options = {}) {
+  const resolved = resolveProjectRoot(projectId, cwd, options);
+  if (!resolved.ok) return resolved;
+
+  const safe = String(slug || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "");
+  if (!safe) {
+    return { ok: false, status: 400, error: "invalid slug" };
+  }
+
+  const abs = path.join(tools.memoryDir(resolved.root), `${safe}.md`);
+  if (!fs.existsSync(abs)) {
+    return { ok: false, status: 404, error: "memory not found" };
+  }
+
+  return { ok: true, slug: safe, content: fs.readFileSync(abs, "utf8") };
+}
+
+function addProjectCorrection(projectId, body = {}, cwd = process.cwd(), options = {}) {
+  const resolved = resolveProjectRoot(projectId, cwd, options);
+  if (!resolved.ok) return resolved;
+
+  try {
+    const result = tools.recordCorrection(resolved.root, body);
+    return { ok: true, ...result };
+  } catch (err) {
+    return { ok: false, status: 400, error: String(err.message || err) };
+  }
+}
+
+function promoteProjectCorrection(projectId, correctionId, cwd = process.cwd(), options = {}) {
+  const resolved = resolveProjectRoot(projectId, cwd, options);
+  if (!resolved.ok) return resolved;
+
+  try {
+    const result = tools.promoteCorrection(resolved.root, correctionId);
+    return { ok: true, ...result };
+  } catch (err) {
+    return { ok: false, status: 400, error: String(err.message || err) };
+  }
 }
 
 module.exports = {
@@ -303,18 +702,30 @@ module.exports = {
   readPanelConfig,
   writePanelConfig,
   keyPrefix,
+  normalizeRoot,
+  findProjectRoot,
   listProjects,
   resolveProjectRoot,
   getHealth,
   getPortspaceSettings,
   putPortspaceSettings,
-  getCursorApiKey,
-  getCursorSettings,
-  putCursorSettings,
   fetchPortspaceInbox,
   getProjectMemories,
   validateProjectMemories,
   queryProject,
   getProjectGates,
+  getProjectGraph,
+  getProjectIcon,
   getProjectCorrections,
+  getProjectMemoryContent,
+  addProjectCorrection,
+  promoteProjectCorrection,
+  getGitBranch,
+  pushRecentRoot,
+  getRecentRoots,
+  browseFolderDialog,
+  bindWorkspaceRoot,
+  selectProjectRoot,
+  getWorkspaceInfo,
+  rootPngPath,
 };

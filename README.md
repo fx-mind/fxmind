@@ -39,7 +39,7 @@ Restart your agent IDE/CLI after install or update.
 | **`/fxmind`** | Chat command + **auto Task** for code changes (no slash required) |
 | **Packs** | Domain skills under `.fxmind/skills/` (e.g. FiveM) |
 | **2D graph** | Visual topic map (`fxmind graph`) |
-| **Web panel** | Local control plane (`fxmind serve`) — projects, memories, query, gates, PortSpace inbox |
+| **Web panel** | Local control plane (`fxmind painel`) — projects, memories, query, gates, inbox |
 | **Hooks** (Cursor) | Task gates + stale-memory detection |
 | **MCP** | Programmatic tools (`fxmind_query`, `fxmind_graph`, …) |
 | **OpenCode subagents** | `explore` / `reader` / `general` / `scout` under `.opencode/agents/` |
@@ -71,7 +71,7 @@ Gemini uses `/fxmind:task`, `/fxmind:learn`, etc. VS Code Copilot uses `/fxmind`
 fxmind -y                  # install (Cursor + fivem pack by default)
 fxmind --update -y         # refresh templates/skills/hooks/MCP/fivem-start (keeps memories)
 fxmind graph               # open 2D graph in the browser
-fxmind serve --open        # local web panel (control plane)
+fxmind painel              # local web panel (UI + API)
 fxmind hooks status        # show hooks + MCP status
 fxmind -h                  # all options
 ```
@@ -87,15 +87,18 @@ fxmind -h                  # all options
 Local control plane (projects, memories, graph query, gates, PortSpace inbox stub):
 
 ```bash
-cd fxmind && npm run build:web   # once (or after UI changes)
-fxmind serve --open              # http://127.0.0.1:3847
+fxmind painel                  # http://127.0.0.1:3847/chat
 ```
 
-PortSpace connection is stored in `~/.fxmind/panel.json` (API URL + integration key; key is never returned to the browser after save). Cursor agent chat uses `CURSOR_API_KEY` (same file or env). Optional: `npm install @cursor/sdk` in the fxmind package so the panel can spawn local agents.
+The panel build is generated automatically during `fxmind -y` installation,
+`fxmind --update -y`, or the package install lifecycle. The manual command
+`npm run build:web` is only needed when developing the workspace UI.
 
-`/fxmind painel` (in agent chat) runs `fxmind serve --open --path /chat`. Click a demanda to inject it into a dedicated agent thread — several threads run in parallel.
+PortSpace/Trello connection is stored in `~/.fxmind/panel.json`.
 
-Dev UI: `npm run dev --prefix web` with `fxmind serve` on port 3847 (Vite proxies `/api`).
+`/fxmind painel` in the agent chat runs `fxmind painel` and can **keep that chat as host** (no API key). The panel binds to the nearest `.fxmind/` from cwd when started.
+
+Dev (monorepo): `npm run dev` from the workspace root — Vite on :5173, API on :3847 (`fxmind serve --api-only`).
 
 ---
 

@@ -13,6 +13,8 @@ const {
   OPENCODE_INSTRUCTIONS_TEMPLATE_DIR,
   OPENCODE_CONFIG_REL,
   OPENCODE_INSTRUCTION_CONFIG_REL,
+  OPENCODE_TOOLS_INSTRUCTION_CONFIG_REL,
+  OPENCODE_TOOLS_INSTRUCTION_FILE,
 } = require("./config");
 
 function readJson(filePath, fallback = null) {
@@ -74,6 +76,23 @@ function installOpenCodeSubagents(targetRoot) {
   fs.copyFileSync(srcInstruction, destInstruction);
   installed.push(rel(projectRoot, destInstruction));
 
+  const srcToolsInstruction = path.join(
+    PACKAGE_ROOT,
+    OPENCODE_INSTRUCTIONS_TEMPLATE_DIR,
+    OPENCODE_TOOLS_INSTRUCTION_FILE,
+  );
+  if (!fs.existsSync(srcToolsInstruction)) {
+    throw new Error(`OpenCode instruction template missing: ${OPENCODE_TOOLS_INSTRUCTION_FILE}`);
+  }
+  const destToolsInstruction = path.join(
+    projectRoot,
+    ".opencode",
+    "instructions",
+    OPENCODE_TOOLS_INSTRUCTION_FILE,
+  );
+  fs.copyFileSync(srcToolsInstruction, destToolsInstruction);
+  installed.push(rel(projectRoot, destToolsInstruction));
+
   mergeOpenCodeSubagentConfig(projectRoot);
 
   return installed;
@@ -103,6 +122,17 @@ function uninstallOpenCodeSubagents(targetRoot) {
     removed.push(rel(projectRoot, destInstruction));
   }
 
+  const destToolsInstruction = path.join(
+    projectRoot,
+    ".opencode",
+    "instructions",
+    OPENCODE_TOOLS_INSTRUCTION_FILE,
+  );
+  if (fs.existsSync(destToolsInstruction)) {
+    fs.unlinkSync(destToolsInstruction);
+    removed.push(rel(projectRoot, destToolsInstruction));
+  }
+
   unmergeOpenCodeSubagentConfig(projectRoot);
   return removed;
 }
@@ -120,6 +150,66 @@ function normalizeInstructions(value) {
   return value.filter((entry) => typeof entry === "string" && entry.length > 0);
 }
 
+const BASH_DISCOVERY_DENY = {
+  grep: "deny",
+  "grep *": "deny",
+  "grep*": "deny",
+  "*grep*": "deny",
+  "* grep *": "deny",
+  rg: "deny",
+  "rg *": "deny",
+  "*rg *": "deny",
+  find: "deny",
+  "find *": "deny",
+  findstr: "deny",
+  "findstr *": "deny",
+  "Select-String *": "deny",
+  ls: "deny",
+  "ls *": "deny",
+  "*ls *": "deny",
+  dir: "deny",
+  "dir *": "deny",
+  "Get-ChildItem *": "deny",
+  gci: "deny",
+  "gci *": "deny",
+};
+
+const DEFAULT_SUBAGENT_MODEL = "opencode/muse-spark-1.2-contributor-free";
+const UNAVAILABLE_SUBAGENT_MODELS = new Set([
+  "openrouter/liquid/lfm-2.5-2.6b:free",
+]);
+
+function isManagedBashDenyKey(key) {
+  return /grep|^rg |rg \*|findstr|^find |^ls|ls \*|^dir |Get-ChildItem|^gci/i.test(key);
+}
+
+function mergeFxmindOpenCodePolicy(existing = {}) {
+  const instructions = normalizeInstructions(existing.instructions);
+  if (!instructions.includes(OPENCODE_TOOLS_INSTRUCTION_CONFIG_REL)) {
+    instructions.unshift(OPENCODE_TOOLS_INSTRUCTION_CONFIG_REL);
+  }
+  if (!instructions.includes(OPENCODE_INSTRUCTION_CONFIG_REL)) {
+    instructions.push(OPENCODE_INSTRUCTION_CONFIG_REL);
+  }
+  existing.instructions = instructions;
+
+  const prevBash =
+    existing.permission?.bash && typeof existing.permission.bash === "object"
+      ? existing.permission.bash
+      : {};
+  existing.permission = {
+    ...(existing.permission || {}),
+    grep: "deny",
+    glob: "deny",
+    external_directory: "allow",
+    bash: {
+      ...prevBash,
+      ...BASH_DISCOVERY_DENY,
+    },
+  };
+  return existing;
+}
+
 function mergeOpenCodeSubagentConfig(targetRoot) {
   const configPath = path.join(path.resolve(targetRoot), OPENCODE_CONFIG_REL);
   const existing = readJson(configPath, {
@@ -130,19 +220,31 @@ function mergeOpenCodeSubagentConfig(targetRoot) {
     existing.$schema = "https://opencode.ai/config.json";
   }
 
-  const instructions = normalizeInstructions(existing.instructions);
-  if (!instructions.includes(OPENCODE_INSTRUCTION_CONFIG_REL)) {
-    instructions.push(OPENCODE_INSTRUCTION_CONFIG_REL);
-  }
-  existing.instructions = instructions;
-
+  mergeFxmindOpenCodePolicy(existing);
   existing.agent = existing.agent && typeof existing.agent === "object" ? existing.agent : {};
   for (const name of OPENCODE_SUBAGENT_NAMES) {
     const prev =
       existing.agent[name] && typeof existing.agent[name] === "object"
         ? existing.agent[name]
         : {};
-    existing.agent[name] = { ...prev, mode: "subagent" };
+    const next = { ...prev, mode: "subagent" };
+    if (
+      name !== "scout" &&
+      (!next.model || UNAVAILABLE_SUBAGENT_MODELS.has(String(next.model)))
+    ) {
+      next.model = DEFAULT_SUBAGENT_MODEL;
+    }
+    if (name === "explore") {
+      next.permission = {
+        ...(next.permission && typeof next.permission === "object" ? next.permission : {}),
+        glob: "allow",
+        grep: "deny",
+        bash: {
+          ...BASH_DISCOVERY_DENY,
+        },
+      };
+    }
+    existing.agent[name] = next;
   }
 
   writeJson(configPath, existing);
@@ -157,12 +259,32 @@ function unmergeOpenCodeSubagentConfig(targetRoot) {
   }
 
   const instructions = normalizeInstructions(existing.instructions).filter(
-    (entry) => entry !== OPENCODE_INSTRUCTION_CONFIG_REL,
+    (entry) =>
+      entry !== OPENCODE_INSTRUCTION_CONFIG_REL &&
+      entry !== OPENCODE_TOOLS_INSTRUCTION_CONFIG_REL,
   );
   if (instructions.length) {
     existing.instructions = instructions;
   } else {
     delete existing.instructions;
+  }
+
+  if (existing.permission && typeof existing.permission === "object") {
+    delete existing.permission.grep;
+    delete existing.permission.glob;
+    if (existing.permission.bash && typeof existing.permission.bash === "object") {
+      for (const key of Object.keys(existing.permission.bash)) {
+        if (isManagedBashDenyKey(key) || Object.prototype.hasOwnProperty.call(BASH_DISCOVERY_DENY, key)) {
+          delete existing.permission.bash[key];
+        }
+      }
+      if (Object.keys(existing.permission.bash).length === 0) {
+        delete existing.permission.bash;
+      }
+    }
+    if (Object.keys(existing.permission).length === 0) {
+      delete existing.permission;
+    }
   }
 
   if (existing.agent && typeof existing.agent === "object") {
@@ -185,8 +307,10 @@ function unmergeOpenCodeSubagentConfig(targetRoot) {
 }
 
 module.exports = {
+  BASH_DISCOVERY_DENY,
   installOpenCodeSubagents,
   uninstallOpenCodeSubagents,
   mergeOpenCodeSubagentConfig,
+  mergeFxmindOpenCodePolicy,
   unmergeOpenCodeSubagentConfig,
 };

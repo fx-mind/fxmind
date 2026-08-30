@@ -19,13 +19,25 @@ const {
   writeInDataRoot,
   ensureDirFor,
 } = require("./lib/layout");
-const GRAPH_CACHE_SCHEMA = 1;
+const GRAPH_CACHE_SCHEMA = 2;
 const GRAPH_CACHE_FILE = REL.graphCache;
 const GENERIC_TOPIC_TOKENS = new Set([
   "config", "script", "module", "system", "core", "main", "utils", "util",
   "handler", "server", "client", "shared", "resource", "data", "file", "files",
   "event", "events", "export", "exports", "function", "local", "return",
   "fivem", "lua", "json", "md", "src", "lib", "api", "type", "types",
+]);
+const GENERIC_RESOURCE_SEGMENTS = new Set([
+  "build", "client", "client-side", "config", "configs", "dist", "server",
+  "server-side", "shared", "shared-side", "src", "ui", "web",
+]);
+const GENERIC_EVENT_NAMESPACES = new Set([
+  "client", "core", "event", "events", "fivem", "main", "player", "resource",
+  "server", "shared", "system",
+]);
+const PATH_EXTENSIONS = new Set([
+  ".cfg", ".css", ".html", ".js", ".json", ".lua", ".md", ".sql", ".ts",
+  ".tsx", ".vue",
 ]);
 
 const PLURAL_MAP = [
@@ -94,8 +106,16 @@ function parseFrontmatter(content) {
 
   const meta = {};
   const body = match[1];
+  let listKey = null;
 
   for (const line of body.split(/\r?\n/)) {
+    const listItemMatch = line.match(/^\s*-\s*(.*?)\s*$/);
+    if (listItemMatch && listKey) {
+      const value = listItemMatch[1].replace(/^["']|["']$/g, "");
+      if (value) meta[listKey].push(value);
+      continue;
+    }
+
     const arrayMatch = line.match(/^([a-zA-Z0-9_]+):\s*\[(.*)\]\s*$/);
     if (arrayMatch) {
       const items = arrayMatch[2]
@@ -103,13 +123,25 @@ function parseFrontmatter(content) {
         .map((item) => item.trim().replace(/^["']|["']$/g, ""))
         .filter(Boolean);
       meta[arrayMatch[1]] = items;
+      listKey = null;
+      continue;
+    }
+
+    const listKeyMatch = line.match(/^([a-zA-Z0-9_]+):\s*$/);
+    if (listKeyMatch) {
+      listKey = listKeyMatch[1];
+      meta[listKey] = [];
       continue;
     }
 
     const scalarMatch = line.match(/^([a-zA-Z0-9_]+):\s*(.+?)\s*$/);
     if (scalarMatch) {
       meta[scalarMatch[1]] = scalarMatch[2].replace(/^["']|["']$/g, "");
+      listKey = null;
+      continue;
     }
+
+    if (line.trim()) listKey = null;
   }
 
   return meta;
@@ -190,7 +222,7 @@ function extractBacktickPaths(content) {
       value.endsWith(".md") ||
       value.includes("config.")
     ) {
-      paths.add(value);
+      if (isConcretePath(value)) paths.add(value);
     }
   }
 
@@ -219,8 +251,60 @@ function extractQuotedEvents(content) {
 }
 
 function resourceFromPath(value) {
-  const match = String(value).match(/resources[/\\]([^/\\]+)/i);
-  return match ? match[1].toLowerCase() : null;
+  const segments = String(value)
+    .split(/[/\\]+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  const resourcesIndex = segments.findIndex(
+    (segment) => segment.toLowerCase() === "resources",
+  );
+  if (resourcesIndex < 0) return null;
+
+  for (const rawSegment of segments.slice(resourcesIndex + 1)) {
+    const segment = rawSegment.replace(/[.,;:]+$/, "");
+    if (
+      !segment ||
+      /^\[.*\]$/.test(segment) ||
+      GENERIC_RESOURCE_SEGMENTS.has(segment.toLowerCase()) ||
+      path.extname(segment)
+    ) {
+      continue;
+    }
+    return segment.toLowerCase();
+  }
+  return null;
+}
+
+function isConcretePath(value) {
+  const candidate = String(value || "").trim().replace(/^["'`]|["'`]$/g, "");
+  if (
+    !candidate ||
+    candidate.length > 240 ||
+    candidate.startsWith("/") ||
+    /[\r\n—*]/.test(candidate) ||
+    /\s/.test(candidate)
+  ) {
+    return false;
+  }
+  const lower = candidate.toLowerCase();
+  return (
+    lower.includes("/") ||
+    lower.includes("\\") ||
+    [...PATH_EXTENSIONS].some((extension) => lower.endsWith(extension))
+  );
+}
+
+function isLinkablePath(value) {
+  const candidate = String(value || "").trim().replace(/^["'`]|["'`]$/g, "");
+  return (
+    isConcretePath(candidate) &&
+    /^(?:resources|\.fxmind)[/\\]/i.test(candidate)
+  );
+}
+
+function isConcreteResource(value) {
+  const resource = String(value || "").trim();
+  return Boolean(resource) && !/^\[[^\]]+\]$/.test(resource);
 }
 
 function normalizeArrayField(value) {
@@ -276,7 +360,7 @@ function buildLearnedNode(slug, content, indexRow, projectRoot) {
     _content: body,
     _paths: paths,
     _events: events,
-    _resources: resources,
+    _resources: resources.filter(isConcreteResource),
     _exports: normalizeArrayField(meta.exports),
     _symbols: normalizeArrayField(meta.symbols),
     _triggers: normalizeArrayField(meta.triggers),
@@ -370,6 +454,33 @@ function pairKey(aId, bId) {
   return aId < bId ? `${aId}|${bId}` : `${bId}|${aId}`;
 }
 
+function eventNamespace(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  const separator = raw.indexOf(":");
+  if (separator < 3) return null;
+  const namespace = raw.slice(0, separator);
+  if (
+    !/^[a-z0-9_-]+$/.test(namespace) ||
+    GENERIC_EVENT_NAMESPACES.has(namespace)
+  ) {
+    return null;
+  }
+  return namespace;
+}
+
+function sharedEventNamespaces(aEvents, bEvents) {
+  const aNamespaces = new Set(
+    normalizeArrayField(aEvents).map(eventNamespace).filter(Boolean),
+  );
+  return [
+    ...new Set(
+      normalizeArrayField(bEvents)
+        .map(eventNamespace)
+        .filter((namespace) => namespace && aNamespaces.has(namespace)),
+    ),
+  ];
+}
+
 function buildMentionPairs(learnedNodes) {
   const pairs = new Set();
   for (const a of learnedNodes) {
@@ -385,8 +496,8 @@ function buildMentionPairs(learnedNodes) {
 }
 
 function pathsOverlap(aPaths, bPaths) {
-  for (const p of aPaths) {
-    for (const bp of bPaths) {
+  for (const p of aPaths.filter(isLinkablePath)) {
+    for (const bp of bPaths.filter(isLinkablePath)) {
       if (bp === p || bp.includes(p) || p.includes(bp)) {
         return true;
       }
@@ -427,14 +538,19 @@ function inferLinks(learnedNodes) {
         continue;
       }
 
-      const bResources = new Set(b._resources);
-      if (a._resources.some((r) => bResources.has(r))) {
+      const bResources = new Set(b._resources.filter(isConcreteResource));
+      if (a._resources.filter(isConcreteResource).some((r) => bResources.has(r))) {
         addLink(links, seen, a.id, b.id, "shared-resource", "extracted");
         continue;
       }
 
       if (pathsOverlap(a._paths, b._paths)) {
         addLink(links, seen, a.id, b.id, "shared-path", "extracted");
+        continue;
+      }
+
+      if (sharedEventNamespaces(a._events, b._events).length > 0) {
+        addLink(links, seen, a.id, b.id, "event-domain", "inferred");
         continue;
       }
 
@@ -881,6 +997,7 @@ module.exports = {
   openGraphInBrowser,
   runGraphCli,
   inferLinks,
+  resourceFromPath,
   GRAPH_CACHE_SCHEMA,
   GRAPH_CACHE_FILE,
 };
