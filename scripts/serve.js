@@ -16,6 +16,7 @@ const panelTaskGit = require("./lib/panel-task-git");
 const panelTrello = require("./lib/panel-trello");
 const panelBuild = require("./lib/panel-build");
 const panelSubagents = require("./lib/panel-subagents");
+const panelProviders = require("./lib/panel-providers");
 
 let workspaceRoot = panel.bindWorkspaceRoot(process.env.FXMIND_TARGET || process.cwd(), { exact: true });
 let workspaceIsExplicit = true;
@@ -325,6 +326,27 @@ async function handleApi(req, res, url) {
     } catch {
       return sendJson(res, 400, { error: "invalid JSON body" });
     }
+  }
+
+  if (req.method === "GET" && pathname === "/api/settings/providers") {
+    return sendJson(res, 200, { providers: panelProviders.listProviders() });
+  }
+
+  const providerMatch = pathname.match(/^\/api\/settings\/providers\/([^/]+)$/);
+  if (providerMatch && req.method === "PUT") {
+    try {
+      const body = await readBody(req);
+      const result = panelProviders.putProvider(providerMatch[1], body);
+      if (!result.ok) return sendJson(res, result.status || 400, { error: result.error });
+      return sendJson(res, 200, result);
+    } catch {
+      return sendJson(res, 400, { error: "invalid JSON body" });
+    }
+  }
+  if (providerMatch && req.method === "DELETE") {
+    const result = panelProviders.deleteProvider(providerMatch[1]);
+    if (!result.ok) return sendJson(res, result.status || 400, { error: result.error });
+    return sendJson(res, 200, result);
   }
 
   if (req.method === "GET" && pathname === "/api/cli/scan") {
@@ -828,6 +850,24 @@ async function handleApi(req, res, url) {
 
     if (!result.ok) return sendJson(res, result.status || 500, { error: result.error });
     return sendJson(res, 200, result);
+  }
+
+  const openFileMatch = pathname.match(/^\/api\/projects\/([^/]+)\/open-file$/);
+  if (openFileMatch && req.method === "POST") {
+    try {
+      const body = await readBody(req);
+      const result = panel.openProjectFile(
+        openFileMatch[1],
+        body.path,
+        body.line,
+        workspaceRoot,
+        { exact: workspaceIsExplicit },
+      );
+      if (!result.ok) return sendJson(res, result.status || 400, result);
+      return sendJson(res, 200, result);
+    } catch {
+      return sendJson(res, 400, { error: "invalid JSON body" });
+    }
   }
 
   const installMatch = pathname.match(/^\/api\/projects\/([^/]+)\/install$/);

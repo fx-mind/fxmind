@@ -67,6 +67,20 @@ const PLAN_MODE_BLOCK = [
   "- End the reply with a clear, numbered list of next steps the user can approve before any code changes",
 ].join("\n");
 
+const QUERY_MODE_BLOCK = [
+  "## Panel execution mode",
+  "",
+  "OPERATION_MODE: query",
+  "",
+  "When OPERATION_MODE is query:",
+  "- The user is asking a question, not requesting a code change — answer it directly and conversationally",
+  "- This run is READ-ONLY regardless of the panel's access mode — do NOT edit, create, or delete any file",
+  "- Do NOT call fxmind_start_task, fxmind_record_gate, or any other write/apply tool",
+  "- The \"Relevant memories (graph query)\" section below is a starting point, not a guaranteed answer — the graph does not always cover what was asked",
+  "- If those memories don't fully answer the question, call fxmind_query again with different terms, or Read specific files, before answering",
+  "- Reply with the answer itself — do not produce a plan and do not start implementing anything",
+].join("\n");
+
 function readIndex(root) {
   const indexPath = path.join(root, ".fxmind", "memory", "_index.md");
   if (!fs.existsSync(indexPath)) return "";
@@ -88,9 +102,12 @@ function panelModeBlock(taskMode) {
 /**
  * Operation mode is orthogonal to taskMode (quick/full, which only tunes gate
  * verbosity within a real execution): task runs the agent normally, plan asks
- * it to stop after producing a plan (no file edits), query never spawns an
- * agent at all (see panel-cli.js:answerFromGraph) and therefore never reaches
- * this file. Anything else falls back to "task".
+ * it to stop after producing a plan (no file edits), query asks it to answer
+ * a question read-only using the graph-query hits below as a starting point
+ * (not a guaranteed answer — see QUERY_MODE_BLOCK). All three always reach
+ * this file; the server still forces accessMode="ask" for plan and query
+ * regardless of the panel's saved preference (see panel-cli.js:runThreadDirect).
+ * Anything else falls back to "task".
  */
 function normalizeOperationMode(value) {
   return value === "plan" || value === "query" ? value : "task";
@@ -100,7 +117,12 @@ function buildContextFile(root, userPrompt, options = {}) {
   const budget = Number(options.budget) || 1200;
   const taskMode = normalizeTaskMode(options.taskMode);
   const operationMode = normalizeOperationMode(options.mode);
-  const modeBlock = operationMode === "plan" ? PLAN_MODE_BLOCK : panelModeBlock(taskMode);
+  const modeBlock =
+    operationMode === "plan"
+      ? PLAN_MODE_BLOCK
+      : operationMode === "query"
+        ? QUERY_MODE_BLOCK
+        : panelModeBlock(taskMode);
   const lines = [
     "# FxMind project context",
     "",

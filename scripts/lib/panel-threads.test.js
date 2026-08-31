@@ -260,6 +260,24 @@ describe("panel-threads", () => {
     assert.equal(byRoot[0].id, b.id);
   });
 
+  it("silent setDiff does not move a thread to the top of the list", () => {
+    const older = threads.injectDemand({ item: { title: "Older" } }).thread;
+    const newer = threads.injectDemand({ item: { title: "Newer" } }).thread;
+    threads.getThreadRaw(older.id).updatedAt = "2026-01-01T00:00:00.000Z";
+    threads.getThreadRaw(newer.id).updatedAt = "2026-08-01T00:00:00.000Z";
+    assert.deepEqual(
+      threads.listThreads().map((thread) => thread.id),
+      [newer.id, older.id],
+    );
+
+    threads.setDiff(older.id, { ok: true, files: [] }, { silent: true });
+    assert.equal(threads.getThreadRaw(older.id).updatedAt, "2026-01-01T00:00:00.000Z");
+    assert.deepEqual(
+      threads.listThreads().map((thread) => thread.id),
+      [newer.id, older.id],
+    );
+  });
+
   it("cancels a running thread and rejects late host replies", () => {
     const { thread } = threads.injectDemand({ item: { title: "Z" } });
     threads.setRunning(thread.id, { cliId: "cursor-agent" });
@@ -268,5 +286,46 @@ describe("panel-threads", () => {
     assert.equal(result.thread.status, "error");
     assert.match(result.thread.error, /interrompida/i);
     assert.equal(threads.hostReply(thread.id, "cheguei").ok, false);
+  });
+
+  it("merges MCP start_task and record_gate snapshots onto the thread", () => {
+    const { thread } = threads.injectDemand({ item: { title: "Gates" } });
+    threads.setRunning(thread.id, { cliId: "opencode" });
+    threads.applyStreamEvent(thread.id, {
+      kind: "mcp",
+      name: "fxmind_fxmind_start_task",
+      label: "fxmind_fxmind_start_task",
+      status: "done",
+      output: JSON.stringify({
+        ok: true,
+        taskActive: true,
+        session: "2026-08-31T00:48:42.709Z",
+        gates: {},
+      }),
+    });
+    threads.applyStreamEvent(thread.id, {
+      kind: "mcp",
+      name: "fxmind_fxmind_record_gate",
+      label: "fxmind_fxmind_record_gate",
+      detail: "Gate A",
+      status: "done",
+      output: JSON.stringify({
+        ok: true,
+        taskActive: true,
+        session: "2026-08-31T00:48:42.709Z",
+        gates: { A: { complete: true, at: "2026-08-31T00:48:52.092Z", note: "def" } },
+      }),
+    });
+    threads.applyStreamEvent(thread.id, {
+      kind: "mcp",
+      name: "fxmind_fxmind_record_gate",
+      label: "fxmind_fxmind_record_gate",
+      detail: "Gate C",
+      status: "done",
+    });
+    const snap = threads.getThread(thread.id).thread;
+    assert.equal(snap.gates.taskActive, true);
+    assert.equal(snap.gates.gates.A.complete, true);
+    assert.equal(snap.gates.gates.C.complete, true);
   });
 });

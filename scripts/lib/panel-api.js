@@ -6,7 +6,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { execFileSync } = require("child_process");
+const { execFileSync, spawn } = require("child_process");
 const {
   REGISTRY_PATH,
   projectIdForRoot,
@@ -685,6 +685,105 @@ function addProjectCorrection(projectId, body = {}, cwd = process.cwd(), options
   }
 }
 
+function editorBinCandidates() {
+  const localApp = process.env.LOCALAPPDATA || "";
+  const paths = [];
+  if (process.platform === "win32") {
+    paths.push(
+      path.join(localApp, "Programs", "cursor", "Cursor.exe"),
+      path.join(localApp, "Programs", "Microsoft VS Code", "Code.exe"),
+    );
+  } else if (process.platform === "darwin") {
+    paths.push(
+      "/Applications/Cursor.app/Contents/MacOS/Cursor",
+      "/Applications/Visual Studio Code.app/Contents/MacOS/Electron",
+    );
+  } else {
+    paths.push("/usr/bin/cursor", "/usr/bin/code");
+  }
+  for (const name of ["cursor", "code"]) {
+    try {
+      if (process.platform === "win32") {
+        const out = execFileSync("cmd.exe", ["/d", "/s", "/c", "where", name], {
+          encoding: "utf8",
+          windowsHide: true,
+          timeout: 4000,
+        }).trim();
+        const line = out.split(/\r?\n/).map((item) => item.trim()).find(Boolean);
+        if (line) paths.push(line);
+      } else {
+        const which = execFileSync("which", [name], { encoding: "utf8", timeout: 4000 }).trim();
+        if (which) paths.push(which);
+      }
+    } catch {
+      /* not on PATH */
+    }
+  }
+  return [...new Set(paths.filter((item) => item && fs.existsSync(item)))];
+}
+
+function spawnDetached(bin, args) {
+  const child = spawn(bin, args, {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+    shell: false,
+  });
+  child.unref();
+}
+
+function openWithProtocol(absPath, line) {
+  const posix = String(absPath).replace(/\\/g, "/");
+  const uri = `cursor://file/${posix}:${line}`;
+  if (process.platform === "win32") {
+    spawnDetached("cmd.exe", ["/d", "/s", "/c", "start", "", uri]);
+    return true;
+  }
+  if (process.platform === "darwin") {
+    spawnDetached("open", [uri]);
+    return true;
+  }
+  spawnDetached("xdg-open", [uri]);
+  return true;
+}
+
+function openProjectFile(projectId, relPath, line, cwd = process.cwd(), options = {}) {
+  const resolved = resolveProjectRoot(projectId, cwd, options);
+  if (!resolved.ok) return resolved;
+
+  const rel = String(relPath || "")
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+  if (!rel || rel.includes("..") || path.isAbsolute(rel)) {
+    return { ok: false, status: 400, error: "invalid path" };
+  }
+
+  const abs = path.resolve(resolved.root, rel);
+  const relative = path.relative(path.resolve(resolved.root), abs);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    return { ok: false, status: 400, error: "path outside project" };
+  }
+  if (!fs.existsSync(abs)) {
+    return { ok: false, status: 404, error: "file not found" };
+  }
+
+  const goto = `${abs}:${lineNum}`;
+  try {
+    openWithProtocol(abs, lineNum);
+  } catch {
+    /* CLI fallback below */
+  }
+  for (const bin of editorBinCandidates()) {
+    try {
+      spawnDetached(bin, ["--goto", goto]);
+      return { ok: true, path: abs, line: lineNum };
+    } catch {
+      /* try next */
+    }
+  }
+  return { ok: true, path: abs, line: lineNum, via: "protocol" };
+}
+
 function promoteProjectCorrection(projectId, correctionId, cwd = process.cwd(), options = {}) {
   const resolved = resolveProjectRoot(projectId, cwd, options);
   if (!resolved.ok) return resolved;
@@ -719,6 +818,7 @@ module.exports = {
   getProjectCorrections,
   getProjectMemoryContent,
   addProjectCorrection,
+  openProjectFile,
   promoteProjectCorrection,
   getGitBranch,
   pushRecentRoot,

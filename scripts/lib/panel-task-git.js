@@ -358,20 +358,107 @@ function resolvePushRemote(root) {
   };
 }
 
+function formatGitSyncError(error) {
+  const text = String(error || "").trim();
+  if (/conflict|CONFLICT/i.test(text)) {
+    return "Conflito ao integrar alterações do remoto. Resolva no Git e tente publicar de novo.";
+  }
+  if (/unstaged changes|staged changes|uncommitted/i.test(text)) {
+    return "Há alterações locais não commitadas impedindo a sincronização com o remoto. Guarde ou descarte-as e tente publicar de novo.";
+  }
+  if (/rejected|fetch first|non-fast-forward/i.test(text)) {
+    return "O remoto tem commits que você ainda não tem localmente. A sincronização automática falhou; atualize o repositório manualmente (git pull) e tente de novo.";
+  }
+  return text || "Não foi possível sincronizar com o remoto.";
+}
+
+function resolvePushTarget(root, branchHint = null) {
+  const localBranch = safeRef(branchHint || currentBranch(root));
+  if (!localBranch || localBranch === "HEAD") {
+    return { ok: false, error: "task branch is unavailable" };
+  }
+
+  const upstream = runGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], root);
+  if (upstream.ok) {
+    const ref = String(upstream.stdout || "").trim();
+    const slash = ref.indexOf("/");
+    if (slash > 0) {
+      const remoteName = ref.slice(0, slash);
+      const remoteBranch = safeRef(ref.slice(slash + 1));
+      const remotes = runGit(["remote"], root);
+      const names = remotes.ok
+        ? String(remotes.stdout || "")
+            .split(/\r?\n/)
+            .map((name) => name.trim())
+            .filter(Boolean)
+        : [];
+      if (remoteBranch && names.includes(remoteName)) {
+        return { ok: true, localBranch, remote: remoteName, branch: remoteBranch };
+      }
+    }
+  }
+
+  const remote = resolvePushRemote(root);
+  if (!remote.ok) return remote;
+  return { ok: true, localBranch, remote: remote.name, branch: localBranch };
+}
+
+function remoteAheadCount(root, remoteName, branch) {
+  const remoteRef = `${remoteName}/${branch}`;
+  const check = runGit(["rev-parse", "--verify", remoteRef], root);
+  if (!check.ok) return { ok: true, count: 0 };
+  const behind = runGit(["rev-list", "--count", `HEAD..${remoteRef}`], root);
+  if (!behind.ok) return behind;
+  return { ok: true, count: Number.parseInt(String(behind.stdout || "").trim(), 10) || 0 };
+}
+
+function syncBeforePush(root, remoteName, branch) {
+  const fetched = runGit(["fetch", remoteName, branch], root);
+  if (!fetched.ok && !/couldn't find remote ref/i.test(fetched.error || "")) {
+    return { ok: false, code: "fetch_failed", error: formatGitSyncError(fetched.error) };
+  }
+  const ahead = remoteAheadCount(root, remoteName, branch);
+  if (!ahead.ok) return ahead;
+  if (!ahead.count) return { ok: true, rebased: false };
+  const rebased = runGit(["pull", "--rebase", "--autostash", remoteName, branch], root);
+  if (!rebased.ok) {
+    return { ok: false, code: "rebase_failed", error: formatGitSyncError(rebased.error) };
+  }
+  return { ok: true, rebased: true };
+}
+
+function pushRefArgs(target) {
+  if (target.localBranch === target.branch) {
+    return [target.remote, target.localBranch];
+  }
+  return [target.remote, `${target.localBranch}:${target.branch}`];
+}
+
 function pushTask(worktreePath, branch = null) {
   const root = path.resolve(String(worktreePath || ""));
   const repo = repoRoot(root);
   if (!repo.ok) return repo;
-  const target = safeRef(branch || currentBranch(root));
-  if (!target || target === "HEAD") return { ok: false, error: "task branch is unavailable" };
-  const remote = resolvePushRemote(root);
-  if (!remote.ok) return remote;
-  const pushed = runGit(["push", "-u", remote.name, target], root);
-  if (!pushed.ok) return { ok: false, error: pushed.error };
+  const target = resolvePushTarget(root, branch);
+  if (!target.ok) return target;
+
+  const synced = syncBeforePush(root, target.remote, target.branch);
+  if (!synced.ok) return synced;
+
+  let rebased = Boolean(synced.rebased);
+  let pushed = runGit(["push", "-u", ...pushRefArgs(target)], root);
+  if (!pushed.ok && /rejected|fetch first|non-fast-forward/i.test(pushed.error || "")) {
+    const retrySync = syncBeforePush(root, target.remote, target.branch);
+    if (!retrySync.ok) return retrySync;
+    rebased = rebased || Boolean(retrySync.rebased);
+    pushed = runGit(["push", "-u", ...pushRefArgs(target)], root);
+  }
+  if (!pushed.ok) return { ok: false, error: formatGitSyncError(pushed.error) };
   return {
     ok: true,
-    branch: target,
-    remote: remote.name,
+    branch: target.branch,
+    localBranch: target.localBranch,
+    remote: target.remote,
+    rebased,
     output: String(pushed.stdout || "").trim().slice(0, 1000),
   };
 }
@@ -441,6 +528,7 @@ module.exports = {
   collectTaskDiff,
   commitTask,
   resolvePushRemote,
+  resolvePushTarget,
   pushTask,
   mergeTaskToCurrent,
   removeWorktree,

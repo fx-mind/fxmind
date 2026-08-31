@@ -62,6 +62,20 @@ describe("panel-cli-stream", () => {
     assert.ok(events.some((e) => e.kind === "cli" && /passo/i.test(e.label)));
   });
 
+  it("marks OpenCode tool-call step finish as done so the panel does not stick", () => {
+    const events = stream.parseLine(
+      JSON.stringify({
+        type: "step_finish",
+        sessionID: "ses_x",
+        part: { type: "step-finish", reason: "tool-calls" },
+      }),
+      "opencode",
+    );
+    const cli = events.find((event) => event.kind === "cli" && /ferramentas/i.test(event.label));
+    assert.ok(cli);
+    assert.equal(cli.status, "done");
+  });
+
   it("parses Codex agent_message completion", () => {
     const events = stream.parseLine(
       JSON.stringify({
@@ -139,6 +153,23 @@ describe("panel-cli-stream", () => {
     assert.equal(todos.todos[1].status, "done");
   });
 
+  it("parses OpenCode error events with provider details", () => {
+    const events = stream.parseLine(
+      JSON.stringify({
+        type: "error",
+        error: {
+          message:
+            'AI_APICallError: Error from provider (Console): Upstream request failed: [invalid_request_error] "reasoning.effort" does not support "none" with this model.',
+        },
+      }),
+      "opencode",
+    );
+    const err = events.find((event) => event.kind === "cli" && event.label === "Erro");
+    assert.ok(err);
+    assert.match(err.detail, /reasoning\.effort/);
+    assert.equal(err.status, "error");
+  });
+
   it("parses a tolerant fxmind-ask fenced block", () => {
     const events = stream.parseLineEnriched(
       'work continues\n  ``` fxmind-ask  \n  {"question":"Choose a target","options":[{"id":"a","label":"A"},{"id":"b","label":"B"}],"multi":true}\n  ```',
@@ -203,5 +234,140 @@ describe("panel-git-diff", () => {
     ]);
     assert.equal(files.length, 1);
     assert.equal(files[0].path, "resources/radio/client.lua");
+  });
+
+  it("keeps only files this demand edited", () => {
+    const filtered = gitDiff.filterDiffToPaths(
+      {
+        ok: true,
+        files: [
+          { path: "resources/a.lua", status: "modified", additions: 2, deletions: 0, patch: "" },
+          { path: "resources/other.lua", status: "modified", additions: 8, deletions: 1, patch: "" },
+        ],
+      },
+      new Set(["resources/a.lua"]),
+    );
+    assert.equal(filtered.files.length, 1);
+    assert.equal(filtered.files[0].path, "resources/a.lua");
+    assert.equal(filtered.stats.changed, 1);
+  });
+
+  it("extracts edited paths relative to the project root and ignores reads", () => {
+    const root = "F:\\proj";
+    const paths = gitDiff.extractEditedPaths(
+      {
+        projectRoot: root,
+        activity: [
+          {
+            kind: "tool",
+            name: "edit",
+            label: `Editou ${root}\\src\\a.lua`,
+            detail: `${root}\\src\\a.lua`,
+          },
+          {
+            kind: "tool",
+            name: "read",
+            label: `Leu ${root}\\src\\b.lua`,
+            detail: `${root}\\src\\b.lua`,
+          },
+        ],
+      },
+      root,
+    );
+    assert.deepEqual([...paths], ["src/a.lua"]);
+  });
+
+  it("allowlists this demand's files even when the working tree has leftover edits", () => {
+    const allow = gitDiff.taskAllowlist(
+      {
+        projectRoot: "/repo",
+        taskFiles: ["src/this.lua"],
+        activity: [
+          { kind: "tool", name: "read", label: "Leu leftover.lua", detail: "/repo/leftover.lua" },
+        ],
+        diff: {
+          files: [{ path: "src/other-demand.lua", status: "modified" }],
+        },
+      },
+      "/repo",
+    );
+    assert.equal(allow.has("src/this.lua"), true);
+    assert.equal(allow.has("src/other-demand.lua"), false);
+  });
+});
+
+describe("parseGateSnapshotFromMcp", () => {
+  it("reads a record_gate JSON snapshot", () => {
+    const snapshot = stream.parseGateSnapshotFromMcp({
+      kind: "mcp",
+      name: "fxmind_fxmind_record_gate",
+      output: JSON.stringify({
+        ok: true,
+        taskActive: true,
+        gates: { A: { complete: true, at: "2026-08-31T00:48:52.092Z" } },
+      }),
+    });
+    assert.equal(snapshot.taskActive, true);
+    assert.equal(snapshot.gates.A.complete, true);
+    assert.equal(snapshot.ok, undefined);
+  });
+
+  it("falls back to the gate letter in the tool detail when output is truncated", () => {
+    const snapshot = stream.parseGateSnapshotFromMcp({
+      kind: "mcp",
+      name: "fxmind_fxmind_record_gate",
+      detail: "Gate C",
+      output: '{"ok": true, "gates": {',
+    });
+    assert.equal(snapshot.gates.C.complete, true);
+  });
+});
+
+describe("gatesForCurrentRun", () => {
+  const { gatesForCurrentRun } = require("./panel-cli");
+
+  it("keeps MCP stream gates when the on-disk session is leftover from a previous task", () => {
+    const raw = {
+      runStartedAt: "2026-08-31T00:48:28.390Z",
+      _gateSession: "2026-08-30T03:42:18.132Z",
+      gates: {
+        taskActive: true,
+        session: "2026-08-31T00:48:42.709Z",
+        gates: { A: { complete: true, at: "2026-08-31T00:48:52.092Z" } },
+      },
+    };
+    const fileGates = {
+      taskActive: false,
+      session: "2026-08-30T03:42:18.132Z",
+      note: "mover setgarages para admin",
+      gates: {
+        A: { complete: true, at: "2026-08-30T03:42:20.000Z" },
+      },
+    };
+    const result = gatesForCurrentRun(raw, fileGates);
+    assert.equal(result.taskActive, true);
+    assert.equal(result.gates.A.at, "2026-08-31T00:48:52.092Z");
+    assert.equal(result.note, undefined);
+  });
+
+  it("uses the file snapshot when start_task created a new session during this run", () => {
+    const raw = {
+      runStartedAt: "2026-08-31T00:48:28.390Z",
+      _gateSession: "2026-08-30T03:42:18.132Z",
+      gates: { taskActive: true, gates: {} },
+    };
+    const fileGates = {
+      taskActive: false,
+      session: "2026-08-31T00:48:42.709Z",
+      completedAt: "2026-08-31T00:50:27.345Z",
+      gates: {
+        A: { complete: true, at: "2026-08-31T00:48:52.092Z" },
+        C: { complete: true, at: "2026-08-31T00:50:27.345Z" },
+      },
+    };
+    const result = gatesForCurrentRun(raw, fileGates);
+    assert.equal(result.taskActive, false);
+    assert.equal(result.gates.A.complete, true);
+    assert.equal(result.gates.C.complete, true);
   });
 });

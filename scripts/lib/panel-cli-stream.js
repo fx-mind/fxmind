@@ -94,13 +94,15 @@ function extractDetail(value) {
   return String(extractPath(value) || "").slice(0, 160);
 }
 
+const MCP_OUTPUT_LIMIT = 8000;
+
 function extractOutput(value) {
   if (!value || typeof value !== "object") return "";
   const state = value.state && typeof value.state === "object" ? value.state : value;
   const raw = state.output || state.result || value.output || "";
-  if (typeof raw === "string") return raw.trim().slice(0, 800);
+  if (typeof raw === "string") return raw.trim().slice(0, MCP_OUTPUT_LIMIT);
   try {
-    return JSON.stringify(raw).slice(0, 800);
+    return JSON.stringify(raw).slice(0, MCP_OUTPUT_LIMIT);
   } catch {
     return "";
   }
@@ -142,6 +144,69 @@ function parseGatesFromText(text) {
     });
   }
   return gates;
+}
+
+const GATE_TOOL_RE = /(?:^|_)(start_task|record_gate|gate_status)$/i;
+const GATE_LETTER_RE = /\b(START|[ABVC])\b/i;
+
+function isGateTool(name) {
+  return GATE_TOOL_RE.test(String(name || ""));
+}
+
+function parseJsonObject(text) {
+  const str = String(text || "").trim();
+  if (!str.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(str);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function isGateSnapshot(value) {
+  if (!value || typeof value !== "object") return false;
+  return Boolean(
+    value.gates ||
+      value.taskActive != null ||
+      value.session ||
+      value.completedAt,
+  );
+}
+
+function parseGateSnapshotFromMcp(event) {
+  if (!event || (event.kind !== "mcp" && event.kind !== "tool")) return null;
+  if (!isGateTool(event.name)) return null;
+  const parsed = parseJsonObject(event.output);
+  if (isGateSnapshot(parsed)) {
+    const snapshot = { ...parsed };
+    delete snapshot.ok;
+    return snapshot;
+  }
+  const name = String(event.name || "");
+  if (/start_task$/i.test(name)) {
+    return {
+      taskActive: true,
+      session: new Date().toISOString(),
+      gates: {},
+    };
+  }
+  if (/record_gate$/i.test(name)) {
+    const letter = String(event.detail || "").match(GATE_LETTER_RE)?.[1]?.toUpperCase();
+    if (!letter || letter === "START") {
+      return { taskActive: true, session: new Date().toISOString(), gates: {} };
+    }
+    return {
+      gates: {
+        [letter]: {
+          complete: true,
+          at: new Date().toISOString(),
+          note: String(event.detail || "").trim(),
+        },
+      },
+    };
+  }
+  return null;
 }
 
 const VERDICT_RE = /VERDICT:\s*(VERIFIED WITH CAVEATS|VERIFIED|REFUTED)/i;
@@ -236,7 +301,7 @@ function toolEvent(name, detail, status = "running", output = "", metadata = {})
     kind,
     name: name || "tool",
     detail: detail ? String(detail).slice(0, 240) : "",
-    output: output ? String(output).slice(0, 800) : "",
+    output: output ? String(output).slice(0, MCP_OUTPUT_LIMIT) : "",
     label,
     status,
     ...(server ? { server } : {}),
@@ -287,7 +352,10 @@ function fromPart(part, statusHint) {
   if (type === "step-finish" || type === "step_finish") {
     const reason = String(part.reason || "").toLowerCase();
     if (reason === "tool-calls") {
-      return [{ kind: "cli", label: "CLI: chamando ferramentas", detail: "", status: "running" }];
+      // step-finish is a completed step boundary — individual tool/MCP events
+      // carry the live "running" state. Marking this as running leaves the
+      // panel stuck on "Consultando ferramentas" forever.
+      return [{ kind: "cli", label: "CLI: chamando ferramentas", detail: "", status: "done" }];
     }
     return [{ kind: "cli", label: "CLI: passo concluído", detail: reason, status: "done" }];
   }
@@ -395,8 +463,14 @@ function parseJsonEvent(ev) {
   }
 
   if (type === "error") {
-    const msg = ev.error?.message || collectText(ev) || "erro na CLI";
-    out.push({ kind: "cli", label: "Erro", detail: String(msg).slice(0, 240), status: "error" });
+    const msg =
+      ev.error?.message ||
+      (typeof ev.error === "string" ? ev.error : null) ||
+      ev.message ||
+      (ev.error && typeof ev.error === "object" ? JSON.stringify(ev.error) : null) ||
+      collectText(ev) ||
+      "erro na CLI";
+    out.push({ kind: "cli", label: "Erro", detail: String(msg).slice(0, 500), status: "error" });
     return out;
   }
 
@@ -529,6 +603,8 @@ module.exports = {
   parseLineEnriched,
   parseTodosFromText,
   parseGatesFromText,
+  parseGateSnapshotFromMcp,
+  isGateTool,
   parseVerdictFromText,
   parseAskFromText,
   parseAskEventsFromText,

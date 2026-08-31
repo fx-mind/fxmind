@@ -10,6 +10,7 @@ const os = require("os");
 const path = require("path");
 const {
   parseGatesFromText,
+  parseGateSnapshotFromMcp,
   parseTodosFromText,
   normalizeAskPayload,
 } = require("./panel-cli-stream");
@@ -89,12 +90,15 @@ function persistableThread(thread) {
     gates: thread.gates || null,
     todos: thread.todos || [],
     diff: thread.diff || null,
+    gitSnap: thread.gitSnap || null,
+    taskFiles: Array.isArray(thread.taskFiles) ? thread.taskFiles : [],
     question: thread.question || null,
     worktree: thread.worktree || null,
     commits: thread.commits || [],
     runStartedAt: thread.runStartedAt || null,
     runEndedAt: thread.runEndedAt || null,
     cliId: thread.cliId || null,
+    cliSession: thread.cliSession || null,
     runs: Array.isArray(thread.runs) ? thread.runs : [],
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
@@ -200,6 +204,10 @@ function normalizeThread(input) {
     gates: input.gates || null,
     todos: Array.isArray(input.todos) ? input.todos : [],
     diff: input.diff || null,
+    gitSnap: input.gitSnap && typeof input.gitSnap === "object" ? input.gitSnap : null,
+    taskFiles: Array.isArray(input.taskFiles)
+      ? input.taskFiles.map((file) => String(file || "")).filter(Boolean)
+      : [],
     question: normalizeQuestion(input.question),
     worktree:
       input.worktree && typeof input.worktree === "object"
@@ -213,6 +221,7 @@ function normalizeThread(input) {
     runStartedAt: input.runStartedAt || null,
     runEndedAt: input.runEndedAt || null,
     cliId: input.cliId || null,
+    cliSession: input.cliSession || null,
     createdAt: input.createdAt || new Date().toISOString(),
     updatedAt: input.updatedAt || new Date().toISOString(),
   };
@@ -448,6 +457,8 @@ function createThread(input = {}) {
     gates: null,
     todos: [],
     diff: null,
+    gitSnap: null,
+    taskFiles: [],
     question: null,
     worktree: null,
     commits: [],
@@ -612,6 +623,9 @@ function applyStreamEvent(id, event) {
       status: event.status || "running",
       at: now,
     });
+    if (event.status === "done" || event.output) {
+      mergeGateSnapshot(thread, parseGateSnapshotFromMcp(event));
+    }
   } else if (event.kind === "cli") {
     message.parts = message.parts || [];
     message.parts.push({
@@ -673,7 +687,21 @@ function hostMcpActivity(id, event = {}) {
 
 function appendActivity(thread, item) {
   thread.activity = thread.activity || [];
+
+  const closeCliToolPhase = () => {
+    for (const entry of thread.activity) {
+      if (
+        entry.kind === "cli" &&
+        entry.status === "running" &&
+        /chamando ferramentas|iniciou um passo/i.test(String(entry.label || ""))
+      ) {
+        entry.status = "done";
+      }
+    }
+  };
+
   if ((item.kind === "tool" || item.kind === "mcp") && item.status === "done") {
+    closeCliToolPhase();
     const prev = [...thread.activity]
       .reverse()
       .find(
@@ -691,6 +719,11 @@ function appendActivity(thread, item) {
       return;
     }
   }
+
+  if (item.kind === "cli" && item.status === "done") {
+    closeCliToolPhase();
+  }
+
   thread.activity.push({
     id: `a${thread.activity.length + 1}`,
     ...item,
@@ -729,6 +762,18 @@ function mergeMarkerGates(thread, gates) {
   }
 }
 
+function mergeGateSnapshot(thread, snapshot) {
+  if (!thread || !snapshot || typeof snapshot !== "object") return;
+  const current = thread.gates && typeof thread.gates === "object" ? thread.gates : {};
+  const currentMap = current.gates && typeof current.gates === "object" ? current.gates : {};
+  const nextMap = snapshot.gates && typeof snapshot.gates === "object" ? snapshot.gates : {};
+  thread.gates = {
+    ...current,
+    ...snapshot,
+    gates: { ...currentMap, ...nextMap },
+  };
+}
+
 function setGates(id, gates) {
   const thread = threads.get(id);
   if (!thread || !gates) return;
@@ -737,11 +782,13 @@ function setGates(id, gates) {
   emit(id, { type: "gates", thread: publicThread(thread) });
 }
 
-function setDiff(id, diff) {
+function setDiff(id, diff, options = {}) {
   const thread = threads.get(id);
   if (!thread) return;
   thread.diff = diff || null;
-  thread.updatedAt = new Date().toISOString();
+  if (!options.silent) {
+    thread.updatedAt = new Date().toISOString();
+  }
   emit(id, { type: "diff", thread: publicThread(thread) });
 }
 
@@ -757,6 +804,35 @@ function touchThread(id) {
   thread.updatedAt = new Date().toISOString();
   emit(id, { type: "status", thread: publicThread(thread) });
   return publicThread(thread);
+}
+
+function setCliSession(id, sessionId) {
+  const thread = threads.get(id);
+  if (!thread || !sessionId) return null;
+  if (thread.cliSession === sessionId && thread._cliSession === sessionId) return thread;
+  thread.cliSession = sessionId;
+  thread._cliSession = sessionId;
+  thread.updatedAt = new Date().toISOString();
+  schedulePersist(thread);
+  return thread;
+}
+
+function clearCliSession(id) {
+  const thread = threads.get(id);
+  if (!thread) return null;
+  let changed = false;
+  if (thread.cliSession) {
+    delete thread.cliSession;
+    changed = true;
+  }
+  if (thread._cliSession) {
+    delete thread._cliSession;
+    changed = true;
+  }
+  if (!changed) return thread;
+  thread.updatedAt = new Date().toISOString();
+  schedulePersist(thread);
+  return thread;
 }
 
 function finishAssistant(id, extra = {}) {
@@ -828,6 +904,11 @@ function setRunning(id, meta = {}) {
   thread.activity = [];
   thread.gates = null;
   thread.todos = [];
+  const knownFiles = new Set(thread.taskFiles || []);
+  for (const file of thread.diff?.files || []) {
+    if (file?.path) knownFiles.add(file.path);
+  }
+  thread.taskFiles = [...knownFiles];
   thread.diff = null;
   const last = thread.messages.at(-1);
   if (!last || last.role !== "assistant" || last.streaming !== true) {
@@ -1005,6 +1086,7 @@ function claimThread(id) {
   thread.error = null;
   thread.runStartedAt = thread.runStartedAt || new Date().toISOString();
   thread.runEndedAt = null;
+  thread.gates = null;
   thread.updatedAt = new Date().toISOString();
   emit(id, { type: "status", thread: publicThread(thread) });
   return { ok: true, job: toJob(thread) };
@@ -1170,6 +1252,8 @@ module.exports = {
   setGates,
   setDiff,
   touchThread,
+  setCliSession,
+  clearCliSession,
   finishAssistant,
   cancelThread,
   setRunning,

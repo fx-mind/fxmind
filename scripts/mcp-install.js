@@ -3,6 +3,7 @@
  */
 
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const MCP_SERVER_KEY = "fxmind";
@@ -346,9 +347,21 @@ function mcpStatusMcpServersJson(configPath) {
 }
 
 function resolveOpenCodeMcpLaunch() {
+  if (process.platform === "win32") {
+    const appData = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
+    const script = path
+      .join(appData, "npm", "node_modules", "fxmind", "scripts", "mcp-server.js")
+      .replace(/\\/g, "/");
+    return {
+      type: "local",
+      command: ["node", script],
+      enabled: true,
+    };
+  }
+  const entry = buildFxmindMcpEntry();
   return {
     type: "local",
-    command: [FXMIND_MCP_COMMAND],
+    command: [entry.command, ...(entry.args || [])],
     enabled: true,
   };
 }

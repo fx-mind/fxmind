@@ -2,7 +2,9 @@
  * Capture git working-tree diffs for a finished panel run.
  */
 
+const crypto = require("crypto");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
 
@@ -61,15 +63,147 @@ function filterTaskFiles(files) {
   return (files || []).filter((file) => !isFxmindNoisePath(file.path));
 }
 
+function hashFile(abs) {
+  try {
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) return null;
+    return crypto.createHash("sha1").update(fs.readFileSync(abs)).digest("hex");
+  } catch {
+    return null;
+  }
+}
+
+function parsePorcelainLine(line) {
+  const raw = String(line || "");
+  if (raw.length < 4) return null;
+  const xy = raw.slice(0, 2);
+  let rest = raw.slice(3).trim();
+  if (rest.startsWith('"') && rest.endsWith('"')) rest = rest.slice(1, -1);
+  const renamed = rest.split(" -> ");
+  const file = renamed.length === 2 ? renamed[1] : rest;
+  if (!file) return null;
+  return { xy, path: normalizeRelPath(file) };
+}
+
+function snapshotFilesFromStatus(root, status) {
+  const files = {};
+  for (const line of String(status || "").split(/\r?\n/)) {
+    const entry = parsePorcelainLine(line);
+    if (!entry || isFxmindNoisePath(entry.path)) continue;
+    files[entry.path] = {
+      xy: entry.xy,
+      hash: hashFile(path.join(root, entry.path)),
+    };
+  }
+  return files;
+}
+
 function snapshot(root) {
   if (!root) return null;
   const head = git(root, ["rev-parse", "HEAD"]);
   if (head === null) return { ok: false, error: "not a git repository" };
+  const status = git(root, ["status", "--porcelain"]) || "";
   return {
     ok: true,
     head: String(head || "").trim(),
-    status: git(root, ["status", "--porcelain"]) || "",
+    status,
+    files: snapshotFilesFromStatus(root, status),
   };
+}
+
+function pathsChangedSince(root, snap) {
+  const now = snapshot(root);
+  if (!now || !now.ok) return [];
+  const before = (snap && snap.files) || {};
+  const out = [];
+  for (const [rel, meta] of Object.entries(now.files || {})) {
+    const prev = before[rel];
+    if (!prev || prev.hash !== meta.hash) out.push(rel);
+  }
+  return out;
+}
+
+const EDIT_NAME_RE = /write|edit|strreplace|applypatch|multiedit|fileedit/i;
+const EDIT_LABEL_RE = /^(editou|edited|wrote|updated)\s+/i;
+const TEMP_CTX_RE = /fxmind-ctx-/i;
+
+function isEditRecord(item) {
+  if (!item || item.kind === "mcp") return false;
+  if (item.kind === "write") return true;
+  if (EDIT_NAME_RE.test(String(item.name || ""))) return true;
+  if (EDIT_LABEL_RE.test(String(item.label || ""))) return true;
+  return false;
+}
+
+function isTempPath(relOrAbs) {
+  const value = String(relOrAbs || "").replace(/\\/g, "/");
+  if (!value) return true;
+  if (TEMP_CTX_RE.test(value)) return true;
+  const tmp = os.tmpdir().replace(/\\/g, "/");
+  if (tmp && value.toLowerCase().startsWith(tmp.replace(/\\/g, "/").toLowerCase())) return true;
+  return false;
+}
+
+function toProjectRel(projectRoot, value) {
+  let raw = String(value || "").trim();
+  raw = raw.replace(/^(editou|edited|wrote|updated)\s+/i, "");
+  if (!raw || isTempPath(raw)) return "";
+  const root = path.resolve(String(projectRoot || "")).replace(/\\/g, "/");
+  let candidate = raw.replace(/\\/g, "/");
+  if (/^[A-Za-z]:\//.test(candidate) || candidate.startsWith("/")) {
+    if (!root) return "";
+    const abs = path.resolve(raw).replace(/\\/g, "/");
+    const prefix = root.endsWith("/") ? root : `${root}/`;
+    if (abs.toLowerCase() === root.toLowerCase()) return "";
+    if (!abs.toLowerCase().startsWith(prefix.toLowerCase())) return "";
+    candidate = abs.slice(prefix.length);
+  }
+  const rel = normalizeRelPath(candidate);
+  if (!rel || isFxmindNoisePath(rel) || isTempPath(rel)) return "";
+  if (!rel.includes("/") && !/\.\w{1,8}$/.test(rel)) return "";
+  return rel;
+}
+
+function extractEditedPaths(raw, projectRoot) {
+  const root = projectRoot || raw?.projectRoot || "";
+  const paths = new Set();
+  const consider = (item) => {
+    if (!isEditRecord(item)) return;
+    const rel = toProjectRel(root, item.detail || "") || toProjectRel(root, item.label || "");
+    if (rel) paths.add(rel);
+  };
+  for (const item of raw?.activity || []) consider(item);
+  for (const message of raw?.messages || []) {
+    for (const part of message.parts || []) consider(part);
+  }
+  return paths;
+}
+
+function filterDiffToPaths(diff, allowed) {
+  const allow = allowed instanceof Set ? allowed : new Set(allowed || []);
+  if (!diff || !allow.size) return diff;
+  const files = filterTaskFiles((diff.files || []).filter((file) => allow.has(normalizeRelPath(file.path))));
+  const meta = summarizeFiles(files);
+  return {
+    ...diff,
+    files,
+    summary: meta.summary,
+    stats: meta.stats,
+  };
+}
+
+function taskAllowlist(raw, root) {
+  const allow = new Set();
+  for (const rel of raw?.taskFiles || []) {
+    const pathRel = normalizeRelPath(rel);
+    if (pathRel && !isFxmindNoisePath(pathRel)) allow.add(pathRel);
+  }
+  for (const rel of extractEditedPaths(raw, raw?.projectRoot || root)) allow.add(rel);
+  if (allow.size) return allow;
+  for (const file of raw?.diff?.files || []) {
+    const pathRel = normalizeRelPath(file.path);
+    if (pathRel && !isFxmindNoisePath(pathRel)) allow.add(pathRel);
+  }
+  return allow;
 }
 
 function parsePatch(patch) {
@@ -192,4 +326,10 @@ module.exports = {
   filterTaskFiles,
   summarizeFiles,
   discardPath,
+  normalizeRelPath,
+  toProjectRel,
+  extractEditedPaths,
+  filterDiffToPaths,
+  pathsChangedSince,
+  taskAllowlist,
 };

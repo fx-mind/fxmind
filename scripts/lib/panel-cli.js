@@ -18,6 +18,30 @@ const taskGit = require("./panel-task-git");
 const tools = require("../fxmind-tools");
 const { scheduleGraphRebuildBackground } = require("./graph-freshness");
 const { readPanelSubagentDefaults } = require("./panel-subagents");
+const panelProviders = require("./panel-providers");
+const { installMcpForAgent, mcpStatusForAgent } = require("../mcp-install");
+
+const CLI_MCP_AGENTS = {
+  opencode: "opencode",
+  claude: "claude",
+  codex: "codex",
+};
+
+function ensureCliMcp(root, cliId) {
+  const agentId = CLI_MCP_AGENTS[cliId];
+  if (!agentId || !root) return;
+  try {
+    const status = mcpStatusForAgent(root, agentId);
+    const command = status.entry?.command || [];
+    const commandText = JSON.stringify(command);
+    const needsRefresh =
+      agentId === "opencode" &&
+      (command[0] === "fxmind-mcp" || /\$\{env:/.test(commandText));
+    if (!status.installed || needsRefresh) installMcpForAgent(root, agentId);
+  } catch {
+    /* best effort */
+  }
+}
 
 const scheduledThreads = new Set();
 const activeThreads = new Set();
@@ -151,8 +175,9 @@ function notifyThreadDone(threadId) {
 /**
  * Auto-judge: only when the user explicitly configured it (never for
  * "manual", which is the default and only fires from the "Pedir revisão"
- * button). Never runs for query-mode threads (no real execution happened)
- * or for a run that ended in error (nothing to review yet).
+ * button). Never runs for query-mode threads (a question-and-answer reply,
+ * never a diff — there is nothing for a judge to review) or for a run that
+ * ended in error (nothing to review yet).
  */
 function maybeTriggerJudge(threadId, raw) {
   if (!raw || raw.mode === "query" || raw.status !== "done") return;
@@ -171,12 +196,6 @@ function usesHostCursorAgent(cliId = null) {
 }
 
 async function dispatchThread(threadId, options = {}) {
-  const raw = threads.getThreadRaw(threadId);
-  if (raw?.mode === "query") {
-    // Never touches the scheduler/concurrency slots or spawns a process —
-    // answered straight from the knowledge graph.
-    return answerFromGraph(threadId, options);
-  }
   if (usesHostCursorAgent(options.cliId)) {
     const raw = threads.getThreadRaw(threadId);
     const host = threads.hostStatus();
@@ -188,10 +207,12 @@ async function dispatchThread(threadId, options = {}) {
       notifyThreadDone(threadId);
       return { ok: false, error: "host_not_connected" };
     }
+    const root = raw?.worktree?.path || raw?.projectRoot || process.cwd();
+    stampGateSession(raw, root);
     return {
       ok: true,
       mode: "host",
-      root: raw?.worktree?.path || raw?.projectRoot || process.cwd(),
+      root,
     };
   }
   return scheduleThread(threadId, options);
@@ -560,6 +581,132 @@ function formatCursorCliError(stderr = "") {
   return text || "CLI falhou. Verifique Settings → Execução e modelo.";
 }
 
+function extractOpencodeStreamError(text = "") {
+  const raw = String(text || "");
+  const quoted = raw.match(/error\.error="([^"]+)"/);
+  if (quoted) return quoted[1];
+  const api = raw.match(/AI_APICallError:[^\n]+/);
+  if (api) return api[0].replace(/^AI_APICallError:\s*/, "");
+  const invalid = raw.match(/invalid_request_error[^\n]*/);
+  if (invalid) return invalid[0];
+  return null;
+}
+
+function isOpencodeSessionCorruptionError(text = "") {
+  const raw = String(text || "");
+  return /duplicate function_call_output/i.test(raw) || /each function_call must have exactly one matching function_call_output/i.test(raw);
+}
+
+const OPENCODE_SESSION_CORRUPTION_MESSAGE =
+  "Sessão do OpenCode ficou inconsistente (histórico de ferramentas duplicado). Envie a mensagem de novo — uma sessão nova será aberta automaticamente.";
+
+function humanizeOpencodeProviderError(text = "") {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  if (isOpencodeSessionCorruptionError(raw)) return OPENCODE_SESSION_CORRUPTION_MESSAGE;
+
+  const jsonStart = raw.indexOf('{"name":"APIError"');
+  if (jsonStart >= 0) {
+    try {
+      const payload = JSON.parse(raw.slice(jsonStart));
+      const message = payload?.data?.message || payload?.message;
+      if (message && isOpencodeSessionCorruptionError(message)) return OPENCODE_SESSION_CORRUPTION_MESSAGE;
+      if (message) return `OpenCode: ${message}`;
+    } catch {
+      /* ignore malformed JSON fragments */
+    }
+  }
+
+  const upstream = raw.match(/Upstream request failed:\s*\[invalid_request_error\]\s*([^\n"]+)/i);
+  if (upstream) {
+    const detail = upstream[1].trim();
+    if (isOpencodeSessionCorruptionError(detail)) return OPENCODE_SESSION_CORRUPTION_MESSAGE;
+    return `OpenCode: ${detail}`;
+  }
+
+  return null;
+}
+
+function clearOpencodeCliSession(threadId) {
+  threads.clearCliSession(threadId);
+  try {
+    const config = readPanelConfig();
+    if (config.agent?.opencodeSession) {
+      delete config.agent.opencodeSession;
+      writePanelConfig(config);
+    }
+  } catch {
+    /* best-effort */
+  }
+}
+
+function lastCliError(snapshot, sinceMs = 0) {
+  const since = Number(sinceMs) || 0;
+  const inRun = (at) => {
+    if (!since) return true;
+    const ts = Date.parse(at || "");
+    return Number.isFinite(ts) && ts >= since - 2000;
+  };
+
+  for (const message of [...(snapshot?.messages || [])].reverse()) {
+    const msgAt = Date.parse(message.at || "") || 0;
+    if (since && msgAt && msgAt < since - 2000) continue;
+    for (const part of [...(message.parts || [])].reverse()) {
+      if (part.type === "cli" && part.label === "Erro" && part.detail && part.detail !== "erro na CLI") {
+        return part.detail;
+      }
+    }
+  }
+  for (const item of [...(snapshot?.activity || [])].reverse()) {
+    if (!inRun(item.at)) continue;
+    if (item.status === "error" && item.detail && item.detail !== "erro na CLI") {
+      return item.detail;
+    }
+  }
+  return null;
+}
+
+function hasAssistantContent(snapshot) {
+  return (snapshot?.messages || []).some((message) => {
+    if (message.role !== "assistant") return false;
+    if (String(message.content || "").trim()) return true;
+    return (message.parts || []).some(
+      (part) => (part.type === "text" || part.type === "think") && String(part.text || "").trim(),
+    );
+  });
+}
+
+function formatCliError(cliId, stderr = "", snapshot = null, sinceMs = 0) {
+  const text = String(stderr || "").trim();
+  if (cliId === "cursor-agent") return formatCursorCliError(text);
+
+  const fromParts = lastCliError(snapshot, sinceMs);
+  const humanizedFromParts = humanizeOpencodeProviderError(fromParts);
+  if (humanizedFromParts) return humanizedFromParts;
+  if (fromParts) return fromParts;
+
+  const humanized = humanizeOpencodeProviderError(text);
+  if (humanized) return humanized;
+
+  const streamError = extractOpencodeStreamError(text);
+  if (streamError) {
+    const humanizedStream = humanizeOpencodeProviderError(streamError);
+    return humanizedStream || `OpenCode: ${streamError}`;
+  }
+
+  if (/config file at .*opencode\.json is not valid/i.test(text)) {
+    return "OpenCode rejeitou o opencode.json do projeto. Rode `fxmind hooks install` no repositório ou corrija o arquivo manualmente.";
+  }
+  if (/not logged|login required|authentication/i.test(text)) {
+    return "OpenCode não autenticou. Faça login na CLI (`opencode auth`) ou troque o modelo em Settings → Modelos.";
+  }
+  if (/model.*not found|unknown model|does not exist/i.test(text)) {
+    return "Modelo não disponível nesta CLI. Escolha outro em Settings → Modelos.";
+  }
+
+  return text || "A CLI encerrou com erro. Veja os detalhes na atividade ou tente outro modelo.";
+}
+
 function whichBin(name) {
   if (!name) return null;
   try {
@@ -868,7 +1015,14 @@ function getAgentSettings() {
       anthropicPrefix: byok.anthropic ? keyPrefix(byok.anthropic) : "",
       openaiPrefix: byok.openai ? keyPrefix(byok.openai) : "",
       cursorPrefix: byok.cursor ? keyPrefix(byok.cursor) : "",
+      // Not a secret — returned in full so the field can be edited directly.
+      openaiBaseUrl: byok.openaiBaseUrl || "",
     },
+    // Extra providers beyond the 3 fixed keys above — see panel-providers.js.
+    // Managed through its own routes (PUT/DELETE /api/settings/providers/:id)
+    // rather than this settings payload, but listed here too so Settings can
+    // render everything from a single load.
+    providers: panelProviders.listProviders(),
     updatedAt: agent.updatedAt || null,
   };
 }
@@ -946,6 +1100,15 @@ function putAgentSettings(body = {}) {
   if (body.clearOpenai) delete config.byok.openai;
   if (body.clearCursor) delete config.byok.cursor;
 
+  // Not a secret (unlike the keys above): sent and cleared like a normal
+  // text field — an empty string removes the override instead of needing a
+  // separate clearOpenaiBaseUrl flag.
+  if (body.openaiBaseUrl !== undefined) {
+    const trimmed = String(body.openaiBaseUrl || "").trim();
+    if (trimmed) config.byok.openaiBaseUrl = trimmed;
+    else delete config.byok.openaiBaseUrl;
+  }
+
   writePanelConfig(config);
   return getAgentSettings();
 }
@@ -1015,9 +1178,30 @@ function workspaceInstruction(root) {
 }
 
 function spawnCli(bin, args, cwd, env = {}, stdio = ["ignore", "pipe", "pipe"]) {
+  const resolvedCwd = cwd ? path.resolve(cwd) : "";
+  const childEnv = {
+    ...process.env,
+    ...env,
+    ...(resolvedCwd
+      ? {
+          FXMIND_TARGET: resolvedCwd,
+          CLAUDE_PROJECT_DIR: resolvedCwd,
+        }
+      : {}),
+  };
+  // When the panel is started from Git Bash / MSYS, `SHELL` points at
+  // `bash.exe`. `cursor-agent` inherits it and then runs Cursor hook commands
+  // — which it builds as PowerShell (`... | & { $input | <cmd> }`) — through
+  // that bash, so every hook dies on `syntax error near unexpected token '&'`
+  // and cursor-agent denies the tool call. Drop the POSIX shell hint on
+  // Windows so cursor-agent uses PowerShell for hooks.
+  if (process.platform === "win32" && /cursor-?agent|(?:^|[\\/])agent\.(?:cmd|bat|exe)$/i.test(bin)) {
+    delete childEnv.SHELL;
+    delete childEnv.MSYSTEM;
+  }
   const opts = {
     cwd,
-    env: { ...process.env, ...env },
+    env: childEnv,
     windowsHide: true,
     stdio,
   };
@@ -1033,13 +1217,34 @@ function buildEnv() {
   const env = {};
   if (byok.anthropic) env.ANTHROPIC_API_KEY = byok.anthropic;
   if (byok.openai) env.OPENAI_API_KEY = byok.openai;
+  // OpenAI SDK-standard override, best-effort across every CLI: redirects the
+  // "openai" key above at any OpenAI-compatible endpoint (OpenRouter, Groq,
+  // DeepSeek, Azure OpenAI, a local model server, ...) instead of
+  // api.openai.com. Codex (built on the OpenAI SDK) honors this reliably;
+  // other CLIs simply ignore an env var they don't read.
+  if (byok.openaiBaseUrl) env.OPENAI_BASE_URL = byok.openaiBaseUrl;
   if (byok.cursor) env.CURSOR_API_KEY = byok.cursor;
   else if (process.env.CURSOR_API_KEY) env.CURSOR_API_KEY = process.env.CURSOR_API_KEY;
   if (!env.CURSOR_API_KEY) {
     const session = cursorSessionAuth();
     if (session) env.CURSOR_AUTH_TOKEN = session;
   }
+  // Extra providers beyond the 3 fixed CLI credentials above (OpenRouter,
+  // NVIDIA, or any custom OpenAI-compatible one the user added in Settings) —
+  // see panel-providers.js. OpenCode's own catalog already knows how to route
+  // "openrouter/..."/"nvidia/..." models once these env vars are present.
+  Object.assign(env, panelProviders.providersEnv());
   return env;
+}
+
+function stampGateSession(raw, root) {
+  if (!raw) return;
+  raw._runStartedAtMs = Date.now();
+  try {
+    raw._gateSession = String(tools.gateStatus(root).session || "");
+  } catch {
+    raw._gateSession = "";
+  }
 }
 
 function gatesForCurrentRun(raw, gates) {
@@ -1047,20 +1252,27 @@ function gatesForCurrentRun(raw, gates) {
   const startedAt = raw._runStartedAtMs || Date.parse(raw.runStartedAt || "") || 0;
   const previousSession = String(raw._gateSession || "");
   const currentSession = String(gates.session || "");
+  const sessionAt = Date.parse(currentSession) || 0;
   const newSession = Boolean(previousSession && currentSession && previousSession !== currentSession);
+  const sessionDuringRun = Boolean(startedAt && sessionAt && sessionAt >= startedAt - 5000);
+  const fileIsThisRun = newSession || sessionDuringRun;
   const stored = gates.gates && typeof gates.gates === "object" ? gates.gates : {};
-  const fresh = Object.fromEntries(
-    Object.entries(stored).filter(([, value]) => {
-      if (newSession) return true;
-      const at = value && typeof value === "object" ? Date.parse(value.at || "") : NaN;
-      return Number.isFinite(at) && (!startedAt || at >= startedAt);
-    }),
-  );
+  const fresh = fileIsThisRun
+    ? stored
+    : Object.fromEntries(
+        Object.entries(stored).filter(([, value]) => {
+          const at = value && typeof value === "object" ? Date.parse(value.at || "") : NaN;
+          return Number.isFinite(at) && (!startedAt || at >= startedAt);
+        }),
+      );
   const streamGates = raw.gates?.gates && typeof raw.gates.gates === "object" ? raw.gates.gates : {};
   const merged = { ...fresh, ...streamGates };
+  const base =
+    fileIsThisRun || !raw.gates || typeof raw.gates !== "object" ? gates : raw.gates;
   return {
-    ...gates,
-    taskActive: newSession ? Boolean(gates.taskActive) : Boolean(gates.taskActive && Object.keys(merged).length),
+    ...base,
+    ...(fileIsThisRun ? gates : {}),
+    taskActive: fileIsThisRun ? Boolean(gates.taskActive) : Boolean(raw.gates?.taskActive),
     gates: merged,
   };
 }
@@ -1133,17 +1345,17 @@ function ingestCliLine(line, threadId, cliId, root) {
   const events = stream.parseLineEnriched(line, cliId);
   for (const event of events) {
     if (event.kind === "session" && event.sessionId) {
-      const raw = threads.getThreadRaw(threadId);
-      if (raw && raw._cliSession !== event.sessionId) {
-        raw._cliSession = event.sessionId;
-        const config = readPanelConfig();
-        config.agent = config.agent || {};
-        if (config.agent.opencodeSession !== event.sessionId) {
-          config.agent.opencodeSession = event.sessionId;
-          writePanelConfig(config);
-        }
-      }
+      threads.setCliSession(threadId, event.sessionId);
       continue;
+    }
+    if (
+      cliId === "opencode" &&
+      event.kind === "cli" &&
+      event.status === "error" &&
+      isOpencodeSessionCorruptionError(event.detail || event.label || "")
+    ) {
+      const raw = threads.getThreadRaw(threadId);
+      if (raw) raw._runOpencodeCorruption = true;
     }
     threads.applyStreamEvent(threadId, event);
   }
@@ -1164,9 +1376,26 @@ function promoteToReviewIfNeeded(threadId, diff) {
 
 function collectThreadDiff(raw, root) {
   if (!raw || !root) return { ok: false, error: "no project root", files: [] };
-  return raw.worktree?.path
+  const full = raw.worktree?.path
     ? taskGit.collectTaskDiff(root, raw.worktree.baseBranch)
     : gitDiff.collect(root);
+  if (raw.worktree?.path) return full;
+  const allow = gitDiff.taskAllowlist(raw, raw.projectRoot || root);
+  if (allow.size) return gitDiff.filterDiffToPaths(full, allow);
+  const snap = raw.gitSnap || raw._gitSnap;
+  const changed = snap ? gitDiff.pathsChangedSince(root, snap) : [];
+  if (changed.length) return gitDiff.filterDiffToPaths(full, changed);
+  const empty = gitDiff.summarizeFiles([]);
+  return { ...full, files: [], summary: empty.summary, stats: empty.stats };
+}
+
+function rememberTaskFiles(raw, diff) {
+  if (!raw) return;
+  const files = new Set(raw.taskFiles || []);
+  for (const file of diff?.files || []) {
+    if (file?.path) files.add(file.path);
+  }
+  raw.taskFiles = [...files];
 }
 
 function refreshThreadDiff(threadId) {
@@ -1177,7 +1406,8 @@ function refreshThreadDiff(threadId) {
   if (!root) return raw.diff || null;
   try {
     const diff = collectThreadDiff(raw, root);
-    threads.setDiff(threadId, diff);
+    rememberTaskFiles(raw, diff);
+    threads.setDiff(threadId, diff, { silent: true });
     promoteToReviewIfNeeded(threadId, diff);
     return diff;
   } catch {
@@ -1189,65 +1419,13 @@ function finalizeRun(threadId, root) {
   const raw = threads.getThreadRaw(threadId);
   try {
     const diff = collectThreadDiff(raw, root);
+    rememberTaskFiles(raw, diff);
     threads.setDiff(threadId, diff);
     promoteToReviewIfNeeded(threadId, diff);
   } catch {
     /* ignore */
   }
   refreshRunMeta(threadId, root, true);
-}
-
-function formatQueryAnswer(result) {
-  if (!result || !result.ok) {
-    return `Não consegui responder a partir do grafo de conhecimento: ${
-      result?.error || "erro desconhecido"
-    }.`;
-  }
-  const memories = Array.isArray(result.memories) ? result.memories : [];
-  if (!memories.length) {
-    return result.note
-      ? `Nenhuma memória relevante encontrada no grafo para essa pergunta.\n\n${result.note}`
-      : "Nenhuma memória relevante encontrada no grafo para essa pergunta.";
-  }
-  const lines = [
-    "_Resposta instantânea a partir do grafo de conhecimento — nenhum agente foi executado._",
-    "",
-  ];
-  for (const mem of memories) {
-    lines.push(`### ${mem.topic || mem.slug || "memória"}`);
-    if (mem.content) lines.push(String(mem.content).slice(0, 2000));
-    lines.push("");
-  }
-  if (result.graphStale) {
-    lines.push("_(grafo desatualizado — uma reconstrução pode estar rodando em segundo plano)_");
-  }
-  return lines.join("\n").trim();
-}
-
-/**
- * Query mode's fast path: answers straight from the knowledge graph
- * (tools.queryGraph) without spawning any CLI. Mirrors what /api/projects/:id/query
- * already does for the standalone Query page, but delivered as a thread
- * message so it fits the same chat UI as task/plan runs.
- */
-async function answerFromGraph(threadId, options = {}) {
-  const raw = threads.getThreadRaw(threadId);
-  if (!raw) return { ok: false, error: "thread not found" };
-  const root = raw.worktree?.path || raw.projectRoot || process.cwd();
-  const prompt = threads.lastUserContent(raw);
-  threads.setRunning(threadId, { cliId: null });
-  let result;
-  try {
-    result = tools.queryGraph(root, prompt, { budget: Number(options.budget) || 1500 });
-  } catch (err) {
-    threads.finishAssistant(threadId, { error: String(err.message || err) });
-    notifyThreadDone(threadId);
-    return { ok: false, error: String(err.message || err) };
-  }
-  threads.appendAssistantDelta(threadId, formatQueryAnswer(result));
-  threads.finishAssistant(threadId, {});
-  notifyThreadDone(threadId);
-  return { ok: true };
 }
 
 /**
@@ -1291,15 +1469,17 @@ function buildJudgeArgs(cliId, { root, body, accessArgs, execOpts }) {
   if (cliId === "codex") {
     return { args: ["exec", "--cd", root, "--json", ...accessArgs, "-"], stdinPrompt: trimmed };
   }
+  // Prompt through stdin, never argv: on Windows these CLIs are `.cmd` shims
+  // run via `cmd.exe /c`, which truncates any argument at its first newline.
   if (cliId === "claude") {
-    let args = ["-p", trimmed];
+    let args = ["-p"];
     if (execOpts.model) args = ["--model", execOpts.model, ...args];
-    return { args, stdinPrompt: null };
+    return { args, stdinPrompt: trimmed };
   }
   if (cliId === "cursor-agent") {
-    return { args: ["-p", ...accessArgs, "--workspace", root, trimmed], stdinPrompt: null };
+    return { args: ["-p", ...accessArgs, "--workspace", root], stdinPrompt: trimmed };
   }
-  return { args: ["-p", trimmed], stdinPrompt: null };
+  return { args: ["-p"], stdinPrompt: trimmed };
 }
 
 function cleanupJudgeFile(file) {
@@ -1309,6 +1489,14 @@ function cleanupJudgeFile(file) {
     /* best effort */
   }
 }
+
+// Same ceiling as the subagent runner (SUBAGENT_TIMEOUT_MS, declared further
+// down): without it, a judge CLI that never emits "close" (waiting on a
+// permission prompt it can't answer non-interactively, a stalled network
+// call, etc.) leaves the run stuck at "running" forever — there is no other
+// watchdog covering this secondary spawn, unlike the primary run's own
+// startWatchdog.
+const JUDGE_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * Runs a second, read-only CLI pass reviewing the primary run's diff/report
@@ -1364,7 +1552,7 @@ async function runJudge(threadId, options = {}) {
         args,
         root,
         buildEnv(),
-        judgeCliId === "codex" ? ["pipe", "pipe", "pipe"] : undefined,
+        judgeCliId === "codex" || stdinPrompt ? ["pipe", "pipe", "pipe"] : undefined,
       );
     } catch (err) {
       cleanupJudgeFile(contextFile);
@@ -1378,8 +1566,27 @@ async function runJudge(threadId, options = {}) {
       return;
     }
 
+    let settled = false;
     let stdout = "";
     let textOut = "";
+    const finish = (patch, result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      cleanupJudgeFile(contextFile);
+      panelRuns.updateRun(raw, run.id, { endedAt: new Date().toISOString(), ...patch });
+      threads.touchThread(threadId);
+      resolve(result);
+    };
+    const timer = setTimeout(() => {
+      terminateCliProcess(child);
+      const message = `Juiz (${judgeCliId}) não respondeu em ${Math.round(JUDGE_TIMEOUT_MS / 1000)}s — encerrado.`;
+      finish(
+        { status: "error", verdict: { verdict: "unverifiable", summary: message } },
+        { ok: false, error: message },
+      );
+    }, JUDGE_TIMEOUT_MS);
+
     if (child.stdout) child.stdout.setEncoding("utf8");
     if (child.stderr) child.stderr.setEncoding("utf8");
     child.stdout?.on("data", (chunk) => {
@@ -1402,28 +1609,25 @@ async function runJudge(threadId, options = {}) {
     }
 
     child.on("error", (err) => {
-      cleanupJudgeFile(contextFile);
-      panelRuns.updateRun(raw, run.id, {
-        status: "error",
-        endedAt: new Date().toISOString(),
-        verdict: { verdict: "unverifiable", summary: String(err.message || err) },
-      });
-      threads.touchThread(threadId);
-      resolve({ ok: false, error: String(err.message || err) });
+      finish(
+        { status: "error", verdict: { verdict: "unverifiable", summary: String(err.message || err) } },
+        { ok: false, error: String(err.message || err) },
+      );
     });
 
     child.on("close", () => {
-      cleanupJudgeFile(contextFile);
       const finalText = (textOut || stdout).trim();
       const verdict = stream.parseVerdictFromText(finalText);
-      panelRuns.updateRun(raw, run.id, {
-        status: "done",
-        endedAt: new Date().toISOString(),
-        message: finalText ? { role: "assistant", content: finalText, at: new Date().toISOString() } : null,
-        verdict,
-      });
-      threads.touchThread(threadId);
-      resolve({ ok: true, verdict });
+      finish(
+        {
+          status: "done",
+          message: finalText
+            ? { role: "assistant", content: finalText, at: new Date().toISOString() }
+            : null,
+          verdict,
+        },
+        { ok: true, verdict },
+      );
     });
   });
 }
@@ -1518,7 +1722,7 @@ async function runSubagentTask(root, options = {}) {
         args,
         root,
         buildEnv(),
-        cliId === "codex" ? ["pipe", "pipe", "pipe"] : undefined,
+        cliId === "codex" || stdinPrompt ? ["pipe", "pipe", "pipe"] : undefined,
       );
     } catch (err) {
       resolve({ ok: false, error: String(err.message || err) });
@@ -1602,12 +1806,6 @@ async function runThreadDirect(threadId, options = {}) {
   if (raw.status === "running") return { ok: false, error: "already running" };
   if (raw.status !== "queued") return { ok: false, error: "not queued" };
 
-  // Defense in depth: query mode never spawns a CLI, no matter which path
-  // reached here (normal dispatch already short-circuits before this call).
-  if (raw.mode === "query") {
-    return answerFromGraph(threadId);
-  }
-
   if (usesHostCursorAgent(options.cliId)) {
     const host = threads.hostStatus();
     if (!host.connected) {
@@ -1618,10 +1816,12 @@ async function runThreadDirect(threadId, options = {}) {
       notifyThreadDone(threadId);
       return { ok: false, error: "host_not_connected" };
     }
+    const root = raw.worktree?.path || raw.projectRoot || process.cwd();
+    stampGateSession(raw, root);
     return {
       ok: true,
       mode: "host",
-      root: raw.worktree?.path || raw.projectRoot || process.cwd(),
+      root,
     };
   }
 
@@ -1649,6 +1849,7 @@ async function runThreadDirect(threadId, options = {}) {
   // New conversations run in the selected repository directly. Existing
   // persisted threads with a worktree continue using their isolated path.
   const root = raw.worktree?.path || projectRoot;
+  ensureCliMcp(root, cliId);
   const lastMsg = threads.lastUserMessage(raw);
   const prompt = lastMsg?.content || threads.lastUserContent(raw);
   const imagePaths = threads.materializeAttachments(lastMsg?.attachments, threadId);
@@ -1668,18 +1869,17 @@ async function runThreadDirect(threadId, options = {}) {
     return { ok: false, error: String(err.message) };
   }
 
-  raw._runStartedAtMs = Date.now();
-  try {
-    raw._gateSession = String(tools.gateStatus(root).session || "");
-  } catch {
-    raw._gateSession = "";
-  }
+  stampGateSession(raw, root);
+  raw._runOpencodeCorruption = false;
   threads.setRunning(threadId, { cliId });
   raw._cliId = cliId;
   raw._lastActivityAt = Date.now();
-  raw._gitSnap = raw.worktree
-    ? taskGit.collectTaskDiff(root, raw.worktree.baseBranch)
-    : gitDiff.snapshot(root);
+  if (!raw.gitSnap) {
+    raw.gitSnap = raw.worktree
+      ? null
+      : gitDiff.snapshot(root);
+  }
+  raw._gitSnap = raw.gitSnap;
   threads.applyStreamEvent(threadId, {
     kind: "cli",
     label: `CLI: ${entry.name} iniciado`,
@@ -1687,17 +1887,19 @@ async function runThreadDirect(threadId, options = {}) {
     status: "running",
   });
 
-  if (cliId === "opencode" && !raw._cliSession) {
-    if (config.agent?.opencodeSession) {
-      raw._cliSession = config.agent.opencodeSession;
-    }
+  if (cliId === "opencode") {
+    raw._cliSession = raw._cliSession || raw.cliSession || null;
   }
 
   // The server never trusts the client's saved access-mode preference for a
-  // plan run: regardless of what accessMode is configured, plan mode is
-  // always read-only. See fxmind/templates/fxmind/modes for the prompt side.
+  // plan or query run: regardless of what accessMode is configured, both are
+  // always read-only (plan produces a plan, query only answers a question —
+  // neither should ever touch a file). See fxmind/templates/fxmind/modes and
+  // panel-context.js's PLAN_MODE_BLOCK/QUERY_MODE_BLOCK for the prompt side.
   const accessMode =
-    raw.mode === "plan" ? "ask" : normalizeAccessMode(config.agent?.accessMode);
+    raw.mode === "plan" || raw.mode === "query"
+      ? "ask"
+      : normalizeAccessMode(config.agent?.accessMode);
   const accessArgs = cliAccessArgs(cliId, accessMode);
 
   let args;
@@ -1732,17 +1934,20 @@ async function runThreadDirect(threadId, options = {}) {
       "## Thread",
       transcript(raw),
     ].join("\n");
-    args = ["-p", body.slice(0, 12000)];
+    // Prompt goes through stdin, never argv: on Windows the CLI is a `.cmd`
+    // shim run via `cmd.exe /c`, which truncates any argument at its first
+    // newline — a multi-line prompt would arrive as just its first line.
+    args = ["-p"];
     if (execOpts.model) args = ["--model", execOpts.model, ...args];
     if (execOpts.claudeEffort) args = ["--effort", execOpts.claudeEffort, ...args];
+    stdinPrompt = body.slice(0, 12000);
   } else if (cliId === "hermes") {
-    args = [
-      "-p",
+    args = ["-p"];
+    stdinPrompt =
       `${workspaceInstruction(root)}\n\n${fs.readFileSync(contextFile, "utf8")}\n\n${transcript(raw)}`.slice(
         0,
         12000,
-      ),
-    ];
+      );
   } else if (cliId === "codex") {
     const body = [
       workspaceInstruction(root),
@@ -1771,7 +1976,12 @@ async function runThreadDirect(threadId, options = {}) {
       root,
     ];
     if (execOpts.model) args.push("--model", execOpts.model);
-    args.push(`${workspaceInstruction(root)}\n\nRead ${contextFile} then complete the user request:\n${prompt}`);
+    // Prompt goes through stdin, never argv: `cursor-agent` is a `.cmd` shim
+    // run via `cmd.exe /c`, which truncates any argument at its first newline,
+    // so a multi-line prompt would reach the agent as just its first line
+    // ("You are working inside the selected repository below.") and the demand
+    // itself would be lost. `cursor-agent -p` reads the prompt from stdin.
+    stdinPrompt = `${workspaceInstruction(root)}\n\nRead ${contextFile} then complete the user request:\n${prompt}`;
   } else {
     args = [
       "-p",
@@ -1789,7 +1999,7 @@ async function runThreadDirect(threadId, options = {}) {
       args,
       root,
       buildEnv(),
-      cliId === "codex" ? ["pipe", "pipe", "pipe"] : undefined,
+      cliId === "codex" || stdinPrompt ? ["pipe", "pipe", "pipe"] : undefined,
     );
     raw._child = child;
     let stderr = "";
@@ -1891,14 +2101,15 @@ async function runThreadDirect(threadId, options = {}) {
         return;
       }
       const snapshot = threads.getThread(threadId).thread;
-      const hasAssistant = (snapshot?.messages || []).some(
-        (m) => m.role === "assistant" && String(m.content || "").trim(),
-      );
+      const hasAssistant = hasAssistantContent(snapshot);
+      const runCorruption =
+        cliId === "opencode" &&
+        (Boolean(raw._runOpencodeCorruption) || isOpencodeSessionCorruptionError(stderr));
+      if (runCorruption) {
+        clearOpencodeCliSession(threadId);
+      }
       if (code !== 0 && !hasAssistant) {
-        const errText = formatCursorCliError(
-          cliId === "cursor-agent" ? stderr.trim() : stderr.trim() ||
-            "CLI falhou. Verifique login (Settings → Execução) ou instale a CLI escolhida.",
-        );
+        const errText = formatCliError(cliId, stderr.trim(), snapshot, raw._runStartedAtMs);
         threads.finishAssistant(threadId, { error: errText });
         notifyThreadDone(threadId);
         resolve({ ok: false, error: errText });
@@ -2033,9 +2244,8 @@ function discardThreadFile(threadId, relPath) {
   }
   const discarded = gitDiff.discardPath(root, relPath);
   if (!discarded.ok) return discarded;
-  const diff = raw.worktree?.path
-    ? taskGit.collectTaskDiff(root, raw.worktree.baseBranch)
-    : gitDiff.collect(root);
+  const diff = collectThreadDiff(raw, root);
+  rememberTaskFiles(raw, diff);
   threads.setDiff(threadId, diff);
   return { ok: true, discarded: discarded.discarded, thread: threads.publicThread(raw) };
 }
@@ -2065,6 +2275,7 @@ function commitThread(threadId, options = {}) {
   if (!visibleDiffFiles(freshDiff).length) {
     return { ok: false, status: 409, error: "no changes to commit" };
   }
+  rememberTaskFiles(raw, freshDiff);
   threads.setDiff(threadId, freshDiff);
   promoteToReviewIfNeeded(threadId, freshDiff);
   const committed = taskGit.commitTask(root, options.message || raw.title || "FxMind task");
@@ -2133,7 +2344,6 @@ module.exports = {
   testCli,
   runThread: scheduleThread,
   dispatchThread,
-  answerFromGraph,
   usesHostCursorAgent,
   onThreadCompleted: notifyThreadDone,
   reconcileOrphanedRuns,
@@ -2147,4 +2357,9 @@ module.exports = {
   refreshThreadDiff,
   cursorAgentPath,
   transcript,
+  gatesForCurrentRun,
+  formatCliError,
+  isOpencodeSessionCorruptionError,
+  humanizeOpencodeProviderError,
+  lastCliError,
 };
