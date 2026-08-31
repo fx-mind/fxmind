@@ -13,6 +13,7 @@ const panelCli = require("./lib/panel-cli");
 const demandQueue = require("./lib/panel-demand-queue");
 const panelInstall = require("./lib/panel-install");
 const panelTaskGit = require("./lib/panel-task-git");
+const panelProjectGit = require("./lib/panel-project-git");
 const panelTrello = require("./lib/panel-trello");
 const panelBuild = require("./lib/panel-build");
 const panelSubagents = require("./lib/panel-subagents");
@@ -868,6 +869,66 @@ async function handleApi(req, res, url) {
     } catch {
       return sendJson(res, 400, { error: "invalid JSON body" });
     }
+  }
+
+  const gitStatusMatch = pathname.match(/^\/api\/projects\/([^/]+)\/git\/status$/);
+  if (gitStatusMatch && req.method === "GET") {
+    const resolved = panel.resolveProjectRoot(gitStatusMatch[1], workspaceRoot, {
+      exact: workspaceIsExplicit,
+    });
+    if (!resolved.ok) return sendJson(res, resolved.status || 400, { error: resolved.error });
+    const result = panelProjectGit.getStatus(resolved.root);
+    return sendJson(res, 200, result);
+  }
+
+  const gitStageMatch = pathname.match(/^\/api\/projects\/([^/]+)\/git\/(stage|unstage)$/);
+  if (gitStageMatch && req.method === "POST") {
+    try {
+      const [, projectId, action] = gitStageMatch;
+      const resolved = panel.resolveProjectRoot(projectId, workspaceRoot, {
+        exact: workspaceIsExplicit,
+      });
+      if (!resolved.ok) return sendJson(res, resolved.status || 400, { error: resolved.error });
+      const body = await readBody(req);
+      const targetPath = String(body.path || "").trim();
+      if (!targetPath) return sendJson(res, 400, { error: "path is required" });
+      const result =
+        action === "stage"
+          ? panelProjectGit.stagePath(resolved.root, targetPath)
+          : panelProjectGit.unstagePath(resolved.root, targetPath);
+      if (!result.ok) return sendJson(res, 400, result);
+      return sendJson(res, 200, result);
+    } catch {
+      return sendJson(res, 400, { error: "invalid JSON body" });
+    }
+  }
+
+  const gitCommitMatch = pathname.match(/^\/api\/projects\/([^/]+)\/git\/commit$/);
+  if (gitCommitMatch && req.method === "POST") {
+    try {
+      const resolved = panel.resolveProjectRoot(gitCommitMatch[1], workspaceRoot, {
+        exact: workspaceIsExplicit,
+      });
+      if (!resolved.ok) return sendJson(res, resolved.status || 400, { error: resolved.error });
+      const body = await readBody(req);
+      const result = panelProjectGit.commit(resolved.root, body.message);
+      if (!result.ok) return sendJson(res, 400, result);
+      return sendJson(res, 200, result);
+    } catch {
+      return sendJson(res, 400, { error: "invalid JSON body" });
+    }
+  }
+
+  const gitLogMatch = pathname.match(/^\/api\/projects\/([^/]+)\/git\/log$/);
+  if (gitLogMatch && req.method === "GET") {
+    const resolved = panel.resolveProjectRoot(gitLogMatch[1], workspaceRoot, {
+      exact: workspaceIsExplicit,
+    });
+    if (!resolved.ok) return sendJson(res, resolved.status || 400, { error: resolved.error });
+    const limit = Number.parseInt(url.searchParams.get("limit"), 10) || 20;
+    const result = panelProjectGit.log(resolved.root, limit);
+    if (!result.ok) return sendJson(res, 500, result);
+    return sendJson(res, 200, result);
   }
 
   const installMatch = pathname.match(/^\/api\/projects\/([^/]+)\/install$/);
