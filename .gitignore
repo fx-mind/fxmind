@@ -1,6 +1,5 @@
 node_modules/
 web/node_modules/
-web/dist/
 # UI source lives in ../panel (workspace repo) — do not recreate here
 web/src/
 web/package.json
