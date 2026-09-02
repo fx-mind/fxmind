@@ -27,6 +27,9 @@ const {
 } = require("./lib/layout");
 const { buildGraphData, writeGraph } = require("./build-graph");
 const { isGraphStale, ensureGraphFresh } = require("./lib/graph-freshness");
+const { ensureProjectGitignore } = require("./lib/project-gitignore");
+const taskSessions = require("./lib/task-sessions");
+const { withFileLock } = require("./lib/fs-lock");
 
 const SCHEMA_VERSION = 1;
 const GATES_FILE = "fxmind-gates.json";
@@ -605,15 +608,17 @@ function buildMemoryIndex(targetRoot) {
 }
 
 function writeMemoryIndex(targetRoot) {
-  const index = buildMemoryIndex(targetRoot);
-  const outPath = memoryIndexWritePath(targetRoot);
-  writeJson(outPath, index);
-  return {
-    path: path.relative(path.resolve(targetRoot), outPath).replace(/\\/g, "/"),
-    count: index.count,
-    duplicates: index.duplicates.length,
-    validation: index.validation,
-  };
+  return withFileLock(path.resolve(targetRoot), "memory-index", () => {
+    const index = buildMemoryIndex(targetRoot);
+    const outPath = memoryIndexWritePath(targetRoot);
+    writeJson(outPath, index);
+    return {
+      path: path.relative(path.resolve(targetRoot), outPath).replace(/\\/g, "/"),
+      count: index.count,
+      duplicates: index.duplicates.length,
+      validation: index.validation,
+    };
+  });
 }
 
 function loadMemoryIndex(targetRoot) {
@@ -692,19 +697,21 @@ function driftCheck(targetRoot, changedFile) {
 }
 
 function buildGraph(targetRoot, options = {}) {
-  const updateHtml = options.updateHtml !== false;
-  const data = buildGraphData(targetRoot, { useCache: options.useCache !== false });
-  if (!data.meta) data.meta = {};
-  data.meta.schemaVersion = SCHEMA_VERSION;
-  const paths = writeGraph(targetRoot, data, { updateHtml });
-  const index = writeMemoryIndex(targetRoot);
-  appendMetric(targetRoot, {
-    event: "graph_build",
-    learned: data.meta?.counts?.learned,
-    links: data.meta?.counts?.links,
-    updateHtml,
+  return withFileLock(path.resolve(targetRoot), "graph-rebuild", () => {
+    const updateHtml = options.updateHtml !== false;
+    const data = buildGraphData(targetRoot, { useCache: options.useCache !== false });
+    if (!data.meta) data.meta = {};
+    data.meta.schemaVersion = SCHEMA_VERSION;
+    const paths = writeGraph(targetRoot, data, { updateHtml });
+    const index = writeMemoryIndex(targetRoot);
+    appendMetric(targetRoot, {
+      event: "graph_build",
+      learned: data.meta?.counts?.learned,
+      links: data.meta?.counts?.links,
+      updateHtml,
+    });
+    return { counts: data.meta.counts, paths, memoryIndex: index };
   });
-  return { counts: data.meta.counts, paths, memoryIndex: index };
 }
 
 function loadGraphData(targetRoot) {
@@ -880,40 +887,30 @@ function migrateLegacyGates(targetRoot) {
   return true;
 }
 
-function gateStatus(targetRoot) {
+function gateStatus(targetRoot, extra = {}) {
   migrateLegacyGates(targetRoot);
-  return readJson(gatesPath(targetRoot), {
-    schemaVersion: SCHEMA_VERSION,
-    taskActive: false,
-    gates: {},
-  });
+  return taskSessions.getSessionStatus(targetRoot, extra);
 }
 
 function startTask(targetRoot, extra = {}) {
   migrateLegacyGates(targetRoot);
-  const trivial = Boolean(extra.trivial);
-  const now = new Date().toISOString();
-  const data = {
-    schemaVersion: SCHEMA_VERSION,
-    taskActive: true,
-    session: now,
+  try {
+    ensureProjectGitignore(targetRoot);
+  } catch {
+    // gitignore heal is best-effort
+  }
+  const data = taskSessions.startSession(targetRoot, {
+    note: extra.note || "",
+    trivial: Boolean(extra.trivial),
     autoStarted: Boolean(extra.autoStarted),
-    trivial,
-    gates: {},
-  };
-  if (extra.note) {
-    data.note = extra.note;
-  }
-  if (trivial) {
-    const note = extra.note ? `trivial: ${extra.note}` : "trivial";
-    data.gates.A = { complete: true, at: now, note };
-    data.gates.B = { complete: true, at: now, note };
-  }
-  writeJson(gatesPath(targetRoot), data);
+    sessionId: extra.sessionId,
+    conversationId: extra.conversationId,
+  });
   appendMetric(targetRoot, {
     event: "task_start",
+    sessionId: data.sessionId,
     autoStarted: data.autoStarted,
-    trivial,
+    trivial: data.trivial,
   });
   return data;
 }
@@ -927,6 +924,8 @@ function recordGate(targetRoot, gate, value = true, extra = {}) {
       note: extra.note || "",
       autoStarted: false,
       trivial: Boolean(extra.trivial),
+      sessionId: extra.sessionId,
+      conversationId: extra.conversationId,
     });
   }
 
@@ -934,76 +933,39 @@ function recordGate(targetRoot, gate, value = true, extra = {}) {
     throw new Error(`Invalid gate: ${gate} (use START, A, B, V, or C)`);
   }
 
-  let data = gateStatus(targetRoot);
-  if (!data.taskActive) {
-    data.taskActive = true;
-    data.session = data.session || new Date().toISOString();
+  const data = taskSessions.recordSessionGate(targetRoot, letter, value, {
+    sessionId: extra.sessionId,
+    note: extra.note,
+    conversationId: extra.conversationId,
+  });
+  if (data && data.error === "multiple_active_sessions") {
+    return data;
   }
-  data.schemaVersion = SCHEMA_VERSION;
-  data.gates = data.gates || {};
-
-  if (letter === "C" && value) {
-    const vDone = data.gates.V && data.gates.V.complete;
-    if (!vDone) {
-      throw new Error(
-        "Gate C requires Gate V first. Call fxmind_record_gate with gate=V after verify-by-observation, then gate=C.",
-      );
-    }
-  }
-
-  data.gates[letter] = {
-    complete: Boolean(value),
-    at: new Date().toISOString(),
-    ...(extra.note ? { note: extra.note } : {}),
-  };
-
-  if (letter === "C" && value) {
-    data.taskActive = false;
-    data.completedAt = new Date().toISOString();
-  }
-
-  writeJson(gatesPath(targetRoot), data);
   appendMetric(targetRoot, {
     event: "gate_record",
     gate: letter,
     complete: Boolean(value),
     taskActive: data.taskActive,
+    sessionId: data.sessionId,
   });
   return data;
 }
 
-function resetGates(targetRoot) {
-  migrateLegacyGates(targetRoot);
-  const data = {
-    schemaVersion: SCHEMA_VERSION,
-    taskActive: false,
-    gates: {},
-    session: new Date().toISOString(),
-  };
-  writeJson(gatesPath(targetRoot), data);
-  return data;
+function claimPaths(targetRoot, paths, extra = {}) {
+  return taskSessions.claimPaths(targetRoot, paths, extra);
 }
 
-/** Lines to ensure in the project .gitignore — see lib/layout.js */
+function releasePaths(targetRoot, paths, extra = {}) {
+  return taskSessions.releasePaths(targetRoot, paths, extra);
+}
 
-function ensureProjectGitignore(targetRoot) {
-  const gitignorePath = path.join(path.resolve(targetRoot), ".gitignore");
-  let content = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, "utf8") : "";
-  const added = [];
-  for (const line of PROJECT_GITIGNORE_LINES) {
-    const re = new RegExp(`^${line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m");
-    if (re.test(content)) continue;
-    if (content.length && !content.endsWith("\n")) content += "\n";
-    if (!content.includes("# fxmind session")) {
-      content += `\n# fxmind session (do not commit)\n`;
-    }
-    content += `${line}\n`;
-    added.push(line);
-  }
-  if (added.length) {
-    fs.writeFileSync(gitignorePath, content, "utf8");
-  }
-  return { path: ".gitignore", added };
+function sessionStatus(targetRoot) {
+  return taskSessions.listSessionsStatus(targetRoot);
+}
+
+function resetGates(targetRoot) {
+  migrateLegacyGates(targetRoot);
+  return taskSessions.resetSessions(targetRoot);
 }
 
 module.exports = {
@@ -1033,7 +995,13 @@ module.exports = {
   gateStatus,
   startTask,
   recordGate,
+  claimPaths,
+  releasePaths,
+  sessionStatus,
   resetGates,
+  taskSessions,
+  withFileLock,
+  withFileLockAsync: require("./lib/fs-lock").withFileLockAsync,
   appendMetric,
   ensureProjectGitignore,
   CORRECTION_CATEGORIES,

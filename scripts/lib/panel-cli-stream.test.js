@@ -225,15 +225,24 @@ describe("panel-git-diff", () => {
 
   it("hides fxmind tooling paths from the task diff", () => {
     assert.equal(gitDiff.isFxmindNoisePath(".fxmind/modes/painel.md"), true);
+    assert.equal(gitDiff.isFxmindNoisePath(".fxmind/graph/knowledge-graph.json"), true);
+    assert.equal(gitDiff.isFxmindNoisePath(".fxmind/state/metrics.jsonl"), true);
     assert.equal(gitDiff.isFxmindNoisePath(".agents/skills/fxmind/SKILL.md"), true);
     assert.equal(gitDiff.isFxmindNoisePath("opencode.json"), true);
     assert.equal(gitDiff.isFxmindNoisePath("resources/radio/client.lua"), false);
+    assert.equal(gitDiff.isFxmindNoisePath(".fxmind/memory/permissions.md"), false);
+    assert.equal(gitDiff.isFxmindNoisePath(".fxmind/corrections/fix-style.md"), false);
     const files = gitDiff.filterTaskFiles([
       { path: "opencode.json", status: "untracked", additions: 0, deletions: 0, patch: "" },
+      { path: ".fxmind/graph/memory-index.json", status: "modified", additions: 4, deletions: 2, patch: "" },
+      { path: ".fxmind/memory/permissions.md", status: "modified", additions: 3, deletions: 0, patch: "" },
       { path: "resources/radio/client.lua", status: "modified", additions: 2, deletions: 1, patch: "" },
     ]);
-    assert.equal(files.length, 1);
-    assert.equal(files[0].path, "resources/radio/client.lua");
+    assert.equal(files.length, 2);
+    assert.deepEqual(
+      files.map((file) => file.path),
+      [".fxmind/memory/permissions.md", "resources/radio/client.lua"],
+    );
   });
 
   it("keeps only files this demand edited", () => {

@@ -40,8 +40,10 @@ When the context contains **`PANEL_MODE: full`**, run the full pipeline below (O
 
 ## 2. Start
 
-- Full task: **`fxmind_start_task`** `{ note }` then Gate A → B.
+- Full task: **`fxmind_start_task`** `{ note }` → save **`sessionId`** → Gate A → B.
 - Trivial: **`fxmind_start_task`** `{ note, trivial: true }` (records A+B with note `trivial`) — still output short chat markers, then edit.
+- **Parallel sessions (2+ IDE tabs on this repo):** pass **`sessionId`** on every gate/claim MCP call. After Gate B, **`fxmind_claim_paths`** `{ sessionId, paths: [...] }` for every file you will edit **before** the first Write. Check **`fxmind_session_status`** if unsure what others hold.
+- Panel context may include `FXMIND_SESSION_ID:` — pass it as **`sessionId`** (or let MCP read `FXMIND_SESSION_ID` env when set).
 
 ## 3. Gate A (before any edit)
 

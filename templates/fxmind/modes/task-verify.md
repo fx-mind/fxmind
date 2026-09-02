@@ -23,6 +23,10 @@ Claims are not evidence. Observe:
    `TWINS: searched <pattern> — found other sites: <files, or "none">`
    Fix them or list them.
 
+   **NUI CEF background bugfix:** grep the **whole resource** (not only the edited file) for:
+   `fadeIn|fadeOut|rgba\(|entryFileNames|assetFileNames|bg-.*/[0-9]|bg-opacity|--tw-bg-opacity`
+   in `**/nui/**`, `**/ui/**`, `vite.config.ts`, and shell/popup/modal components.
+
 If something cannot be verified: label **UNVERIFIABLE** — never pass as verified.
 
 On failure: mechanical mistake → Implement; surprise → re-open evidence (Gate B). Hard bound: **3** fix→verify cycles, then hand-back with output + hypothesis.

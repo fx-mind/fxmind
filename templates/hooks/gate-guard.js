@@ -3,17 +3,14 @@
  * fxmind gate-guard — Cursor preToolUse hook.
  *
  * Enforces fxmind Task-mode Gates A & B before code edits.
- * Gates are session state — agents must use MCP fxmind_record_gate / fxmind_start_task
- * (never Write the gates JSON directly).
- *
- * Auto-start (default): first code edit without an active task starts Task mode.
- * Disable with FXMIND_AUTO_TASK=0.
+ * With 2+ parallel sessions, requires fxmind_claim_paths before code edits.
  *
  * Fail-open: any parse/IO error → allow.
  */
 const fs = require("fs");
 const path = require("path");
 const { writeLocal, fxmindDir } = require("./lib/layout.js");
+const taskSessions = require("./lib/task-sessions.js");
 
 const PROJECT_ROOT = process.cwd();
 const GATES_FILE = writeLocal(PROJECT_ROOT, "gates");
@@ -72,7 +69,7 @@ function migrateLegacyGates() {
   fs.unlinkSync(source);
 }
 
-function readGates() {
+function readLegacyGates() {
   try {
     migrateLegacyGates();
     if (!fs.existsSync(GATES_FILE)) return null;
@@ -82,7 +79,7 @@ function readGates() {
   }
 }
 
-function writeGates(data) {
+function writeLegacyGates(data) {
   fs.mkdirSync(path.dirname(GATES_FILE), { recursive: true });
   fs.writeFileSync(GATES_FILE, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
@@ -102,6 +99,8 @@ function isGatesFile(filePath) {
   const rel = toRel(filePath);
   return (
     rel === ".fxmind/state/fxmind-gates.json" ||
+    rel.startsWith(".fxmind/state/sessions/") ||
+    rel === ".fxmind/state/sessions.json" ||
     rel === ".fxmind-gates.json" ||
     rel.endsWith("/fxmind-gates.json")
   );
@@ -135,16 +134,20 @@ function ask(userMessage, agentMessage) {
 }
 
 function startAutoTask() {
-  const payload = {
-    schemaVersion: 1,
-    taskActive: true,
-    autoStarted: true,
-    session: new Date().toISOString(),
-    startedAt: new Date().toISOString(),
-    gates: {},
-  };
-  writeGates(payload);
+  const payload = taskSessions.startSession(PROJECT_ROOT, { autoStarted: true });
   return payload;
+}
+
+function hookConversationId(input) {
+  return (
+    input.conversation_id ||
+    input.conversationId ||
+    input.composer_id ||
+    input.composerId ||
+    input.session_id ||
+    input.sessionId ||
+    null
+  );
 }
 
 async function main() {
@@ -165,11 +168,10 @@ async function main() {
     allow();
   }
 
-  // Gates JSON is MCP/CLI-only — block agent Write/Edit.
   if (isGatesFile(filePath)) {
     ask(
-      "fxmind: do not edit fxmind-gates.json directly — use the MCP tool fxmind_record_gate.",
-      "Blocked: gates are session state managed by Node. Call MCP fxmind_start_task (or fxmind_record_gate with gate=START) then fxmind_record_gate for A/B/C. Do not Write/Edit .fxmind/state/fxmind-gates.json.",
+      "fxmind: do not edit session/gates JSON directly — use MCP fxmind_start_task / fxmind_record_gate.",
+      "Blocked: gates are session state managed by Node. Call MCP fxmind_start_task then fxmind_record_gate for A/B/V/C.",
     );
   }
 
@@ -177,8 +179,31 @@ async function main() {
     allow();
   }
 
-  let gates = readGates();
+  const rel = toRel(filePath);
+  const multi = taskSessions.multiSessionMode(PROJECT_ROOT);
+  let hookResult;
+  try {
+    hookResult = taskSessions.gatesForHook(PROJECT_ROOT, {
+      filePath: rel,
+      conversationId: hookConversationId(input),
+      sessionId: process.env.FXMIND_SESSION_ID || null,
+    });
+  } catch {
+    hookResult = null;
+  }
+
+  if (hookResult && hookResult.allow === false) {
+    ask(`fxmind: ${hookResult.message}`, hookResult.message);
+  }
+
+  let gates = hookResult?.session || readLegacyGates();
   if (!gates || !gates.taskActive) {
+    if (multi) {
+      ask(
+        "fxmind: parallel sessions — call fxmind_start_task before editing code.",
+        "Multiple Task sessions are active in this repo. Call MCP fxmind_start_task, complete Gates A & B, fxmind_claim_paths for files you will edit, then retry.",
+      );
+    }
     if (!autoTaskEnabled()) {
       allow();
     }
@@ -189,9 +214,7 @@ async function main() {
     }
     ask(
       "fxmind: Task auto-started — enable MCP fxmind if needed, then complete Gates A & B before editing code.",
-      `Code edit blocked: Task mode auto-started for ${filePath || "this file"}. ` +
-        `If MCP tools are missing, tell the user to enable server "fxmind" (Cursor → Settings → Tools & MCP). ` +
-        `Read .fxmind/modes/task.md. Call fxmind_start_task / fxmind_record_gate (A then B) — never write the gates JSON. Then retry the edit.`,
+      `Code edit blocked: Task mode auto-started for ${filePath || "this file"}. Call fxmind_start_task / fxmind_record_gate (A then B). Then retry the edit.`,
     );
   }
 
@@ -216,7 +239,7 @@ async function main() {
 
   ask(
     `fxmind: code edit blocked — Gate${missing.length > 1 ? "s" : ""} ${missing.join(" & ")} not recorded. Use MCP fxmind_record_gate.`,
-    `Task active but Gate ${missing.join(" and ")} missing. Call fxmind_record_gate with gate="${missing[0]}"${missing[1] ? ` then gate="${missing[1]}"` : ""} (output 🛑 GATE markers in chat too). Do not Write .fxmind/state/fxmind-gates.json. Then retry editing ${filePath || "code"}.`,
+    `Task active but Gate ${missing.join(" and ")} missing. Call fxmind_record_gate with gate="${missing[0]}"${missing[1] ? ` then gate="${missing[1]}"` : ""}. Then retry editing ${filePath || "code"}.`,
   );
 }
 

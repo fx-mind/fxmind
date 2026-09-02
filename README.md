@@ -116,14 +116,16 @@ Dev (monorepo): `npm run dev` from the workspace root — Vite on :5173, API on 
 ├── corrections/         # skill-improvement backlog
 ├── templates/           # memory/report skeletons (read-only)
 ├── policy/              # failure-modes, topic-catalog, minimum-evidence
-├── graph/               # knowledge-graph.json/html + memory-index.json
+├── graph/               # derived locally (gitignored; rebuild from memory/)
 ├── reports/             # generated human reports (memory-health)
 └── state/               # session/runtime (gitignored)
 ```
 
-Session-only (gitignored): `.fxmind/state/` — gates, metrics, RCON, logs, graph cache, `tmp/`.
+Commit these: `.fxmind/memory/` (topic knowledge) and `.fxmind/corrections/` (skill feed).
 
-**Corrections backlog** (commit these — skill feed): `.fxmind/corrections/` — human fixes of agent mistakes, separate from topic memories. Export with `fxmind corrections export` → edit the matching `fivem-development/<category>.md`.
+Generated / session-only (gitignored, rebuilt locally): `.fxmind/graph/` — `knowledge-graph.json/html`, `memory-index.json` — and `.fxmind/state/` — gates, metrics, RCON, logs, graph cache, `tmp/`.
+
+**Corrections backlog:** human fixes of agent mistakes, separate from topic memories. Export with `fxmind corrections export` → edit the matching `fivem-development/<category>.md`.
 ---
 
 ## Task mode & Gates
@@ -153,10 +155,10 @@ Memories stay as **Markdown** (source of truth, git-friendly). The graph build a
 
 | File | Role |
 |------|------|
-| `.fxmind/memory/*.md` | Topic knowledge (edit / review in PRs) |
-| `.fxmind/graph/knowledge-graph.json` | Query graph (agents use this + `memory-index.json`) |
-| `.fxmind/graph/knowledge-graph.html` | Optional 2D visualization for humans (`fxmind graph`) |
-| `.fxmind/graph/memory-index.json` | Fast frontmatter index + validation summary |
+| `.fxmind/memory/*.md` | Topic knowledge (edit / review in PRs; this is what syncs via git) |
+| `.fxmind/graph/knowledge-graph.json` | Query graph — rebuilt locally, gitignored |
+| `.fxmind/graph/knowledge-graph.html` | Optional 2D visualization — rebuilt locally, gitignored |
+| `.fxmind/graph/memory-index.json` | Fast frontmatter index — rebuilt locally, gitignored |
 | `.fxmind/state/graph-cache.json` | Local build cache (gitignored) |
 | `.fxmind/state/tmp/` | Ephemeral agent scratch (gitignored; removed when task inactive or Gate C done) |
 

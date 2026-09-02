@@ -27,6 +27,25 @@ const panelHost = require("./lib/panel-host");
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_INFO = { name: "fxmind", version: "1.4.0" };
 
+const SESSION_ID_PROP = {
+  sessionId: {
+    type: "string",
+    description:
+      "Task session id from fxmind_start_task. Required when 2+ Task sessions are active in this repo.",
+  },
+  conversationId: {
+    type: "string",
+    description: "Optional Cursor conversation/composer id to bind the session to this chat tab.",
+  },
+};
+
+function sessionExtra(args = {}) {
+  return {
+    sessionId: args.sessionId || process.env.FXMIND_SESSION_ID || undefined,
+    conversationId: args.conversationId || undefined,
+  };
+}
+
 function targetRoot() {
   return (
     process.env.FXMIND_TARGET ||
@@ -127,13 +146,19 @@ const TOOL_DEFS = [
           description:
             "If true, marks Gates A and B complete immediately (tiny one-file edits). Still requires Gate V before Gate C.",
         },
+        ...SESSION_ID_PROP,
       },
     },
   },
   {
     name: "fxmind_gate_status",
     description: "Read Task Gate A/B/V/C session status. Read-only.",
-    inputSchema: { type: "object", properties: {} },
+    inputSchema: {
+      type: "object",
+      properties: {
+        sessionId: SESSION_ID_PROP.sessionId,
+      },
+    },
   },
   {
     name: "fxmind_record_gate",
@@ -149,9 +174,48 @@ const TOOL_DEFS = [
             "START begins a task; A/B unlock edits; V records verify-by-observation; C closes the task.",
         },
         note: { type: "string", description: "Optional note (e.g. memories loaded)." },
+        ...SESSION_ID_PROP,
       },
       required: ["gate"],
     },
+  },
+  {
+    name: "fxmind_claim_paths",
+    description:
+      "Exclusive file lease for parallel Task sessions. Call after Gate B with every repo path you will edit. Required before code edits when 2+ sessions are active.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        paths: {
+          type: "array",
+          items: { type: "string" },
+          description: "Repo-relative paths (or absolute under the project root).",
+        },
+        ...SESSION_ID_PROP,
+      },
+      required: ["paths"],
+    },
+  },
+  {
+    name: "fxmind_release_paths",
+    description: "Release previously claimed paths for this Task session (optional before Gate C).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        paths: {
+          type: "array",
+          items: { type: "string" },
+        },
+        ...SESSION_ID_PROP,
+      },
+      required: ["paths"],
+    },
+  },
+  {
+    name: "fxmind_session_status",
+    description:
+      "List active Task sessions, gates, and claimed paths (parallel IDE tabs / panel threads). Read-only.",
+    inputSchema: { type: "object", properties: {} },
   },
   {
     name: "fxmind_record_correction",
@@ -521,19 +585,32 @@ function dispatchTool(name, args) {
         ...tools.startTask(root, {
           note: args.note || "",
           trivial: Boolean(args.trivial),
+          ...sessionExtra(args),
         }),
       };
 
     case "fxmind_gate_status":
-      return tools.gateStatus(root);
+      return tools.gateStatus(root, sessionExtra(args));
 
-    case "fxmind_record_gate":
-      return {
-        ok: true,
-        ...tools.recordGate(root, String(args.gate).toUpperCase(), true, {
-          note: args.note || "",
-        }),
-      };
+    case "fxmind_record_gate": {
+      const data = tools.recordGate(root, String(args.gate).toUpperCase(), true, {
+        note: args.note || "",
+        ...sessionExtra(args),
+      });
+      if (data?.error === "multiple_active_sessions") {
+        return data;
+      }
+      return { ok: true, ...data };
+    }
+
+    case "fxmind_claim_paths":
+      return tools.claimPaths(root, args.paths || [], sessionExtra(args));
+
+    case "fxmind_release_paths":
+      return tools.releasePaths(root, args.paths || [], sessionExtra(args));
+
+    case "fxmind_session_status":
+      return tools.sessionStatus(root);
 
     case "fxmind_record_correction":
       return tools.recordCorrection(root, {
@@ -569,7 +646,9 @@ function dispatchTool(name, args) {
       return fivemRcon.statusProbe();
 
     case "fxmind_fivem_cmd":
-      return fivemRcon.execRcon(args.command || "");
+      return tools.withFileLockAsync(root, "fivem-rcon", () =>
+        fivemRcon.execRcon(args.command || ""),
+      );
 
     case "fxmind_fivem_console_tail":
       return fivemRcon.consoleTail({ lines: args.lines });

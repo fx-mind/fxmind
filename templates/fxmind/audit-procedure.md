@@ -60,6 +60,9 @@ RegisterNetEvent\("manager:|RegisterNetEvent\("admin:
 CanUse.*Manager|CanManage|hasGroup|hasPermission|SafeEvent
 playerConnect|playerJoining|playerSpawned
 loop calling func.* / ServerCallback / TriggerServerEvent per item  (N+1, §1.4)
+entryFileNames|assetFileNames|chunkFileNames   (Vite hash — Pass NUI N-a)
+fadeIn|fadeOut|rgba\(|oklch\(                  (CEF overlay — Pass NUI N-b..N-d)
+bg-opacity|--tw-bg-opacity                     (Tailwind alpha fill — N-b)
 ```
 
 **Audit gates.** Each pass ends with a chat marker before the next begins (same convention as task mode). Do not skip a marker; a missing marker = incomplete audit.
@@ -95,13 +98,23 @@ loop calling func.* / ServerCallback / TriggerServerEvent per item  (N+1, §1.4)
 
    → `🛑 AUDIT PASS PAYLOAD COMPLETE — oversized: <N>`
 
-10. **Globals pass (§3.6 Pass 3)** — build **Globals table** for every top-level global in server scope, then client scope.
+10. **Pass NUI — CEF overlay & Vite cache (§2.4 Pass NUI)** — **mandatory** when `fxmanifest` has `ui_page` or NUI paths in `files`; otherwise N/A for all rows. Read `fivem-react-nui/ui-guide.md` §2 + §6.
 
-11. **Endpoint exposure pass (§5.1 Pass 4)** — build the **Client-callable endpoint matrix** (Endpoint | Type | Auth | Rate-limit | Validated | DB cost | Response KB | Fan-out | Severity). `manager:*`/`admin:*` are a **class** (no real permission = Critical), not a separate check.
+   a. Grep `vite.config.ts` for `entryFileNames` / `assetFileNames` **without** `[hash]` (N-a).
+   b. Grep NUI CSS/TSX for `rgba(` on overlay/shell/popup fill; Tailwind `bg-*/[0-9]`, `bg-opacity`, `--tw-bg-opacity` on rounded panel (N-b).
+   c. Grep `fadeIn`, `fadeOut`, `.fade(` in NUI JS (N-c).
+   d. Grep `oklch(` in CSS/build (N-d).
+   e. **Diagnosis:** if N-a clean but background still missing for some players → N-b/N-c, not cache.
+
+   → `🛑 AUDIT PASS NUI COMPLETE — matrix: N-a..N-d (<found count> hits)`
+
+11. **Globals pass (§3.6 Pass 3)** — build **Globals table** for every top-level global in server scope, then client scope.
+
+12. **Endpoint exposure pass (§5.1 Pass 4)** — build the **Client-callable endpoint matrix** (Endpoint | Type | Auth | Rate-limit | Validated | DB cost | Response KB | Fan-out | Severity). `manager:*`/`admin:*` are a **class** (no real permission = Critical), not a separate check.
 
     → `🛑 AUDIT PASS 4 COMPLETE — matrix rows: <N>`
 
-12. **Pass 6 + Pass 7 self-check** — complete §2.4 Pass 6 and **§2.5 quality gates** before writing report.
+13. **Pass 6 + Pass 7 self-check** — complete §2.4 Pass 6 and **§2.5 quality gates** before writing report.
 
 ## Step 3 — Evaluate (evidence required — Pass 1)
 
@@ -207,16 +220,29 @@ For each E-a…E-g / §5.3 finding, the plan must include:
 
 ### NUI (when applicable)
 
+**Pass NUI matrix (N-a–N-d)** — report each row as Found / N/A when resource has `ui_page`:
+
+| # | Check | Severity |
+|---|-------|----------|
+| N-a | Vite output filenames without `[hash]` | **High** |
+| N-b | `rgba` / Tailwind alpha fill on rounded overlay/shell over transparent html | **High** |
+| N-c | `fadeIn`/`fadeOut` on overlay container | **High** |
+| N-d | `oklch(` in CSS (Tailwind v4) | **High** |
+
+Also check (existing):
+
 - NUI callbacks without `cb("{}")` or valid JSON
 - Repetitive client/NUI actions without local cooldown/debounce
 - Heavy UI libraries (MUI, framer-motion, etc.)
+
+**Correction plan (N-a…N-d):** before/after snippets — hex+gradient fill, dim on `::before` without radius, `display` toggle instead of fadeIn, or restore Vite default `[hash]` output + `files { "src/ui/build/**/*" }`. See `fivem-react-nui/ui-guide.md` §6.
 
 ### Severity
 
 | Level | When |
 |-------|------|
 | **Critical** | Exploit / CRUD or data leak without server auth / free items or money / crash / ban bypass / `manager:*`+admin without real permission |
-| **High** | Hot-path rebuild, full resync on delta, serious perf regression / endpoint flood (E-a, E-d) / oversized `tunnel_res` response (E-f > 64 KB) / N+1 on open path (E-g) / mutation without input validation (§5.3) |
+| **High** | Hot-path rebuild, full resync on delta, serious perf regression / endpoint flood (E-a, E-d) / oversized `tunnel_res` response (E-f > 64 KB) / N+1 on open path (E-g) / mutation without input validation (§5.3) / **NUI CEF fill** (N-a Vite no hash, N-b rgba overlay, N-c fadeIn) |
 | **Medium** | Full DB cache reload, duplicate code, unnecessary global / unbounded name / missing ownership check |
 | **Low** | Style, minor perf, polish |
 
@@ -235,12 +261,13 @@ Use this structure — **required sections:**
 1. Summary table — **counts must equal findings rows**
 2. **Client-callable endpoint matrix** (Pass 4) — every endpoint; admin/manager marked as class
 3. **View cache matrix** (rows V-a–V-j: Found / N/A)
-4. **Endpoint flow / broadcast matrix** (Pass 2b + §1.6.1) — every endpoint + `-1` send reviewed, with response KB estimate
-5. **Globals table** (Symbol | Declared | Used in | Verdict)
-6. Findings tables: Security, Performance (V-a…V-j + E-a…E-g), Patterns, NUI
-7. **Correction plan** — phased; severity must match findings
-8. **Files reviewed** — **only** manifest script paths (+ NUI if scoped); line count each
-9. **Pass 6 + Pass 7 self-check** — all boxes ticked (§2.4 + §2.5)
+4. **NUI matrix** (rows N-a–N-d: Found / N/A) — when `ui_page` present
+5. **Endpoint flow / broadcast matrix** (Pass 2b + §1.6.1) — every endpoint + `-1` send reviewed, with response KB estimate
+6. **Globals table** (Symbol | Declared | Used in | Verdict)
+7. Findings tables: Security, Performance (V-a…V-j + E-a…E-g), Patterns, NUI (N-a…N-d + callbacks)
+8. **Correction plan** — phased; severity must match findings
+9. **Files reviewed** — **only** manifest script paths (+ NUI if scoped); line count each
+10. **Pass 6 + Pass 7 self-check** — all boxes ticked (§2.4 + §2.5)
 
 Write report in **Portuguese** if codebase/comments are PT-BR; otherwise match project language.
 
@@ -250,7 +277,7 @@ In chat, provide:
 
 - Short executive summary (3–5 bullets)
 - Count of findings by severity + **files reviewed** (must match fxmanifest)
-- Mention if view-cache matrix or **endpoint matrix** had hits (incl. oversized `tunnel_res`)
+- Mention if view-cache matrix, **NUI matrix (N-a–N-d)**, or **endpoint matrix** had hits (incl. oversized `tunnel_res`)
 - Top 3 fixes by priority
 - Path to full report: `.fxmind/audits/<name>.md`
 - Ask: *"Quer que eu implemente o Phase 1?"* (or equivalent) — **wait for approval before editing code**
@@ -260,6 +287,8 @@ In chat, provide:
 - **Never invent** findings — read `file:line` before citing; wrong handler = failed audit
 - **Never treat cooldown as permission** — `CanUse*Manager` with only `os.time()` is rate-limit, not auth (§5.1)
 - **Never audit one file** when user scoped the resource — read full `fxmanifest` unless explicitly single-file
+- **Never skip Pass NUI** when `ui_page` is set — grep vite.config + NUI CSS/JS for N-a…N-d
+- **Never confuse N-a (cache) with N-b (CEF fill)** — if build already has `[hash]`, do not blame cache
 - **Never skip Pass 2b** — inventory every client-callable endpoint (events + `Tunnel.bindInterface` funcs + NUI chains); a resource with 0 `RegisterNetEvent` can still expose N endpoints via Tunnel
 - **Never skip the response-size estimate** — every read endpoint gets a KB estimate; `tunnel_res` counts toward payload budget
 - **Never downgrade flood findings** (E-a/E-d/E-f/§5.3) to Medium/Low — "cerberus present but uncalled" and "small resource" are not brakes

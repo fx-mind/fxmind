@@ -1240,8 +1240,10 @@ function buildEnv() {
 function stampGateSession(raw, root) {
   if (!raw) return;
   raw._runStartedAtMs = Date.now();
+  raw._fxmindSessionId = raw.id || raw._fxmindSessionId || null;
   try {
-    raw._gateSession = String(tools.gateStatus(root).session || "");
+    const status = tools.gateStatus(root, { sessionId: raw._fxmindSessionId });
+    raw._gateSession = String(status.session || status.sessionId || "");
   } catch {
     raw._gateSession = "";
   }
@@ -1284,7 +1286,7 @@ function refreshRunMeta(threadId, root, force = false) {
   if (!force && raw._lastGatesAt && now - raw._lastGatesAt < 2000) return;
   raw._lastGatesAt = now;
   try {
-    threads.setGates(threadId, gatesForCurrentRun(raw, tools.gateStatus(root)));
+    threads.setGates(threadId, gatesForCurrentRun(raw, tools.gateStatus(root, { sessionId: raw.id })));
   } catch {
     /* ignore */
   }
@@ -1861,6 +1863,7 @@ async function runThreadDirect(threadId, options = {}) {
       imagePaths,
       taskMode,
       mode: raw.mode,
+      sessionId: threadId,
     });
     scheduleGraphRebuildBackground(root);
   } catch (err) {
@@ -1998,7 +2001,7 @@ async function runThreadDirect(threadId, options = {}) {
       bin,
       args,
       root,
-      buildEnv(),
+      { ...buildEnv(), FXMIND_SESSION_ID: threadId },
       cliId === "codex" || stdinPrompt ? ["pipe", "pipe", "pipe"] : undefined,
     );
     raw._child = child;

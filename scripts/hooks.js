@@ -39,7 +39,7 @@ const HOOK_SCRIPTS = [
   "pre-commit.js",
 ];
 
-const HOOK_LIB_FILES = ["memory-drift.js", "update-check.js", "cleanup-tmp.js", "stop-followup.js", "layout.js"];
+const HOOK_LIB_FILES = ["memory-drift.js", "update-check.js", "cleanup-tmp.js", "stop-followup.js", "layout.js", "fs-lock.js", "task-sessions.js"];
 
 const FXMIND_COMMANDS = {
   preToolUse: { command: "node .cursor/hooks/gate-guard.js", timeout: 15 },
@@ -265,6 +265,9 @@ function installHooks(targetRoot, options = {}) {
     gitignore = tools.ensureProjectGitignore(projectRoot);
     if (gitignore?.added?.length) {
       installed.push(`.gitignore (+${gitignore.added.join(", ")})`);
+    }
+    if (gitignore?.untracked?.length) {
+      installed.push(`git untrack generated (${gitignore.untracked.length})`);
     }
   } catch {
     // optional

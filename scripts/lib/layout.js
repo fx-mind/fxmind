@@ -91,7 +91,11 @@ const DEPRECATED_ROOT_FILES = [
 ];
 
 const PROJECT_GITIGNORE_LINES = [
+  ".fxmind/graph/",
   ".fxmind/state/",
+  ".fxmind/knowledge-graph.json",
+  ".fxmind/knowledge-graph.html",
+  ".fxmind/memory-index.json",
   ".fxmind/fxmind-gates.json",
   ".fxmind-gates.json",
   ".fxmind/metrics.jsonl",
@@ -102,6 +106,20 @@ const PROJECT_GITIGNORE_LINES = [
   ".fxmind/rcon.json",
   ".fxmind/graph-cache.json",
   ".fxmind/tmp/",
+];
+
+/** Already-tracked generated files to drop from the git index (`git rm --cached`). */
+const PROJECT_GITIGNORE_UNTRACK = [
+  ".fxmind/graph",
+  ".fxmind/state",
+  ".fxmind/knowledge-graph.json",
+  ".fxmind/knowledge-graph.html",
+  ".fxmind/memory-index.json",
+  ".fxmind/graph-cache.json",
+  ".fxmind/metrics.jsonl",
+  ".fxmind/fxmind-gates.json",
+  ".fxmind/tmp",
+  ".fxmind-gates.json",
 ];
 
 function fxmindDir(root) {
@@ -305,6 +323,7 @@ module.exports = {
   LEGACY_REL,
   DEPRECATED_ROOT_FILES,
   PROJECT_GITIGNORE_LINES,
+  PROJECT_GITIGNORE_UNTRACK,
   fxmindDir,
   joinRel,
   projectRel,

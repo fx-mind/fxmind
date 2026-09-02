@@ -15,7 +15,7 @@ const FXMIND_TOOLS_MANDATE = [
   "|------|-----------------|",
   "| Descoberta / Gate B | `fxmind_query`, `fxmind_list_memories` (ou memórias pré-carregadas abaixo) |",
   "| Grafo | `fxmind_graph` `{ updateHtml: false }` |",
-  "| Task / Gates | `fxmind_start_task`, `fxmind_record_gate`, `fxmind_gate_status` |",
+  "| Task / Gates | `fxmind_start_task`, `fxmind_record_gate`, `fxmind_gate_status`, `fxmind_claim_paths` |",
   "| Arquivo alterado | `fxmind_drift_check` |",
   "| FiveM dev | `fxmind_fivem_status` → `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` / `fxmind_fivem_nui_*` |",
   "| MySQL | `fxmind_db_schema`, `fxmind_db_sample`, `fxmind_db_query` |",
@@ -128,11 +128,18 @@ function buildContextFile(root, userPrompt, options = {}) {
     "",
     `Workspace: ${root}`,
     "",
-    modeBlock,
-    "",
-    FXMIND_TOOLS_MANDATE,
-    "",
   ];
+
+  if (options.sessionId) {
+    lines.push(`FXMIND_SESSION_ID: ${options.sessionId}`);
+    lines.push(
+      "",
+      "Parallel sessions: pass sessionId on every fxmind_start_task / fxmind_record_gate / fxmind_claim_paths call. When 2+ agents work in this repo, call fxmind_claim_paths for each file before editing.",
+      "",
+    );
+  }
+
+  lines.push(modeBlock, "", FXMIND_TOOLS_MANDATE, "");
 
   const memories = tools.listMemories(root);
   lines.push(`Memories on disk: ${memories.length}`);

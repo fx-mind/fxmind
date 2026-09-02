@@ -33,6 +33,7 @@ const {
   installCorrectionsDir,
 } = require("./legacy");
 const { migrateProjectLayout } = require("../lib/layout");
+const { ensureProjectGitignore } = require("../lib/project-gitignore");
 
 function coreTemplateEntry(entry) {
   if (typeof entry === "string") {
@@ -164,6 +165,15 @@ function installSharedFxmind(targetRoot, packIds, installOptions = {}) {
   installed.push(installCorrectionsDir(targetRoot));
   for (const dest of migrateAuditReports(targetRoot)) {
     installed.push(dest);
+  }
+
+  try {
+    const gitignore = ensureProjectGitignore(targetRoot);
+    if (gitignore?.added?.length) {
+      installed.push(".gitignore");
+    }
+  } catch {
+    // gitignore heal is best-effort
   }
 
   return { installed, removed };

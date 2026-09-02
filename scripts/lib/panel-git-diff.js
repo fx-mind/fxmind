@@ -45,6 +45,8 @@ function normalizeRelPath(filePath) {
 function isFxmindNoisePath(filePath) {
   const rel = normalizeRelPath(filePath);
   if (!rel) return false;
+  if (/^\.fxmind\/memory(\/|$)/i.test(rel)) return false;
+  if (/^\.fxmind\/corrections(\/|$)/i.test(rel)) return false;
   return FXMIND_NOISE_RE.some((re) => re.test(rel));
 }
 

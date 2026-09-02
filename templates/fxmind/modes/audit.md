@@ -25,6 +25,7 @@ If `.fxmind/audits/procedure.md` is missing, run `fxmind --update -y` (or `npx -
 - Every finding cites `file:line` + the exact event/symbol — read the line before citing.
 - Report every view-cache row V-a–V-j as **Found** or **N/A**; never skip.
 - **Pass 2b is mandatory** — inventory **every** client-callable endpoint (net events + each `Tunnel.bindInterface` `func.*` + NUI→server); check E-a…E-g. A resource with 0 `RegisterNetEvent` still exposes endpoints via Tunnel.
+- **Pass NUI is mandatory** when `ui_page` or NUI `files` exist — matrix N-a–N-d (Vite hash, rgba overlay fill, fadeIn, oklch). Read `fivem-react-nui/ui-guide.md` §2 + §6.
 - **Estimate response KB** per read endpoint (`tunnel_res` counts toward the §1.6 budget; > ~64 KB = High).
 - `manager:*` / admin events to `-1` → **Critical**; never recommend `TriggerClientEvent("manager:*", -1, ...)`.
 - Cooldown (`CanUse*Manager` with `os.time()`) is **not** permission (§5.1).

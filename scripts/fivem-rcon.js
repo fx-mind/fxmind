@@ -767,31 +767,8 @@ function ensureNuiDumpCfg(cfgAbs, root) {
 }
 
 function ensureGitignoreLines(root) {
-  const gitignorePath = path.join(root, ".gitignore");
-  const lines = [
-    ".fxmind/state/",
-    ".fxmind/state/fivem-console.log",
-    ".fxmind/server-debug.log",
-    ".fxmind/state/nui-dump.json",
-    ".fxmind/state/nui-wire.json",
-    ".fxmind/state/rcon.json",
-  ];
-  let content = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, "utf8") : "";
-  const added = [];
-  for (const line of lines) {
-    const re = new RegExp(`^${line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m");
-    if (re.test(content)) continue;
-    if (content.length && !content.endsWith("\n")) content += "\n";
-    if (!content.includes("# fxmind session")) {
-      content += "\n# fxmind session (do not commit)\n";
-    }
-    content += `${line}\n`;
-    added.push(line);
-  }
-  if (added.length) {
-    fs.writeFileSync(gitignorePath, content, "utf8");
-  }
-  return { path: ".gitignore", added };
+  const { ensureProjectGitignore } = require("./lib/project-gitignore");
+  return ensureProjectGitignore(root);
 }
 
 const LEGACY_BROKEN_TEE_RE = /2>&1\s*\|\s*ForEach-Object/;

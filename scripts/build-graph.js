@@ -872,6 +872,12 @@ function writeGraph(projectRoot, graphData, options = {}) {
 
   let memoryIndex = null;
   try {
+    const { ensureProjectGitignore } = require("./lib/project-gitignore");
+    ensureProjectGitignore(projectRoot);
+  } catch {
+    // gitignore heal is best-effort
+  }
+  try {
     const { writeMemoryIndex } = require("./fxmind-tools");
     memoryIndex = writeMemoryIndex(projectRoot);
   } catch {

@@ -11,7 +11,7 @@ Aliases nos triggers ajudam o agente a reconhecer singular/plural e sinônimos (
 | `pelucia` | pelúcia, pelucia, createObjectspl, prop na mão | `itemlist.lua`, `inventory/**/core.lua`, bloco PELUCIAS |
 | `raspadinha` | scratch, ScratchTypes, InitScratch, raspadinha | `**/scratchcard/**/config.lua`, `InitScratch`, `GenerateReward` |
 | `loja` | loja, shop, store, products, webhook | `**/store/config/config.lua`, `config.shops`, `webhook` |
-| `nui` | NUI, nui, RegisterNUICallback, pnpm, vite | `**/src/ui/project`, `RegisterNUICallback`, `fxmanifest` ui_page |
+| `nui` | NUI, nui, CEF, overlay, rgba, vite hash, background sumindo, RegisterNUICallback, pnpm, vite | `**/src/ui/project`, `vite.config.ts`, `**/nui/**`, `RegisterNUICallback`, `fxmanifest` ui_page — pitfall: hex+linear-gradient fill vs Vite `[hash]` cache (see `fivem-react-nui/ui-guide.md` §6) |
 | `grupos` | grupo, grupos, permissão, permission, hasGroup, hasPermission, SharedPermission | `**/groups.lua`, `vRP.hasGroup`, `vRP.hasPermission` |
 | `inventario` | inventario, inventário, chest, baú, trunk, sanitizeChest | `**/inventory/**`, `tryChest`, `requestChest` |
 | `webhook` | webhook, discord, sandWebhook | `**/webhook.lua`, `exports["webhook"]`, `config.shops` webhook field |

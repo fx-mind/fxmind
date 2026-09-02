@@ -42,7 +42,7 @@ The full `/fxmind` command body is a slim router — read **`.fxmind/fxmind.md`*
 
 **Always** use fxmind MCP tools when connected — they are optimized for fast delivery (Node, indexed graph, gates, FiveM, DB). **Do not** replace them with grep, find, or ad-hoc shell search.
 
-Required tools: `fxmind_list_memories`, `fxmind_validate_memories`, `fxmind_query`, `fxmind_graph`, `fxmind_drift_check`, `fxmind_start_task`, `fxmind_gate_status`, `fxmind_record_gate`, `fxmind_record_correction`, `fxmind_list_corrections`, `fxmind_fivem_install`, `fxmind_fivem_cmd`, `fxmind_fivem_console_tail`, `fxmind_fivem_status`, `fxmind_db_status`, `fxmind_db_query`, `fxmind_db_schema`, `fxmind_db_sample`, `fxmind_db_explore`, `fxmind_db_analyze`, `fxmind_panel_wait`, `fxmind_panel_pending`, `fxmind_panel_reply`, `fxmind_panel_fail`.
+Required tools: `fxmind_list_memories`, `fxmind_validate_memories`, `fxmind_query`, `fxmind_graph`, `fxmind_drift_check`, `fxmind_start_task`, `fxmind_gate_status`, `fxmind_record_gate`, `fxmind_claim_paths`, `fxmind_release_paths`, `fxmind_session_status`, `fxmind_record_correction`, `fxmind_list_corrections`, `fxmind_fivem_install`, `fxmind_fivem_cmd`, `fxmind_fivem_console_tail`, `fxmind_fivem_status`, `fxmind_db_status`, `fxmind_db_query`, `fxmind_db_schema`, `fxmind_db_sample`, `fxmind_db_explore`, `fxmind_db_analyze`, `fxmind_panel_wait`, `fxmind_panel_pending`, `fxmind_panel_reply`, `fxmind_panel_fail`.
 
 If fxmind MCP is **not** in your tool list → **STOP** the task pipeline; ask the user to enable it (`fxmind hooks install` on Windows if mcp.json fails).
 
@@ -88,7 +88,10 @@ Each gate MUST end with its marker. Do NOT proceed to the next phase without the
 
 **Gates = MCP only (never Write the JSON):**
 
-- Call **`fxmind_start_task`** at task start.
+- Call **`fxmind_start_task`** at task start — save the returned **`sessionId`** for this chat tab.
+- Pass **`sessionId`** on every **`fxmind_record_gate`**, **`fxmind_gate_status`**, and **`fxmind_claim_paths`** call.
+- **Parallel IDE tabs:** when 2+ agents work in the same repo, call **`fxmind_claim_paths`** with every file you will edit **before** the first Write (after Gate B). Use **`fxmind_session_status`** to see other active sessions.
+- Subagents in the **same** chat reuse the parent **`sessionId`** — do not call **`fxmind_start_task`** again.
 - After each marker → **`fxmind_record_gate`** with `gate: "A"|"B"|"V"|"C"`.
 - Gate C clears `taskActive` automatically.
 - Do **not** Write/Edit `.fxmind/state/fxmind-gates.json` — the `gate-guard` hook blocks it.
@@ -130,7 +133,7 @@ Do not ask `explore` to fetch the web, `scout` to grep this repo, `reader` to di
 |------|------|
 | `.fxmind/memory/<topic>.md` | Topic memories |
 | `.fxmind/audits/<resource>.md` | Audit reports (**never** `.fxmind/audit-*.md` at root) |
-| `.fxmind/graph/knowledge-graph.json` | Graph for query/path/explain |
+| `.fxmind/graph/knowledge-graph.json` | Graph for query/path/explain (local, gitignored; rebuild with `fxmind graph`) |
 | `.fxmind/policy/topic-catalog.md` | Learn search hints |
 | `.fxmind/reference.md` | Project map — paths, flows, anti-bug notes (all agents) |
 | `.fxmind/store.json` | Global store pointer when enabled |
