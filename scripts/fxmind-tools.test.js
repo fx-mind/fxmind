@@ -43,4 +43,14 @@ describe("queryGraph auto-rebuild", () => {
     assert.ok(fs.existsSync(path.join(dir, ".fxmind", "graph", "knowledge-graph.json")));
     assert.ok(result.memories !== undefined || result.expanded !== undefined);
   });
+
+  it("bounds large memories by the requested estimated token budget", () => {
+    fs.appendFileSync(path.join(dir, ".fxmind", "memory", "craft.md"), "craft rule ".repeat(3000));
+    const result = tools.queryGraph(dir, "craft", { budget: 25 });
+    assert.equal(result.ok, true);
+    assert.equal(result.tokensUsed, 25);
+    assert.ok(result.memories[0].truncated);
+    assert.equal(result.memories[0].content.length, 100);
+    assert.ok(fs.existsSync(result.memories[0].file));
+  });
 });

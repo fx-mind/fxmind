@@ -141,11 +141,12 @@ describe("panel-cli", () => {
         title: "Direct change",
         content: "change the readme",
       });
+      threads.getThreadRaw(thread.id).gitSnap = require("./panel-git-diff").snapshot(repo);
       fs.writeFileSync(path.join(repo, "README.md"), "changed\n", "utf8");
-      threads.setPhase(thread.id, "review");
+      threads.finishAssistant(thread.id);
 
       const result = panelCli.commitThread(thread.id, { message: "direct change" });
-      assert.equal(result.ok, true);
+      assert.equal(result.ok, true, result.error);
       assert.equal(result.thread.worktree, null);
       assert.equal(
         execFileSync("git", ["-C", repo, "log", "-1", "--pretty=%s"], {

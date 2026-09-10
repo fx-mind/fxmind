@@ -18,7 +18,7 @@ You are a discovery specialist — **only when fxmind_query and memories did not
 
 1. **`fxmind_query`** (~1500) — required if MCP fxmind is connected.
 2. **`fxmind_list_memories`** + read `.fxmind/memory/` files cited in query or parent task.
-3. Targeted Read/Glob **only inside folders named by memories/query** — never repo-wide grep as step 1.
+3. Missing paths/symbols: `fxmind_search` with a literal query and the likely directory. Narrow truncated results, then read relevant matches. Do not infer absence from an incomplete graph.
 
 Never create, edit, or delete files. Never fetch the web (`scout`).
 

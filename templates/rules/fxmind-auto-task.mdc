@@ -1,45 +1,16 @@
 ---
-description: Auto-run fxmind Task pipeline for any code/config change (no /fxmind task required)
+description: Run FxMind task gates and evidence-based verification for requested code/config changes
 alwaysApply: true
 ---
 
 # fxmind — auto Task
 
-**Prerequisite:** MCP **fxmind** connected (`fxmind_start_task` visible). If missing → **STOP**; tell user to enable it (Windows: `fxmind hooks install` if mcp.json keeps dying). **Never** substitute grep/shell search for fxmind MCP tools.
+For implementation requests read `.fxmind/modes/task.md`. Questions/reviews remain read-only unless changes are requested. "Analyze and fix" authorizes implementation; respect decisions already made and user stop.
 
-**Tool policy:** discovery, gates, graph, FiveM, DB, and corrections → **fxmind MCP only** (optimized for fast delivery). Read files only at paths from `fxmind_query` / memories.
+Use relevant preloaded memories or fxmind_query; confirm with current source. Missing coverage → fxmind_search in the affected directory, or permitted native search. Use MCP for gates and available domain operations. Missing MCP blocks gated edits, not read-only diagnosis.
 
-When the user asks to **change code/config** — run Task automatically. Read **`.fxmind/modes/task.md`** (verify details: **`.fxmind/modes/task-verify.md`**).
+Quick/full controls effort, not quality. Trivial means a known tiny one-file change with no new behavior; UI and risky tasks use A/B. Gates: start → A → B → implement + diff review → V with actual evidence → C. Keep sessionId; claim task files for parallel edits. Never write gate/session JSON.
 
-If the FxMind context file contains **`PANEL_MODE: quick`**, use the panel quick path in task.md (trivial + short V/C). If **`PANEL_MODE: full`**, use the full pipeline.
+Read `.fxmind/modes/task-verify.md` before UI edits and before V. UI requires browser interactions, visual inspection and an existing screenshot/trace. Build alone cannot verify UI. Failed/blocked checks leave V incomplete, and edits after V require re-verification.
 
-## Classify first (one CLASS)
-
-| CLASS | Do |
-|-------|-----|
-| **question** | Answer only — no Task implement |
-| **analyze-only** | Investigate → report → AskQuestion — no edit until approval ("analisa e corrige" = full task) |
-| **plan-first** | Plan → stop for approval |
-| **trivial** | `fxmind_start_task` `{ trivial: true }` → edit → V → C |
-| **task** | Full A → B → implement → V → (judge if required) → C |
-
-## Implementation flow
-
-1. `fxmind_start_task` (add `trivial: true` when CLASS=trivial).
-2. Gate A → `fxmind_record_gate` A (skip ceremony if trivial already auto-marked; still state Done in chat).
-3. Gate B → `fxmind_record_gate` B (same for trivial).
-4. Implement (max 3 retries). FiveM (dev only): `fxmind_fivem_status` first — use `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` only when `available: true`. `installed: false` → `fxmind_fivem_install` once (dev/dev.cfg only) + restart fivem-start. MCP or FXServer unavailable → skip; ask user to run ensure/restart manually. Never use RCON on production server.cfg.
-5. Read **task-verify.md** → Gate V → `fxmind_record_gate` V. **C without V fails in MCP.**
-6. Judge if task-verify says mandatory.
-7. Gate C → learn / "mudança pontual" → `fxmind_record_gate` C + `fxmind_validate_memories` if memory wrote.
-8. User correction → AskQuestion: Pitfalls / `fxmind_record_correction` / both / neither.
-
-## Exceptions
-
-- question / analyze-only (until approved)
-- Explicit modes: learn, audit, **judge**, query, graph, memory health, reference, update
-- **User stop** (`pare` / `stop` / `pause` / `cancela`) — halt immediately. Do not continue Gates V/C or edits because a stop-hook reminder fired. Resume only if the user asks.
-
-## Style
-
-Monolith-first Lua/FiveM; Tunnel/`return` for queries. Memories: `lua-style.md`, `lua-scope.md`. Skill backlog: `.fxmind/corrections/`.
+Keep constants/helpers/files only when they add concrete value. Match local conventions; preserve security checks. Record gate notes once instead of duplicating ceremony in chat.

@@ -23,9 +23,10 @@ const fivemNuiDump = require("./fivem-nui-dump");
 const fxmindMysql = require("./fxmind-mysql");
 const { checkForUpdate } = require("./lib/update-check");
 const panelHost = require("./lib/panel-host");
+const { searchSource } = require("./lib/source-search");
 
 const PROTOCOL_VERSION = "2024-11-05";
-const SERVER_INFO = { name: "fxmind", version: "1.4.0" };
+const SERVER_INFO = { name: "fxmind", version: require("../package.json").version };
 
 const SESSION_ID_PROP = {
   sessionId: {
@@ -134,6 +135,19 @@ const TOOL_DEFS = [
     },
   },
   {
+    name: "fxmind_search",
+    description: "Read-only bounded literal source search when memories lack coverage or for twin checks. Returns paths, line numbers and short excerpts. Prefer a specific directory; never infer absence from truncated results.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        directory: { type: "string", description: "Directory inside the project, preferably the affected area. Default: project root." },
+        query: { type: "string", minLength: 1, maxLength: 200 },
+        limit: { type: "integer", minimum: 1, maximum: 50 },
+      },
+      required: ["query"],
+    },
+  },
+  {
     name: "fxmind_start_task",
     description:
       "Start a Task session (sets taskActive). Preferred over writing gates JSON. Call before Gate A. Pass trivial=true for one-file tiny edits to auto-complete Gates A and B.",
@@ -141,6 +155,7 @@ const TOOL_DEFS = [
       type: "object",
       properties: {
         note: { type: "string", description: "Optional goal/scope note." },
+        ui: { type: "boolean", description: "True when the task affects user-visible UI or interactions, including backend-driven UI. Requires browser evidence at Gate V." },
         trivial: {
           type: "boolean",
           description:
@@ -163,7 +178,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_record_gate",
     description:
-      "Persist a Gate marker (START, A, B, V, or C). Only way agents should update gates. Gate C clears taskActive.",
+      "Persist a gate in A→B→V→C order. V requires structured evidence; failed/blocked checks keep V incomplete. UI changes require browser observations plus an existing screenshot/trace. C rejects stale verification after code changes.",
     inputSchema: {
       type: "object",
       properties: {
@@ -174,6 +189,40 @@ const TOOL_DEFS = [
             "START begins a task; A/B unlock edits; V records verify-by-observation; C closes the task.",
         },
         note: { type: "string", description: "Optional note (e.g. memories loaded)." },
+        evidence: {
+          type: "object",
+          description: "Required for V. Record actual observations after checks, never predictions. See task-verify.md. Browser unavailable: status=blocked, reason; do not mark passed.",
+          properties: {
+            files: { type: "array", minItems: 1, items: { type: "string" }, description: "All task files, repository-relative. Include deletions." },
+            review: { type: "string", description: "Diff review: unnecessary constants/helpers removed or justified, local conventions and invariants checked." },
+            checks: {
+              type: "array", minItems: 1,
+              items: {
+                type: "object",
+                properties: {
+                  kind: { type: "string", enum: ["test", "build", "runtime", "manual"] },
+                  target: { type: "string" }, expected: { type: "string" }, observed: { type: "string" },
+                  status: { type: "string", enum: ["passed", "failed", "blocked"] },
+                },
+                required: ["kind", "target", "expected", "observed", "status"],
+              },
+            },
+            browser: {
+              type: "object",
+              properties: {
+                required: { type: "boolean" },
+                status: { type: "string", enum: ["passed", "failed", "blocked"] },
+                url: { type: "string" },
+                interactions: { type: "array", items: { type: "string" } },
+                visual: { type: "string" }, console: { type: "string" },
+                artifact: { type: "string", description: "Existing non-empty screenshot/trace file path from the browser tool; preferably OS temp." },
+                reason: { type: "string" },
+              },
+              required: ["status"],
+            },
+          },
+          required: ["files", "review", "checks"],
+        },
         ...SESSION_ID_PROP,
       },
       required: ["gate"],
@@ -585,9 +634,13 @@ function dispatchTool(name, args) {
         ...tools.startTask(root, {
           note: args.note || "",
           trivial: Boolean(args.trivial),
+          ui: Boolean(args.ui),
           ...sessionExtra(args),
         }),
       };
+
+    case "fxmind_search":
+      return searchSource(root, args);
 
     case "fxmind_gate_status":
       return tools.gateStatus(root, sessionExtra(args));
@@ -595,6 +648,7 @@ function dispatchTool(name, args) {
     case "fxmind_record_gate": {
       const data = tools.recordGate(root, String(args.gate).toUpperCase(), true, {
         note: args.note || "",
+        evidence: args.evidence,
         ...sessionExtra(args),
       });
       if (data?.error === "multiple_active_sessions") {

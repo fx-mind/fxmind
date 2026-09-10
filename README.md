@@ -130,6 +130,23 @@ Generated / session-only (gitignored, rebuilt locally): `.fxmind/graph/` — `kn
 
 ## Task mode & Gates
 
+Gate V now requires structured `evidence` (`files`, `review`, `checks`) through
+`fxmind_record_gate`; a note-only call no longer completes verification. UI changes
+also require browser interactions, visual/console observations and an existing
+screenshot/trace file. Declare `ui: true` at task start for backend-driven UI changes.
+Failed or blocked checks keep V incomplete; C rejects code changed since V.
+See `templates/fxmind/modes/task-verify.md` for the contract.
+
+Quick mode reduces overhead without bypassing quality checks. `fxmind_search`
+provides bounded literal source search when the memory graph lacks coverage.
+Graph-query budgets bound memory text using an approximate characters/4 estimate;
+truncated memories include their source path for targeted follow-up reading.
+
+Update the package **and installed project templates/hooks together**, then restart
+the agent/MCP session. Existing V markers without structured evidence must be recorded
+again. These controls validate evidence structure and file freshness; they cannot
+prove that an agent's observations are truthful. Independent review remains necessary.
+
 Just ask for the change in natural language — Task mode runs **automatically** (no `/fxmind task` required). With Cursor hooks installed:
 
 1. **Classify** — `question` / `analyze-only` / `plan-first` / `trivial` / `task` (see `.fxmind/modes/task.md`)

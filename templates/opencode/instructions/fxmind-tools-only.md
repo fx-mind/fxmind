@@ -1,25 +1,11 @@
-# FxMind tools only (panel — mandatory)
+# FxMind context and discovery
 
-This project is optimized for **fxmind MCP** tools. The panel already attaches a context file with `fxmind_query` hits.
+Read the attached context. Reuse relevant memories; otherwise query once. Confirm against current source.
 
-## Before any repo search
+If paths or symbols are missing, use `fxmind_search` with a literal query and the likely directory. Results contain repository-relative paths, line numbers and bounded excerpts. Narrow truncated results. Read the relevant implementation/callers. Native searches may be disabled by this project's permissions; do not evade them.
 
-1. Read the attached **FxMind context file** (`--file`).
-2. Call **`fxmind_query`** (~1500) and **`fxmind_list_memories`**.
-3. **`fxmind_drift_check`** on files you will edit.
-4. **Read** only at repository-relative paths from memories/query — use **`reader`** subagent for parallel reads.
+Use MCP for gates, graph, corrections and available FiveM/DB operations. Missing MCP prevents gated edits; report the missing tool while completing feasible read-only investigation.
 
-## Forbidden (blocked in opencode.json)
+Implementation follows `.fxmind/modes/task.md`; UI reads task-verify.md before editing. Quick mode preserves all quality/verification requirements. Gates V/C need actual evidence; a build does not prove browser correctness.
 
-- `grep` / `rg` / `find` / `findstr` / `Select-String`
-- `ls` / `dir` / `Get-ChildItem` for repo discovery
-- Repo-wide Glob (primary agent) — use `fxmind_query`
-- Delegating **`explore`** when `fxmind_query` or the context file already has paths
-- Absolute paths, wildcard directory reads, or `external_directory` for files inside the selected repository
-
-## Allowed shell (when MCP cannot)
-
-- `ensure` / `restart` → use **`fxmind_fivem_cmd`** when `fxmind_fivem_status.available`
-- Targeted Read/Glob inside a path already named by fxmind memories
-
-If fxmind MCP tools are missing → stop and ask the user to enable fxmind MCP.
+Do not repeat the memory index and matched memories, load entire repositories or delegate just to read a tiny file. Parallelize independent work when it reduces latency.

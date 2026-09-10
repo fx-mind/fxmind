@@ -16,6 +16,8 @@ const {
 } = require("./panel-cli-stream");
 const { readPanelConfig } = require("./panel-api");
 const { normalizeTaskMode } = require("./panel-context");
+const taskSessions = require("./task-sessions");
+const verification = require("./verification");
 
 const threads = new Map();
 const bus = new EventEmitter();
@@ -838,6 +840,28 @@ function clearCliSession(id) {
 function finishAssistant(id, extra = {}) {
   const thread = threads.get(id);
   if (!thread) return;
+  if (!extra.error && !thread.question && thread._runStartedAtMs &&
+      thread.mode !== "query" && thread.mode !== "plan") {
+    const root = thread.worktree?.path || thread.projectRoot;
+    const codeChanged = (thread.diff?.files || []).some((file) => !String(file.path || "").startsWith(".fxmind/"));
+    let session;
+    try {
+      session = taskSessions.resolveSession(root, thread._fxmindSessionId || id);
+    } catch {
+      // A question answered in task mode may legitimately have no task session.
+    }
+    const currentSession = session && (session.taskActive || Date.parse(session.session || "") >= thread._runStartedAtMs);
+    if (codeChanged || currentSession) {
+      try {
+        if (!session?.gates?.C?.complete || Date.parse(session.gates.C.at) < thread._runStartedAtMs) {
+          throw new Error("Verificação pendente: conclua o Gate V com evidências e o Gate C antes de entregar.");
+        }
+        verification.assertFresh(root, session.gates.V);
+      } catch (error) {
+        extra = { ...extra, error: error.message };
+      }
+    }
+  }
   const last = thread.messages.at(-1);
   if (last && last.role === "assistant") delete last.streaming;
   if (extra.error) {
@@ -1137,13 +1161,9 @@ function hostReply(id, content) {
     at: new Date().toISOString(),
     parts: [{ id: "host", type: "text", text }],
   });
-  thread.status = "done";
-  thread.phase = "review";
   thread.question = null;
-  thread.error = null;
-  thread.updatedAt = new Date().toISOString();
-  emit(id, { type: "done", thread: publicThread(thread) });
-  return { ok: true, thread: publicThread(thread) };
+  finishAssistant(id);
+  return { ok: thread.status !== "error", ...(thread.error ? { error: thread.error } : {}), thread: publicThread(thread) };
 }
 
 function hostFail(id, error) {

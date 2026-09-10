@@ -36,7 +36,7 @@ describe("panel-context", () => {
     assert.match(body, /PANEL_MODE: full/);
     assert.match(body, /Ferramentas FxMind/);
     assert.match(body, /fxmind_query/);
-    assert.match(body, /Proibido.*grep/);
+    assert.match(body, /fxmind_search/);
   });
 
   it("normalizeTaskMode defaults unknown to full", () => {
@@ -59,5 +59,16 @@ describe("panel-context", () => {
     const body = fs.readFileSync(file, "utf8");
     assert.match(body, /PANEL_MODE: quick/);
     fs.unlinkSync(file);
+  });
+
+  it("uses bounded hits without duplicating the memory index, and marks excerpts", () => {
+    fs.writeFileSync(path.join(tmpDir, ".fxmind", "memory", "radio.md"),
+      "---\ntopic: radio\nupdated: 2026-09-10\nlang: en-compact\npaths: [src/radio.js]\ntriggers: [radio]\n---\n" + "radio rules ".repeat(2000));
+    tools.queryGraph(tmpDir, "radio");
+    const body = panelContext.buildContextFile(tmpDir, "radio", { budget: 40 });
+    assert.ok(!body.includes("## memory/_index.md"));
+    assert.match(body, /Source: .*radio.md/);
+    assert.match(body, /Excerpt truncated/);
+    assert.ok(body.length < 4000);
   });
 });

@@ -763,7 +763,9 @@ function queryGraph(targetRoot, question, options = {}) {
   }
   const graphStale = stale && !rebuild;
 
-  const budget = options.budget || 1500;
+  const requestedBudget = Number(options.budget);
+  const budget = Number.isFinite(requestedBudget) && requestedBudget > 0
+    ? Math.max(1, Math.min(8000, Math.floor(requestedBudget))) : 1500;
   const mode = options.dfs ? "dfs" : "bfs";
   const tokens = canonicalize(question).split(/\s+/).filter((t) => t.length >= 3);
 
@@ -824,9 +826,10 @@ function queryGraph(targetRoot, question, options = {}) {
     if (spent >= budget) break;
     const memPath = path.join(memoryDir(targetRoot), `${id}.md`);
     if (!fs.existsSync(memPath)) continue;
-    const content = fs.readFileSync(memPath, "utf8");
-    const tokensUsed = Math.round(content.length / 4);
-    loaded.push({ slug: id, tokens: tokensUsed, content });
+    const source = fs.readFileSync(memPath, "utf8");
+    const content = source.slice(0, (budget - spent) * 4);
+    const tokensUsed = Math.ceil(content.length / 4);
+    loaded.push({ slug: id, file: memPath, tokens: tokensUsed, content, truncated: content.length < source.length });
     spent += tokensUsed;
   }
 
@@ -902,6 +905,7 @@ function startTask(targetRoot, extra = {}) {
   const data = taskSessions.startSession(targetRoot, {
     note: extra.note || "",
     trivial: Boolean(extra.trivial),
+    ui: Boolean(extra.ui),
     autoStarted: Boolean(extra.autoStarted),
     sessionId: extra.sessionId,
     conversationId: extra.conversationId,
@@ -924,6 +928,7 @@ function recordGate(targetRoot, gate, value = true, extra = {}) {
       note: extra.note || "",
       autoStarted: false,
       trivial: Boolean(extra.trivial),
+      ui: Boolean(extra.ui),
       sessionId: extra.sessionId,
       conversationId: extra.conversationId,
     });
@@ -936,6 +941,7 @@ function recordGate(targetRoot, gate, value = true, extra = {}) {
   const data = taskSessions.recordSessionGate(targetRoot, letter, value, {
     sessionId: extra.sessionId,
     note: extra.note,
+    evidence: extra.evidence,
     conversationId: extra.conversationId,
   });
   if (data && data.error === "multiple_active_sessions") {

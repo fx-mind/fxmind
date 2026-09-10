@@ -9,6 +9,7 @@ const path = require("path");
 
 const { writeLocal, fxmindDir } = require("./layout");
 const { withFileLock } = require("./fs-lock");
+const verification = require("./verification");
 
 const SCHEMA_VERSION = 2;
 const SESSIONS_INDEX = "sessions.json";
@@ -228,8 +229,12 @@ function publicSession(session) {
     session: session.session || session.startedAt || null,
     autoStarted: Boolean(session.autoStarted),
     trivial: Boolean(session.trivial),
-    gates: session.gates || {},
+    gates: Object.fromEntries(Object.entries(session.gates || {}).map(([key, gate]) => {
+      const { snapshot, scoped, ...publicGate } = gate;
+      return [key, publicGate];
+    })),
     claimedPaths: Array.isArray(session.claimedPaths) ? [...session.claimedPaths] : [],
+    ui: Boolean(session.ui),
     conversationId: session.conversationId || null,
     note: session.note || "",
     completedAt: session.completedAt || null,
@@ -243,11 +248,17 @@ function startSession(targetRoot, extra = {}) {
     const sessionId = safeSessionId(extra.sessionId) || crypto.randomUUID();
     const existing = readSession(targetRoot, sessionId);
     if (existing && existing.taskActive) {
+      if (extra.ui && !existing.ui) {
+        existing.ui = true;
+        delete existing.gates.V;
+        delete existing.gates.C;
+        writeSession(targetRoot, existing);
+      }
       mirrorLegacyGates(targetRoot, existing);
       return publicSession(existing);
     }
 
-    const trivial = Boolean(extra.trivial);
+    const trivial = Boolean(extra.trivial) && !extra.ui;
     const session = {
       schemaVersion: SCHEMA_VERSION,
       sessionId,
@@ -256,6 +267,7 @@ function startSession(targetRoot, extra = {}) {
       startedAt: now,
       autoStarted: Boolean(extra.autoStarted),
       trivial,
+      ui: Boolean(extra.ui),
       gates: {},
       claimedPaths: [],
       conversationId: extra.conversationId ? String(extra.conversationId) : null,
@@ -328,17 +340,32 @@ function recordSessionGate(targetRoot, gate, value, extra = {}) {
     }
     session.gates = session.gates || {};
 
-    if (letter === "C" && value) {
-      const vDone = session.gates.V && session.gates.V.complete;
-      if (!vDone) {
-        throw new Error(
-          "Gate C requires Gate V first. Call fxmind_record_gate with gate=V after verify-by-observation, then gate=C.",
-        );
+    const prerequisite = { B: "A", V: "B", C: "V" }[letter];
+    if (value && prerequisite && !session.gates[prerequisite]?.complete) {
+      throw new Error(`Gate ${letter} requires Gate ${prerequisite} first.`);
+    }
+    if (letter === "C" && value) verification.assertFresh(targetRoot, session.gates.V);
+    let verified = null;
+    if (letter === "V" && value) {
+      try {
+        verified = verification.verify(targetRoot, extra.evidence, session);
+      } catch (error) {
+        session.gates.V = { complete: false, at: new Date().toISOString(), note: error.message };
+        delete session.gates.C;
+        writeSession(targetRoot, session);
+        mirrorLegacyGates(targetRoot, session);
+        throw error;
       }
+    }
+
+    // Replanning or a failed recheck invalidates downstream completion.
+    for (const downstream of { A: ["B", "V", "C"], B: ["V", "C"], V: ["C"], C: [] }[letter]) {
+      delete session.gates[downstream];
     }
 
     session.gates[letter] = {
       complete: Boolean(value),
+      ...(verified || {}),
       at: new Date().toISOString(),
       ...(extra.note ? { note: extra.note } : {}),
     };
@@ -354,6 +381,8 @@ function recordSessionGate(targetRoot, gate, value, extra = {}) {
 
     writeSession(targetRoot, session);
     if (session.taskActive) {
+      mirrorLegacyGates(targetRoot, session);
+    } else if (listActiveSessionIds(targetRoot).length === 0) {
       mirrorLegacyGates(targetRoot, session);
     }
     return publicSession(session);

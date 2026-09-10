@@ -77,13 +77,13 @@ Recent folders are saved in `~/.fxmind/panel.json`.
 
 
 
-Each message builds a compact context file (`memory/_index.md` + graph query hits, **no synchronous graph rebuild**) and passes it to the selected CLI in the project cwd.
+Each message builds compact bounded graph hits (index only as fallback, **no synchronous graph rebuild**) and passes them to the selected CLI in the project cwd.
 
-**Ferramentas FxMind (obrigatório):** o agente deve usar **somente MCP fxmind** para descoberta, gates, grafo, FiveM e DB — é o caminho otimizado para entrega rápida. Grep/busca manual no repo é proibido para Gate B.
+Use relevant preloaded memories, then current source. Missing coverage → `fxmind_search` in a bounded directory. MCP manages gates, graph and available domain operations.
 
 ### Task modes (composer)
 
-- **Rápido** — injects `PANEL_MODE: quick` in the context file: trivial auto A+B, lighter Gate V/C, no subagent fan-out.
+- **Rápido** — injects `PANEL_MODE: quick`: less narration and redundant lookup; quality and browser verification remain required. Only genuinely tiny changes qualify for trivial auto A+B.
 - **Completo** — `PANEL_MODE: full`: full fxmind pipeline; OpenCode may parallelize Gate B via subagents.
 
 ## 4.1 Task execution and review

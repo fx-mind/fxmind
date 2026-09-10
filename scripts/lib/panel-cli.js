@@ -1171,7 +1171,7 @@ function workspaceInstruction(root) {
     "Keep user-facing progress human: do not mention CLI, shell, process startup, or raw commands.",
     'Say "Consultando as memórias…" / "Utilizando o FxMind MCP" — never narrate grep or bash.',
     "MANDATORY: use fxmind MCP tools for discovery, gates, graph, FiveM, and DB — this project is optimized for them.",
-    "Read the attached FxMind context file (preloaded fxmind_query). Never repo-wide grep/rg/Select-String for Gate B.",
+    "Read relevant preloaded FxMind memories, confirm with current source; missing paths/symbols → fxmind_search in a bounded directory. Avoid repeated blind lookups.",
     "Pass repository-relative paths from FxMind memories/query to reader. Do not prefix the workspace root, use wildcard directory reads, or trigger external_directory for this repository.",
     "If fxmind MCP tools are missing from your tool list, stop and ask the user to enable fxmind MCP.",
   ].join("\n");
@@ -2120,7 +2120,8 @@ async function runThreadDirect(threadId, options = {}) {
       }
       threads.finishAssistant(threadId);
       notifyThreadDone(threadId);
-      resolve({ ok: true, cliId });
+      const completion = threads.getThreadRaw(threadId);
+      resolve(completion?.status === "error" ? { ok: false, error: completion.error } : { ok: true, cliId });
     });
   });
 }

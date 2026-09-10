@@ -7,6 +7,11 @@ const path = require("path");
 const taskSessions = require("./task-sessions");
 const { startTask, recordGate, claimPaths, gateStatus, sessionStatus } = require("../fxmind-tools");
 
+const evidence = {
+  files: ["resources/radio/client.lua"], review: "Session fixture reviewed",
+  checks: [{ kind: "manual", target: "session fixture", expected: "independent gates", observed: "fixture inspected", status: "passed" }],
+};
+
 describe("task-sessions", () => {
   let dir;
 
@@ -38,7 +43,7 @@ describe("task-sessions", () => {
     for (const id of [a.sessionId, b.sessionId]) {
       recordGate(dir, "A", true, { sessionId: id });
       recordGate(dir, "B", true, { sessionId: id });
-      recordGate(dir, "V", true, { sessionId: id });
+      recordGate(dir, "V", true, { sessionId: id, evidence });
     }
 
     recordGate(dir, "C", true, { sessionId: a.sessionId });
@@ -61,7 +66,7 @@ describe("task-sessions", () => {
 
     recordGate(dir, "A", true, { sessionId: a.sessionId });
     recordGate(dir, "B", true, { sessionId: a.sessionId });
-    recordGate(dir, "V", true, { sessionId: a.sessionId });
+    recordGate(dir, "V", true, { sessionId: a.sessionId, evidence });
     recordGate(dir, "C", true, { sessionId: a.sessionId });
 
     const after = claimPaths(dir, ["resources/radio/client.lua"], { sessionId: b.sessionId });
