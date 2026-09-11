@@ -3,8 +3,7 @@
  *
  * Captures, per installed pack: skills repo URL, resolved commit SHA
  * (when the cache is a git clone), list of skill names, and the layout
- * version. `fxmind --update -y` rewrites the lockfile so installs can be
- * diffed over time and pinned.
+ * version. `fxmind --update -y` refreshes the lockfile only when pack pins change.
  */
 
 const fs = require("fs");
@@ -15,6 +14,7 @@ const { execFileSync } = require("child_process");
 const { SHARED_DIR } = require("./global-store");
 const { getPack } = require("./packs");
 const { CACHE_ROOT, listSkillsInDir, resolvePackSkillsDir } = require("./resolve-packs");
+const { writeJsonIfChanged, jsonSemanticallyEqual, omitKeys } = require("./install/sync-files");
 
 const LOCKFILE_NAME = "packs.lock.json";
 
@@ -30,8 +30,15 @@ function readJson(filePath, fallback = null) {
 }
 
 function writeJson(filePath, data) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  return writeJsonIfChanged(filePath, data);
+}
+
+function lockfileComparePayload(data) {
+  if (!data) return null;
+  return {
+    ...omitKeys(data, ["lockedAt"]),
+    packs: (data.packs || []).map((entry) => omitKeys(entry, ["lockedAt"])),
+  };
 }
 
 function resolveCommitSha(pack) {
@@ -91,8 +98,12 @@ function buildLockfile(packIds, options = {}) {
 function writeLockfile(targetRoot, packIds, options = {}) {
   const lockPath = path.join(path.resolve(targetRoot), SHARED_DIR, LOCKFILE_NAME);
   const data = buildLockfile(packIds, options);
+  const prev = readJson(lockPath);
+  if (prev && jsonSemanticallyEqual(lockfileComparePayload(prev), lockfileComparePayload(data))) {
+    return { lockPath, data: prev, changed: false };
+  }
   writeJson(lockPath, data);
-  return { lockPath, data };
+  return { lockPath, data, changed: true };
 }
 
 function readLockfile(targetRoot) {

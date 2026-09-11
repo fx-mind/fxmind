@@ -24,6 +24,7 @@ const {
   LEGACY_AGENT_FIVEM_DIRS,
 } = require("./config");
 const { migrateProjectLayout } = require("../lib/layout");
+const { copyFileIfChanged } = require("./sync-files");
 
 function getManagedSkillNames(skills, includeCommand) {
   const names = new Set();
@@ -694,11 +695,11 @@ function installAuditsDir(targetRoot) {
 
   const readmeSrc = path.join(PACKAGE_ROOT, FXMIND_TEMPLATES_DIR, "audits", "README.md");
   const readmeDest = path.join(auditsDir, "README.md");
-  if (fs.existsSync(readmeSrc)) {
-    fs.copyFileSync(readmeSrc, readmeDest);
+  if (fs.existsSync(readmeSrc) && copyFileIfChanged(readmeSrc, readmeDest).changed) {
+    return AUDITS_DIR.replace(/\\/g, "/");
   }
 
-  return AUDITS_DIR.replace(/\\/g, "/");
+  return null;
 }
 
 function installCorrectionsDir(targetRoot) {
@@ -708,14 +709,17 @@ function installCorrectionsDir(targetRoot) {
   } = require("../fxmind-tools");
   ensureCorrectionsDir(targetRoot);
   const destDir = path.join(targetRoot, SHARED_DIR, CORRECTIONS_DIR);
+  let changed = false;
   for (const name of ["README.md", "correction.template.md", "_index.md"]) {
     const src = path.join(PACKAGE_ROOT, FXMIND_TEMPLATES_DIR, "corrections", name);
     const dest = path.join(destDir, name);
     if (!fs.existsSync(src)) continue;
     if (name === "_index.md" && fs.existsSync(dest)) continue;
-    fs.copyFileSync(src, dest);
+    if (copyFileIfChanged(src, dest).changed) {
+      changed = true;
+    }
   }
-  return path.join(SHARED_DIR, CORRECTIONS_DIR).replace(/\\/g, "/");
+  return changed ? path.join(SHARED_DIR, CORRECTIONS_DIR).replace(/\\/g, "/") : null;
 }
 
 function refreshSharedAuditLayout(targetRoot) {
@@ -727,14 +731,18 @@ function refreshSharedAuditLayout(targetRoot) {
         : `${SHARED_DIR}/${step.from} (removed)`,
     );
   }
-  installed.push(installAuditsDir(targetRoot));
-  installed.push(installCorrectionsDir(targetRoot));
+  const auditsDest = installAuditsDir(targetRoot);
+  if (auditsDest) {
+    installed.push(auditsDest);
+  }
+  const correctionsDest = installCorrectionsDir(targetRoot);
+  if (correctionsDest) {
+    installed.push(correctionsDest);
+  }
 
   const guideSrc = path.join(PACKAGE_ROOT, COMMAND_TEMPLATE);
   const guideDest = path.join(targetRoot, SHARED_DIR, "fxmind.md");
-  if (fs.existsSync(guideSrc)) {
-    fs.mkdirSync(path.dirname(guideDest), { recursive: true });
-    fs.copyFileSync(guideSrc, guideDest);
+  if (fs.existsSync(guideSrc) && copyFileIfChanged(guideSrc, guideDest).changed) {
     installed.push(path.relative(targetRoot, guideDest).replace(/\\/g, "/"));
   }
 

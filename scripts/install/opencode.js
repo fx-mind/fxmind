@@ -16,6 +16,7 @@ const {
   OPENCODE_TOOLS_INSTRUCTION_CONFIG_REL,
   OPENCODE_TOOLS_INSTRUCTION_FILE,
 } = require("./config");
+const { copyFileIfChanged, writeJsonIfChanged } = require("./sync-files");
 
 function readJson(filePath, fallback = null) {
   if (!filePath || !fs.existsSync(filePath)) {
@@ -29,11 +30,7 @@ function readJson(filePath, fallback = null) {
 }
 
 function writeJson(filePath, data) {
-  const normalized = filePath.replace(/\\/g, "/");
-  if (normalized.includes("/")) {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  }
-  fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  return writeJsonIfChanged(filePath, data).changed;
 }
 
 function rel(targetRoot, dest) {
@@ -54,8 +51,9 @@ function installOpenCodeSubagents(targetRoot) {
       throw new Error(`OpenCode subagent template missing: ${name}.md`);
     }
     const dest = path.join(destAgents, `${name}.md`);
-    fs.copyFileSync(src, dest);
-    installed.push(rel(projectRoot, dest));
+    if (copyFileIfChanged(src, dest).changed) {
+      installed.push(rel(projectRoot, dest));
+    }
   }
 
   const srcInstruction = path.join(
@@ -73,8 +71,9 @@ function installOpenCodeSubagents(targetRoot) {
     OPENCODE_INSTRUCTION_FILE,
   );
   fs.mkdirSync(path.dirname(destInstruction), { recursive: true });
-  fs.copyFileSync(srcInstruction, destInstruction);
-  installed.push(rel(projectRoot, destInstruction));
+  if (copyFileIfChanged(srcInstruction, destInstruction).changed) {
+    installed.push(rel(projectRoot, destInstruction));
+  }
 
   const srcToolsInstruction = path.join(
     PACKAGE_ROOT,
@@ -90,8 +89,9 @@ function installOpenCodeSubagents(targetRoot) {
     "instructions",
     OPENCODE_TOOLS_INSTRUCTION_FILE,
   );
-  fs.copyFileSync(srcToolsInstruction, destToolsInstruction);
-  installed.push(rel(projectRoot, destToolsInstruction));
+  if (copyFileIfChanged(srcToolsInstruction, destToolsInstruction).changed) {
+    installed.push(rel(projectRoot, destToolsInstruction));
+  }
 
   mergeOpenCodeSubagentConfig(projectRoot);
 

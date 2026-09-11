@@ -24,6 +24,7 @@ const {
 } = require("./config");
 const state = require("./state");
 const { pruneEmptyDirsUpward } = require("./legacy");
+const { copyFileIfChanged, copyDirIfChanged } = require("./sync-files");
 
 function resolveAgents(agentNames) {
   const resolved = [];
@@ -345,12 +346,15 @@ function installFxmindAgentSkill(targetRoot, agent) {
     );
   }
 
+  const installed = [];
   for (const dest of destinations) {
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.copyFileSync(src, dest);
+    const result = copyFileIfChanged(src, dest);
+    if (result.changed) {
+      installed.push(path.relative(targetRoot, dest));
+    }
   }
 
-  return destinations.map((dest) => path.relative(targetRoot, dest));
+  return installed;
 }
 
 function removeLegacyCommand(targetRoot, agent) {
@@ -383,12 +387,14 @@ function installPromptCommands(targetRoot, agent) {
   }
 
   fs.mkdirSync(dest, { recursive: true });
-  fs.cpSync(src, dest, { recursive: true, force: true });
+  const copied = copyDirIfChanged(src, dest);
+  if (!copied.changed) {
+    return [];
+  }
 
-  return fs
-    .readdirSync(dest)
-    .filter((name) => name.endsWith(".prompt.md"))
-    .map((name) => path.join(agent.commandsDir, name).replace(/\\/g, "/"));
+  return copied.files.map((name) =>
+    path.join(agent.commandsDir, name).replace(/\\/g, "/"),
+  );
 }
 
 function installTomlCommands(targetRoot, agent) {
@@ -400,32 +406,10 @@ function installTomlCommands(targetRoot, agent) {
   }
 
   fs.mkdirSync(dest, { recursive: true });
-  fs.cpSync(src, dest, { recursive: true, force: true });
-
-  const installed = [];
-
-  function collect(relativeDir) {
-    const current = path.join(dest, relativeDir);
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-      const nextRelative = relativeDir
-        ? path.join(relativeDir, entry.name)
-        : entry.name;
-
-      if (entry.isDirectory()) {
-        collect(nextRelative);
-        continue;
-      }
-
-      if (entry.name.endsWith(".toml")) {
-        installed.push(
-          path.join(agent.commandsDir, nextRelative).replace(/\\/g, "/"),
-        );
-      }
-    }
-  }
-
-  collect("");
-  return installed;
+  const copied = copyDirIfChanged(src, dest);
+  return copied.files
+    .filter((name) => name.endsWith(".toml"))
+    .map((name) => path.join(agent.commandsDir, name).replace(/\\/g, "/"));
 }
 
 function installCommand(targetRoot, agent) {
@@ -444,8 +428,9 @@ function installCommand(targetRoot, agent) {
   }
 
   const dest = path.join(targetRoot, agent.commandsDir, COMMAND_FILE);
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.copyFileSync(path.join(PACKAGE_ROOT, COMMAND_TEMPLATE), dest);
+  if (!copyFileIfChanged(path.join(PACKAGE_ROOT, COMMAND_TEMPLATE), dest).changed) {
+    return [];
+  }
 
   return [path.relative(targetRoot, dest)];
 }

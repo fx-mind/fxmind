@@ -21,6 +21,7 @@ const {
   wantsInteractive,
   ensureNonInteractiveChoice,
   promptSelections,
+  getPackageVersion,
 } = require("./install/cli");
 const {
   getManagedSkillNames,
@@ -46,6 +47,7 @@ const {
 const {
   installSharedFxmind,
   writePacksManifest,
+  readPacksManifestFile,
   cleanLegacyAgentFivemTemplates,
   applyGlobalStore,
   printGlobalStoreWarnings,
@@ -213,8 +215,70 @@ async function main() {
       skills,
       command: options.command,
     };
+    const cliVersion = getPackageVersion();
+    const previousManifest = readPacksManifestFile(options.target);
+    const installedCliVersion = previousManifest?.cliVersion || null;
+
+    const layoutRefresh = refreshSharedAuditLayout(options.target);
+    let shared = { installed: [], removed: [] };
+    let packSkills = { installed: [], removed: [], index: null };
+    let lockData = null;
+    let globalStore = null;
+
+    if (options.command) {
+      shared = installSharedFxmind(options.target, packs, {
+        preserveUserData: true,
+        manifestMeta,
+      });
+      lockData = writeProjectLockfile(options.target, packs);
+      packSkills = installPackSkillsLayer(
+        options.target,
+        skills,
+        listAllSkills(),
+        { globalStore: options.globalStore || isGlobalStore(options.target) },
+      );
+      globalStore = applyGlobalStore(
+        options.target,
+        packs,
+        options.globalStore || isGlobalStore(options.target),
+      );
+    } else {
+      const manifestWrite = writePacksManifest(options.target, packs, manifestMeta);
+      if (manifestWrite?.changed) {
+        shared.installed.push(".fxmind/packs.json");
+      }
+    }
+
+    const agentEntries = [...installAgentsLayer(options.target, agents, options)];
+    let integrationsChanged = false;
+    if (shouldInstallHooks(options, agents) || shouldInstallMcp(options, agents) || shouldRefreshFivem(options, packs)) {
+      integrationsChanged = Boolean(
+        installProjectCursorIntegration(options.target, options, agents, packs)?.changed,
+      );
+    }
+
+    const changedCount =
+      layoutRefresh.length +
+      shared.installed.length +
+      shared.removed.length +
+      (lockData ? 1 : 0) +
+      packSkills.installed.length +
+      packSkills.removed.length +
+      (packSkills.index ? 1 : 0) +
+      agentEntries.length +
+      (integrationsChanged ? 1 : 0);
+
+    if (changedCount === 0) {
+      console.log(`Already up to date (fxmind ${cliVersion}).`);
+      return;
+    }
 
     console.log(`\nUpdating: ${options.target}`);
+    console.log(
+      installedCliVersion && installedCliVersion !== cliVersion
+        ? `CLI: ${cliVersion} (project was ${installedCliVersion})`
+        : `CLI: ${cliVersion}`,
+    );
     console.log(`Packs: ${packs.join(", ")}`);
     for (const packId of packs) {
       const source = [...state.SKILL_SOURCES.values()].find((entry) => entry.packId === packId);
@@ -227,7 +291,6 @@ async function main() {
       `Agents: ${agents.map((agent) => agent.label).join(", ")}\n`,
     );
 
-    const layoutRefresh = refreshSharedAuditLayout(options.target);
     if (layoutRefresh.length > 0) {
       console.log("[Layout]");
       for (const dest of layoutRefresh) {
@@ -237,53 +300,41 @@ async function main() {
     }
 
     if (options.command) {
-      console.log("[Shared .fxmind]");
-      const shared = installSharedFxmind(options.target, packs, {
-        preserveUserData: true,
-        manifestMeta,
-      });
-      for (const dest of shared.installed) {
-        console.log(`  ✓ template → ${dest}`);
+      if (
+        shared.installed.length ||
+        shared.removed.length ||
+        packSkills.installed.length ||
+        packSkills.removed.length ||
+        packSkills.index ||
+        lockData
+      ) {
+        console.log("[Shared .fxmind]");
+        for (const dest of shared.installed) {
+          console.log(`  ✓ template → ${dest}`);
+        }
+        if (lockData) {
+          printLockSummary(lockData);
+        }
+        for (const dest of packSkills.installed) {
+          console.log(`  ✓ pack skill → ${dest}`);
+        }
+        if (packSkills.index) {
+          console.log(`  ✓ index    → ${packSkills.index}`);
+        }
+        for (const dest of packSkills.removed) {
+          console.log(`  ✓ cleanup  → ${dest} (removed from agent folder)`);
+        }
+        if (globalStore) {
+          console.log(`  ✓ global   → ${globalStore.globalProjectDir}`);
+          console.log(`  ✓ shared   → ${globalStore.sharedSkills}`);
+        }
+        printGlobalStoreWarnings(globalStore);
+        console.log("");
       }
-
-      const lockData = writeProjectLockfile(options.target, packs);
-      if (lockData) {
-        printLockSummary(lockData);
-      }
-
-      const packSkills = installPackSkillsLayer(
-        options.target,
-        skills,
-        listAllSkills(),
-        { globalStore: options.globalStore || isGlobalStore(options.target) },
-      );
-      for (const dest of packSkills.installed) {
-        console.log(`  ✓ pack skill → ${dest}`);
-      }
-      if (packSkills.index) {
-        console.log(`  ✓ index    → ${packSkills.index}`);
-      }
-      for (const dest of packSkills.removed) {
-        console.log(`  ✓ cleanup  → ${dest} (removed from agent folder)`);
-      }
-
-      const globalStore = applyGlobalStore(
-        options.target,
-        packs,
-        options.globalStore || isGlobalStore(options.target),
-      );
-      if (globalStore) {
-        console.log(`  ✓ global   → ${globalStore.globalProjectDir}`);
-        console.log(`  ✓ shared   → ${globalStore.sharedSkills}`);
-      }
-      printGlobalStoreWarnings(globalStore);
-      console.log("");
-    } else {
-      writePacksManifest(options.target, packs, manifestMeta);
     }
 
     let lastAgentLabel = "";
-    for (const entry of installAgentsLayer(options.target, agents, options)) {
+    for (const entry of agentEntries) {
       if (entry.agent !== lastAgentLabel) {
         if (lastAgentLabel) {
           console.log("");
@@ -297,13 +348,9 @@ async function main() {
       console.log("");
     }
 
-    if (shouldInstallHooks(options, agents) || shouldInstallMcp(options, agents) || shouldRefreshFivem(options, packs)) {
-      installProjectCursorIntegration(options.target, options, agents, packs);
-    }
-
     generatePanelBuild("update");
     console.log("Update complete.");
-    console.log("Refreshed: templates, skills, agent commands, hooks (Cursor), MCP, FiveM RCON/fivem-start (when applicable).");
+    console.log("Updated only files that differed from this CLI.");
     printLegacyAuditLayoutWarning(options.target);
     console.log("Restart your agent IDE/CLI or open a new session.");
     console.log(`Refresh again anytime: ${npxInstall("--update -y")}`);

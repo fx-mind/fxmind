@@ -100,9 +100,14 @@ function shouldRefreshFivem(options, packs = []) {
 function installProjectHooks(targetRoot) {
   try {
     const result = installHooks(targetRoot, { gitHook: true });
+    if (!result.changed) {
+      return { changed: false };
+    }
     console.log("[Hooks]");
     for (const p of result.installed) console.log(`  ✓ ${p}`);
-    console.log(`  ✓ ${result.hooksJson}`);
+    if (result.hooksJsonChanged) {
+      console.log(`  ✓ ${result.hooksJson}`);
+    }
     if (result.gitHook && typeof result.gitHook === "string") {
       console.log(`  ✓ git pre-commit → ${result.gitHook}`);
     } else if (result.gitHook && result.gitHook.error) {
@@ -111,8 +116,10 @@ function installProjectHooks(targetRoot) {
     console.log(
       "  Restart Cursor (or reload hooks) to activate gate-guard / drift-watcher / learn-prompt.",
     );
+    return { changed: true };
   } catch (error) {
     console.log(`[Hooks] skipped: ${error.message}`);
+    return { changed: false };
   }
 }
 
@@ -120,14 +127,18 @@ function installProjectMcp(targetRoot, agents) {
   try {
     const agentIds = agents.map((agent) => agent.id);
     const result = installMcp(targetRoot, { agentIds });
+    const changedItems = (result.installed || []).filter((item) => item.changed);
+    if (!result.changed) {
+      return { changed: false };
+    }
     console.log("[MCP]");
-    for (const item of result.installed) {
+    for (const item of changedItems) {
       console.log(`  ✓ ${item.label}: ${item.configRel} → server "${item.server}"`);
     }
     for (const configRel of result.pruned || []) {
       console.log(`  ✓ removed stale MCP: ${configRel}`);
     }
-    if (result.entry) {
+    if (result.entry && changedItems.length) {
       console.log(`  command: ${result.entry.command}`);
       if (result.entry.args?.length) {
         console.log(`  args: ${result.entry.args.join(" ")}`);
@@ -138,40 +149,52 @@ function installProjectMcp(targetRoot, agents) {
       console.log(`  FXMIND_TARGET: ${result.entry.env.FXMIND_TARGET}`);
     }
     console.log("  Restart your agent client (MCP settings) to connect fxmind tools.");
+    return { changed: true };
   } catch (error) {
     console.log(`[MCP] skipped: ${error.message}`);
+    return { changed: false };
   }
 }
 
 function installProjectFivem(targetRoot) {
   try {
     const result = fivemRcon.installFivemDev({ root: path.resolve(targetRoot) });
+    if (!result.changed) {
+      return { changed: false };
+    }
     console.log("[FiveM]");
     for (const step of result.steps || []) {
+      if (!step.action || step.action === "kept" || step.action === "found") {
+        continue;
+      }
       const detail = [step.path, step.action].filter(Boolean).join(" ");
       console.log(`  ✓ ${step.step}: ${detail}`);
     }
     for (const warning of result.warnings || []) {
       console.log(`  ⚠ ${warning}`);
     }
-    if (result.note) {
+    if (result.note && result.needsServerRestart) {
       console.log(`  ${result.note}`);
     }
+    return { changed: true };
   } catch (error) {
     console.log(`[FiveM] skipped: ${error.message}`);
+    return { changed: false };
   }
 }
 
 function installProjectCursorIntegration(targetRoot, options, agents, packs = []) {
+  let changed = false;
   if (shouldInstallHooks(options, agents)) {
-    installProjectHooks(targetRoot);
+    changed = installProjectHooks(targetRoot).changed || changed;
   }
   if (shouldInstallMcp(options, agents)) {
-    installProjectMcp(targetRoot, agents);
+    changed = installProjectMcp(targetRoot, agents).changed || changed;
   }
   if (shouldRefreshFivem(options, packs)) {
-    installProjectFivem(targetRoot);
+    changed = installProjectFivem(targetRoot).changed || changed;
   }
+  return { changed };
 }
 
 module.exports = {

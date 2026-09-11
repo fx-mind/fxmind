@@ -19,6 +19,7 @@ const dgram = require("dgram");
 const fs = require("fs");
 const path = require("path");
 const { resolveLocal, writeLocal, ensureDirFor, projectRel, REL } = require("./lib/layout");
+const { copyFileIfChanged, writeFileIfChanged, writeJsonIfChanged } = require("./install/sync-files");
 
 const ALLOWED_COMMANDS = new Set([
   "ensure",
@@ -70,15 +71,38 @@ function isFivemInstalled(root) {
 }
 
 function writeInstallMarker(root, { execCfg, password, port, host }) {
-  const data = {
-    installedAt: new Date().toISOString(),
+  const dest = installMarkerWritePath(root);
+  const next = {
     execCfg,
     password,
   };
-  if (port) data.port = port;
-  if (host) data.host = host;
-  fs.mkdirSync(path.dirname(installMarkerWritePath(root)), { recursive: true });
-  fs.writeFileSync(installMarkerWritePath(root), `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  if (port) next.port = port;
+  if (host) next.host = host;
+
+  if (fs.existsSync(dest)) {
+    try {
+      const prev = JSON.parse(fs.readFileSync(dest, "utf8"));
+      const same =
+        prev.execCfg === next.execCfg &&
+        prev.password === next.password &&
+        prev.port === next.port &&
+        prev.host === next.host;
+      if (same) {
+        return { changed: false };
+      }
+      if (prev.installedAt) {
+        next.installedAt = prev.installedAt;
+      }
+    } catch {
+      // rewrite invalid marker
+    }
+  }
+  if (!next.installedAt) {
+    next.installedAt = new Date().toISOString();
+  }
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  const written = writeJsonIfChanged(dest, next);
+  return { changed: Boolean(written.changed) };
 }
 
 function projectRoot(overrides = {}) {
@@ -706,8 +730,7 @@ function copyNuiBridgeResource(root) {
       if (entry.isDirectory()) {
         fs.mkdirSync(to, { recursive: true });
         walk(from, to);
-      } else {
-        fs.copyFileSync(from, to);
+      } else if (copyFileIfChanged(from, to).changed) {
         copied.push(path.relative(dest.abs, to).replace(/\\/g, "/"));
       }
     }
@@ -716,7 +739,7 @@ function copyNuiBridgeResource(root) {
   walk(src, dest.abs);
   return {
     ok: true,
-    action: copied.length ? "synced" : "empty",
+    action: copied.length ? "synced" : "kept",
     path: dest.rel,
     files: copied,
   };
@@ -798,12 +821,15 @@ function writeFivemStartPs1(root, execCfg, { force = false } = {}) {
 
     if (needsExecRefresh && !hasBrokenTee && !current.includes("__FXMIND_EXEC_CFG__")) {
       const updated = current.replace(/\+exec',\s*'[^']+'/, `+exec', '${execCfg}'`);
-      fs.writeFileSync(dest, updated, "utf8");
+      if (!writeFileIfChanged(dest, updated, "utf8").changed) {
+        return { path: ".vscode/fivem-start.ps1", action: "kept", ok: true };
+      }
       return { path: ".vscode/fivem-start.ps1", action: "updated-exec", ok: true };
     }
 
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.writeFileSync(dest, rendered, "utf8");
+    if (!writeFileIfChanged(dest, rendered, "utf8").changed) {
+      return { path: ".vscode/fivem-start.ps1", action: "kept", ok: true };
+    }
     return {
       path: ".vscode/fivem-start.ps1",
       action: hasBrokenTee ? "fixed-interactive-console" : "updated-exec",
@@ -811,8 +837,9 @@ function writeFivemStartPs1(root, execCfg, { force = false } = {}) {
     };
   }
 
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.writeFileSync(dest, rendered, "utf8");
+  if (!writeFileIfChanged(dest, rendered, "utf8").changed) {
+    return { path: ".vscode/fivem-start.ps1", action: "kept", ok: true };
+  }
   return { path: ".vscode/fivem-start.ps1", action: force ? "replaced" : "created", ok: true };
 }
 
@@ -854,8 +881,9 @@ function ensureFivemStartTask(root) {
     data.tasks.push(task);
     action = fs.existsSync(tasksPath) && action !== "recreated" ? "added" : action;
   }
-  fs.mkdirSync(path.dirname(tasksPath), { recursive: true });
-  fs.writeFileSync(tasksPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  if (!writeJsonIfChanged(tasksPath, data).changed) {
+    return { path: ".vscode/tasks.json", action: "kept", ok: true };
+  }
   return { path: ".vscode/tasks.json", action, ok: true };
 }
 
@@ -909,7 +937,12 @@ function installFivemDev(options = {}) {
 
   steps.push({ step: "ps1", ...writeFivemStartPs1(root, execCfg, { force }) });
   steps.push({ step: "tasks", ...ensureFivemStartTask(root) });
-  steps.push({ step: "gitignore", ...ensureGitignoreLines(root) });
+  const gitignore = ensureGitignoreLines(root);
+  steps.push({
+    step: "gitignore",
+    path: gitignore.path,
+    action: gitignore.added?.length ? "updated" : "kept",
+  });
 
   const bridge = copyNuiBridgeResource(root);
   steps.push({
@@ -931,21 +964,28 @@ function installFivemDev(options = {}) {
   }
 
   const port = readPortFromCfgFile(cfgAbs) || 30120;
-  writeInstallMarker(root, {
+  const marker = writeInstallMarker(root, {
     execCfg,
     password: rcon.password,
     port,
   });
-  steps.push({ step: "install-marker", path: ".fxmind/state/rcon.json", action: "written" });
+  steps.push({
+    step: "install-marker",
+    path: ".fxmind/state/rcon.json",
+    action: marker.changed ? "written" : "kept",
+  });
 
   const config = rconConfig({ root, password: rcon.password });
   const needsRestart = rcon.changed;
+  const idleActions = new Set(["kept", "found"]);
+  const changed = steps.some((step) => step.action && !idleActions.has(String(step.action)));
 
   return {
     ok: true,
     root,
     execCfg,
     installed: true,
+    changed,
     passwordSource: config.passwordSource,
     passwordSet: Boolean(rcon.password),
     needsServerRestart: needsRestart,

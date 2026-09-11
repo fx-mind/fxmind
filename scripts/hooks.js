@@ -23,6 +23,7 @@ const tools = require("./fxmind-tools");
 const { buildGraphData, writeGraph, openGraphInBrowser } = require("./build-graph");
 const { driftForStagedFiles } = require("./lib/memory-drift");
 const { installMcp, uninstallMcp, mcpStatus, resolveMcpAgentIds } = require("./mcp-install");
+const { copyFileIfChanged, writeJsonIfChanged, writeFileIfChanged } = require("./install/sync-files");
 
 const HOOKS_DIR_REL = path.join(".cursor", "hooks");
 const HOOKS_JSON_REL = path.join(".cursor", "hooks.json");
@@ -74,8 +75,7 @@ function readJson(filePath, fallback = null) {
 }
 
 function writeJson(filePath, data) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  return writeJsonIfChanged(filePath, data);
 }
 
 function templateHooksDir() {
@@ -94,7 +94,9 @@ function installAutoTaskRule(projectRoot) {
   const rulesDir = path.join(projectRoot, RULES_DIR_REL);
   fs.mkdirSync(rulesDir, { recursive: true });
   const dest = path.join(rulesDir, AUTO_TASK_RULE);
-  fs.copyFileSync(src, dest);
+  if (!copyFileIfChanged(src, dest).changed) {
+    return null;
+  }
   return path.relative(projectRoot, dest).replace(/\\/g, "/");
 }
 
@@ -118,13 +120,18 @@ function copyHookBundle(projectRoot) {
 
   const srcDir = templateHooksDir();
   const installed = [];
+  const unchanged = [];
 
   for (const name of HOOK_SCRIPTS) {
     const src = path.join(srcDir, name);
     if (!fs.existsSync(src)) continue;
     const dest = path.join(hooksDir, name);
-    fs.copyFileSync(src, dest);
-    installed.push(path.relative(projectRootResolved, dest).replace(/\\/g, "/"));
+    const rel = path.relative(projectRootResolved, dest).replace(/\\/g, "/");
+    if (copyFileIfChanged(src, dest).changed) {
+      installed.push(rel);
+    } else {
+      unchanged.push(rel);
+    }
   }
 
   const libDestDir = path.join(hooksDir, "lib");
@@ -133,11 +140,15 @@ function copyHookBundle(projectRoot) {
     const src = path.join(hookLibDir(), name);
     if (!fs.existsSync(src)) continue;
     const dest = path.join(libDestDir, name);
-    fs.copyFileSync(src, dest);
-    installed.push(path.relative(projectRootResolved, dest).replace(/\\/g, "/"));
+    const rel = path.relative(projectRootResolved, dest).replace(/\\/g, "/");
+    if (copyFileIfChanged(src, dest).changed) {
+      installed.push(rel);
+    } else {
+      unchanged.push(rel);
+    }
   }
 
-  return { hooksDir, installed };
+  return { hooksDir, installed, unchanged };
 }
 
 function gitPreCommitBody() {
@@ -161,6 +172,7 @@ function installGitHook(targetRoot) {
   fs.mkdirSync(gitHooksDir, { recursive: true });
   const hookPath = path.join(gitHooksDir, "pre-commit");
   const fxmindBlock = `#!/bin/sh\n${gitPreCommitBody()}`;
+  let next = `${fxmindBlock}\n`;
 
   if (fs.existsSync(hookPath)) {
     const existing = fs.readFileSync(hookPath, "utf8");
@@ -168,22 +180,23 @@ function installGitHook(targetRoot) {
       const without = existing.replace(
         new RegExp(`#!/bin/sh\\s*\\n${GIT_HOOK_MARKER.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*?(?=\\n# --- |$)`),
         "",
-      );
-      fs.writeFileSync(hookPath, `${fxmindBlock}\n${without.trim()}\n`, "utf8");
+      ).trim();
+      next = without ? `${fxmindBlock}\n${without}\n` : `${fxmindBlock}\n`;
     } else {
-      fs.writeFileSync(hookPath, `${fxmindBlock}\n${existing}`, "utf8");
+      next = `${fxmindBlock}\n${existing}`;
     }
-  } else {
-    fs.writeFileSync(hookPath, `${fxmindBlock}\n`, "utf8");
   }
 
-  try {
-    fs.chmodSync(hookPath, 0o755);
-  } catch {
-    // Windows may ignore chmod
+  const written = writeFileIfChanged(hookPath, next, "utf8");
+  if (written.changed) {
+    try {
+      fs.chmodSync(hookPath, 0o755);
+    } catch {
+      // Windows may ignore chmod
+    }
   }
 
-  return path.relative(projectRoot, hookPath).replace(/\\/g, "/");
+  return written.changed ? path.relative(projectRoot, hookPath).replace(/\\/g, "/") : null;
 }
 
 function uninstallGitHook(targetRoot) {
@@ -253,7 +266,7 @@ function runPreCommitCheck(targetRoot, options = {}) {
 
 function installHooks(targetRoot, options = {}) {
   const projectRoot = path.resolve(targetRoot);
-  const { installed } = copyHookBundle(projectRoot);
+  const { installed, unchanged } = copyHookBundle(projectRoot);
 
   const autoTaskRule = installAutoTaskRule(projectRoot);
   if (autoTaskRule) {
@@ -293,7 +306,7 @@ function installHooks(targetRoot, options = {}) {
     }
   }
 
-  writeJson(hooksJsonPath, existing);
+  const hooksJsonWrite = writeJson(hooksJsonPath, existing);
 
   let gitHook = null;
   if (options.gitHook !== false && fs.existsSync(path.join(projectRoot, ".git"))) {
@@ -306,8 +319,11 @@ function installHooks(targetRoot, options = {}) {
 
   return {
     installed,
+    unchanged,
     hooksJson: HOOKS_JSON_REL.replace(/\\/g, "/"),
+    hooksJsonChanged: Boolean(hooksJsonWrite?.changed),
     gitHook,
+    changed: installed.length > 0 || Boolean(hooksJsonWrite?.changed) || Boolean(gitHook && typeof gitHook === "string"),
   };
 }
 
@@ -487,6 +503,9 @@ function runHooksCli(argv = []) {
     } else if (result.gitHook && result.gitHook.error) {
       console.log(`  ⚠ git pre-commit skipped: ${result.gitHook.error}`);
     }
+    if (result.installed.length === 0 && !result.hooksJsonChanged && !result.gitHook) {
+      console.log("  (already up to date)");
+    }
     console.log("Restart Cursor (reload hooks + MCP) for changes to take effect.");
     return 0;
   }
@@ -497,7 +516,7 @@ function runHooksCli(argv = []) {
       copyHookBundle(options.target);
       const hook = installGitHook(options.target);
       console.log(`Installed git pre-commit → ${options.target}`);
-      console.log(`  ✓ ${hook}`);
+      console.log(hook ? `  ✓ ${hook}` : "  (already up to date)");
       return 0;
     } catch (error) {
       console.error(`Error: ${error.message}`);

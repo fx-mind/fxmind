@@ -14,6 +14,7 @@ const {
 const { isGlobalStore, GLOBAL_SHARED_SKILLS } = require("../global-store");
 const { PACK_SKILLS_DIR } = require("./config");
 const state = require("./state");
+const { copyDirIfChanged, writeFileIfChanged } = require("./sync-files");
 
 function listAllSkills() {
   return [...state.SKILL_SOURCES.keys()].sort();
@@ -28,8 +29,7 @@ function getSkillsDirForSkill(skillName) {
 }
 
 function copyDir(src, dest) {
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.cpSync(src, dest, { recursive: true, force: true });
+  return copyDirIfChanged(src, dest);
 }
 
 function installPackSkill(skillName, skillsRoot) {
@@ -44,8 +44,8 @@ function installPackSkill(skillName, skillsRoot) {
   }
 
   const dest = path.join(skillsRoot, skillName);
-  copyDir(src, dest);
-  return dest;
+  const result = copyDirIfChanged(src, dest);
+  return { dest, changed: result.changed, files: result.files };
 }
 
 function installPackSkills(targetRoot, skills, options = {}) {
@@ -55,12 +55,19 @@ function installPackSkills(targetRoot, skills, options = {}) {
       ? GLOBAL_SHARED_SKILLS
       : path.join(targetRoot, PACK_SKILLS_DIR));
   const installed = [];
+  const unchanged = [];
 
   for (const skillName of skills) {
-    installed.push(installPackSkill(skillName, skillsRoot));
+    const result = installPackSkill(skillName, skillsRoot);
+    const rel = path.relative(targetRoot, result.dest).replace(/\\/g, "/") || result.dest;
+    if (result.changed) {
+      installed.push(rel);
+    } else {
+      unchanged.push(rel);
+    }
   }
 
-  return installed.map((dest) => path.relative(targetRoot, dest).replace(/\\/g, "/") || dest);
+  return { installed, unchanged };
 }
 
 function writePackSkillsIndex(targetRoot, skills, options = {}) {
@@ -84,20 +91,24 @@ function writePackSkillsIndex(targetRoot, skills, options = {}) {
   }
 
   lines.push("");
-  fs.mkdirSync(path.dirname(indexPath), { recursive: true });
-  fs.writeFileSync(indexPath, `${lines.join("\n")}\n`, "utf8");
-  return path.relative(targetRoot, indexPath);
+  const rel = path.relative(targetRoot, indexPath);
+  if (!writeFileIfChanged(indexPath, `${lines.join("\n")}\n`, "utf8").changed) {
+    return null;
+  }
+  return rel;
 }
 
 function installPackSkillsLayer(targetRoot, skills, allPackSkillNames, options = {}) {
   const { removePackSkillsFromAgentDirs } = require("./agents");
-  const actions = { installed: [], removed: [], index: null };
+  const actions = { installed: [], unchanged: [], removed: [], index: null };
   const packSkillOptions = {
     globalStore: options.globalStore || isGlobalStore(targetRoot),
   };
 
   if (skills.length > 0) {
-    actions.installed.push(...installPackSkills(targetRoot, skills, packSkillOptions));
+    const result = installPackSkills(targetRoot, skills, packSkillOptions);
+    actions.installed.push(...result.installed);
+    actions.unchanged.push(...result.unchanged);
     actions.index = writePackSkillsIndex(targetRoot, skills, packSkillOptions);
   }
 

@@ -62,7 +62,7 @@ Without global install:
   ${npxInstall("--pack fivem -y")}   Explicit fivem knowledge pack
   ${npxInstall("--all-packs -y")}    Every available pack
   ${npxInstall("--all -y")}          All skills from selected pack(s)
-  ${npxInstall("--update -y")}       Refresh global fxmind + project (packs, skills, hooks, MCP, fivem-start)
+  ${npxInstall("--update -y")}       Refresh only files that differ from this CLI (stamps cliVersion in packs.json)
   ${npxInstall("graph")}             Build graph from .fxmind/memory/ + open browser
   ${npxInstall("painel")}             Painel web local (produção)
   ${npxInstall("serve --api-only")}   Dev: API only (UI via npm run dev)

@@ -5,6 +5,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { writeJsonIfChanged, writeFileIfChanged } = require("./install/sync-files");
 
 const MCP_SERVER_KEY = "fxmind";
 const FXMIND_MCP_COMMAND = "fxmind-mcp";
@@ -57,12 +58,7 @@ function readJson(filePath, fallback = null) {
 }
 
 function writeJson(filePath, data) {
-  const normalized = filePath.replace(/\\/g, "/");
-  // Root-level configs (.mcp.json, opencode.json) — no mkdir (avoids stray .mcp dirs on Windows)
-  if (normalized.includes("/")) {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  }
-  fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  return writeJsonIfChanged(filePath, data);
 }
 
 function buildFxmindMcpEntry() {
@@ -121,7 +117,7 @@ function installVscodeMcp(configPath, server) {
   const existing = readJson(configPath, { servers: {} });
   existing.servers = existing.servers || {};
   existing.servers[MCP_SERVER_KEY] = server;
-  writeJson(configPath, existing);
+  return writeJson(configPath, existing);
 }
 
 function uninstallVscodeMcp(configPath) {
@@ -318,7 +314,7 @@ function installMcpServersJson(configPath, entry) {
   const existing = readJson(configPath, { mcpServers: {} });
   existing.mcpServers = existing.mcpServers || {};
   existing.mcpServers[MCP_SERVER_KEY] = entry;
-  writeJson(configPath, existing);
+  return writeJson(configPath, existing);
 }
 
 function uninstallMcpServersJson(configPath) {
@@ -373,9 +369,10 @@ function installOpenCodeMcp(configPath) {
   });
   existing.mcp = existing.mcp || {};
   existing.mcp[MCP_SERVER_KEY] = resolveOpenCodeMcpLaunch();
-  writeJson(configPath, existing);
+  const written = writeJson(configPath, existing);
   const { mergeOpenCodeSubagentConfig } = require("./install/opencode");
   mergeOpenCodeSubagentConfig(path.dirname(configPath));
+  return written;
 }
 
 function removeLegacyOpenCodeMcpJson(projectRoot) {
@@ -453,8 +450,7 @@ function installCodexMcp(configPath, entry) {
   const existing = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf8") : "";
   const cleaned = removeCodexMcpSection(existing);
   const next = cleaned.length ? `${cleaned}${block}` : `${block.trimStart()}\n`;
-  fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  fs.writeFileSync(configPath, next, "utf8");
+  return writeFileIfChanged(configPath, next, "utf8");
 }
 
 function uninstallCodexMcp(configPath) {
@@ -544,15 +540,18 @@ function installMcpForAgent(targetRoot, agentId, options = {}) {
   const entry = buildFxmindMcpEntry();
   const vscodeServer = buildFxmindVscodeMcpServer();
 
+  let changed = false;
   if (agentId === "opencode") {
-    installOpenCodeMcp(configPath);
-    removeLegacyOpenCodeMcpJson(projectRoot);
+    const written = installOpenCodeMcp(configPath);
+    changed = Boolean(written?.changed);
+    const legacyRemoved = removeLegacyOpenCodeMcpJson(projectRoot);
+    changed = changed || Boolean(legacyRemoved);
   } else if (target.format === "vscode-mcp") {
-    installVscodeMcp(configPath, vscodeServer);
+    changed = Boolean(installVscodeMcp(configPath, vscodeServer)?.changed);
   } else if (target.format === "mcpServers-json") {
-    installMcpServersJson(configPath, entry);
+    changed = Boolean(installMcpServersJson(configPath, entry)?.changed);
   } else if (target.format === "codex-toml") {
-    installCodexMcp(configPath, entry);
+    changed = Boolean(installCodexMcp(configPath, entry)?.changed);
   } else {
     throw new Error(`Unsupported MCP format: ${target.format}`);
   }
@@ -563,6 +562,7 @@ function installMcpForAgent(targetRoot, agentId, options = {}) {
     configRel: target.configRel.replace(/\\/g, "/"),
     server: MCP_SERVER_KEY,
     entry: target.format === "vscode-mcp" ? vscodeServer : entry,
+    changed,
   };
 }
 
@@ -635,6 +635,7 @@ function installMcp(targetRoot, options = {}) {
     server: MCP_SERVER_KEY,
     mcpJson: primary?.configRel || MCP_JSON_REL.replace(/\\/g, "/"),
     entry: primary?.entry || null,
+    changed: installed.some((item) => item.changed) || pruned.length > 0,
   };
 }
 

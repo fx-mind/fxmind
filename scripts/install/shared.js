@@ -34,6 +34,14 @@ const {
 } = require("./legacy");
 const { migrateProjectLayout } = require("../lib/layout");
 const { ensureProjectGitignore } = require("../lib/project-gitignore");
+const { getPackageVersion } = require("./cli");
+const {
+  copyFileIfChanged,
+  writeFileIfChanged,
+  writeJsonIfChanged,
+  jsonSemanticallyEqual,
+  omitKeys,
+} = require("./sync-files");
 
 function coreTemplateEntry(entry) {
   if (typeof entry === "string") {
@@ -110,18 +118,18 @@ function installSharedFxmind(targetRoot, packIds, installOptions = {}) {
       const html = fs
         .readFileSync(src, "utf8")
         .replace("/*__GRAPH_DATA__*/", graphJsonStr);
-      fs.writeFileSync(dest, html, "utf8");
+      if (writeFileIfChanged(dest, html, "utf8").changed) {
+        installed.push(path.relative(targetRoot, dest));
+      }
 
       if (!preserveUserData || !fs.existsSync(graphJsonPath)) {
-        fs.mkdirSync(path.dirname(graphJsonPath), { recursive: true });
-        fs.writeFileSync(graphJsonPath, `${graphJsonStr}\n`, "utf8");
-        installed.push(path.relative(targetRoot, graphJsonPath));
+        if (writeFileIfChanged(graphJsonPath, `${graphJsonStr}\n`, "utf8").changed) {
+          installed.push(path.relative(targetRoot, graphJsonPath));
+        }
       }
-    } else {
-      fs.copyFileSync(src, dest);
+    } else if (copyFileIfChanged(src, dest).changed) {
+      installed.push(path.relative(targetRoot, dest));
     }
-
-    installed.push(path.relative(targetRoot, dest));
   }
 
   installed.push(...installModeFiles(targetRoot, relativeDestDir, preserveUserData));
@@ -144,25 +152,32 @@ function installSharedFxmind(targetRoot, packIds, installOptions = {}) {
       }
 
       const dest = path.join(destDir, destRel);
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
-      fs.copyFileSync(src, dest);
-      installed.push(path.relative(targetRoot, dest));
+      if (copyFileIfChanged(src, dest).changed) {
+        installed.push(path.relative(targetRoot, dest));
+      }
     }
   }
 
-  writePacksManifest(targetRoot, packIds, installOptions.manifestMeta);
-  installed.push(path.join(relativeDestDir, "packs.json").replace(/\\/g, "/"));
+  const manifest = writePacksManifest(targetRoot, packIds, installOptions.manifestMeta);
+  if (manifest?.changed) {
+    installed.push(path.join(relativeDestDir, "packs.json").replace(/\\/g, "/"));
+  }
 
   const fxmindGuideSrc = path.join(PACKAGE_ROOT, COMMAND_TEMPLATE);
   const fxmindGuideDest = path.join(destDir, "fxmind.md");
-  if (fs.existsSync(fxmindGuideSrc)) {
-    fs.copyFileSync(fxmindGuideSrc, fxmindGuideDest);
+  if (fs.existsSync(fxmindGuideSrc) && copyFileIfChanged(fxmindGuideSrc, fxmindGuideDest).changed) {
     installed.push(path.relative(targetRoot, fxmindGuideDest));
   }
 
   fs.mkdirSync(path.join(targetRoot, AUDITS_DIR), { recursive: true });
-  installed.push(installAuditsDir(targetRoot));
-  installed.push(installCorrectionsDir(targetRoot));
+  const auditsDest = installAuditsDir(targetRoot);
+  if (auditsDest) {
+    installed.push(auditsDest);
+  }
+  const correctionsDest = installCorrectionsDir(targetRoot);
+  if (correctionsDest) {
+    installed.push(correctionsDest);
+  }
   for (const dest of migrateAuditReports(targetRoot)) {
     installed.push(dest);
   }
@@ -179,16 +194,36 @@ function installSharedFxmind(targetRoot, packIds, installOptions = {}) {
   return { installed, removed };
 }
 
+function readPacksManifestFile(targetRoot) {
+  const manifestPath = path.join(targetRoot, SHARED_DIR, "packs.json");
+  if (!fs.existsSync(manifestPath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function manifestComparePayload(manifest) {
+  return omitKeys(manifest || {}, ["updatedAt"]);
+}
+
 function writePacksManifest(targetRoot, packIds, meta = {}) {
+  const manifestPath = path.join(targetRoot, SHARED_DIR, "packs.json");
+  const existing = readPacksManifestFile(targetRoot) || {};
+  const cliVersion = getPackageVersion();
   const manifest = {
+    ...existing,
     version: 1,
+    cliVersion,
     layoutVersion: LAYOUT_VERSION,
     packSkillsDir: PACK_SKILLS_DIR.replace(/\\/g, "/"),
     packs: packIds.map((id) => {
       const pack = getPack(id);
       return { id, label: pack.label };
     }),
-    updatedAt: new Date().toISOString(),
   };
 
   if (Array.isArray(meta.agents) && meta.agents.length > 0) {
@@ -215,11 +250,17 @@ function writePacksManifest(targetRoot, packIds, meta = {}) {
     manifest.globalRoot = meta.globalRoot;
   }
 
-  fs.writeFileSync(
-    path.join(targetRoot, SHARED_DIR, "packs.json"),
-    `${JSON.stringify(manifest, null, 2)}\n`,
-    "utf8",
+  const samePayload = jsonSemanticallyEqual(
+    manifestComparePayload(existing),
+    manifestComparePayload(manifest),
   );
+  if (samePayload && existing.updatedAt) {
+    return { changed: false, cliVersion, path: manifestPath };
+  }
+
+  manifest.updatedAt = new Date().toISOString();
+  const written = writeJsonIfChanged(manifestPath, manifest);
+  return { changed: written.changed, cliVersion, path: manifestPath };
 }
 
 function getAllTemplateFileNames(packIds) {
@@ -272,8 +313,9 @@ function installModeFiles(targetRoot, relativeDestDir, preserveUserData) {
   for (const fileName of sourceFiles) {
     const src = path.join(srcDir, fileName);
     const dest = path.join(destDir, fileName);
-    fs.copyFileSync(src, dest);
-    installed.push(path.relative(targetRoot, dest));
+    if (copyFileIfChanged(src, dest).changed) {
+      installed.push(path.relative(targetRoot, dest));
+    }
   }
 
   if (preserveUserData) {
@@ -326,8 +368,9 @@ function seedMemoryIndex(targetRoot, relativeDestDir) {
     return null;
   }
 
-  fs.mkdirSync(memoryDir, { recursive: true });
-  fs.copyFileSync(templatePath, indexPath);
+  if (!copyFileIfChanged(templatePath, indexPath).changed) {
+    return null;
+  }
 
   return path.relative(targetRoot, indexPath);
 }
@@ -365,7 +408,7 @@ function applyGlobalStore(targetRoot, packs, enabled) {
     manifest.projectId = result.projectId;
     manifest.globalRoot = result.globalProjectDir.replace(/\\/g, "/");
     manifest.sharedSkills = result.sharedSkills.replace(/\\/g, "/");
-    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    writeJsonIfChanged(manifestPath, manifest);
   }
 
   return result;
@@ -393,10 +436,10 @@ function writeProjectLockfile(targetRoot, packs, options = {}) {
     return null;
   }
   const prev = readLockfile(targetRoot);
-  const { data } = writeLockfile(targetRoot, packs, {
+  const { data, changed } = writeLockfile(targetRoot, packs, {
     packSkillsDirs: options.packSkillsDirs,
   });
-  if (prev) {
+  if (prev && changed) {
     const changes = diffLockfiles(prev, data);
     if (changes.length > 0) {
       console.log("[Lockfile] changes since last install:");
@@ -413,12 +456,13 @@ function writeProjectLockfile(targetRoot, packs, options = {}) {
       }
     }
   }
-  return data;
+  return changed ? data : null;
 }
 
 module.exports = {
   installSharedFxmind,
   writePacksManifest,
+  readPacksManifestFile,
   getAllTemplateFileNames,
   normalizePackTemplateFile,
   listModeTemplateFiles,

@@ -69,7 +69,7 @@ Gemini uses `/fxmind:task`, `/fxmind:learn`, etc. VS Code Copilot uses `/fxmind`
 
 ```bash
 fxmind -y                  # install (Cursor + fivem pack by default)
-fxmind --update -y         # refresh templates/skills/hooks/MCP/fivem-start (keeps memories)
+fxmind --update -y         # refresh only files that differ from this CLI (keeps memories)
 fxmind graph               # open 2D graph in the browser
 fxmind painel              # local web panel (UI + API)
 fxmind hooks status        # show hooks + MCP status
@@ -91,7 +91,7 @@ fxmind painel                  # http://127.0.0.1:3847/chat
 ```
 
 The panel build is generated automatically during `fxmind -y` installation,
-`fxmind --update -y`, or the package install lifecycle. The manual command
+when `fxmind --update -y` actually changes project files, or the package install lifecycle. The manual command
 `npm run build:web` is only needed when developing the workspace UI.
 
 PortSpace/Trello connection is stored in `~/.fxmind/panel.json`.
@@ -107,7 +107,7 @@ Dev (monorepo): `npm run dev` from the workspace root — Vite on :5173, API on 
 ```
 .fxmind/
 ├── fxmind.md            # /fxmind command router
-├── packs.json           # installed packs manifest
+├── packs.json           # installed packs + cliVersion stamp
 ├── packs.lock.json      # reproducible pack pins
 ├── memory/              # topic memories (source of truth)
 ├── modes/               # /fxmind mode specs (loaded on demand)
@@ -306,7 +306,7 @@ The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP sp
 | `fxmind_fivem_status` / `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` | Local FXServer RCON + log tail (dev). **Status probes reachability** — use cmd/tail only when `available: true`; otherwise ask user to run console commands manually. |
 | `fxmind_fivem_nui_wire` / `fxmind_fivem_nui_dump` / `fxmind_fivem_nui_unwire` | Agent TEMP-wires a NUI resource, dumps structured state, then **must unwire**. Better than screenshots. |
 
-Skip with `--no-mcp`. Refresh with `fxmind --update -y` (also refreshes hooks + fivem-start) or `fxmind hooks install`. Restart the MCP client after changes.
+Skip with `--no-mcp`. Refresh with `fxmind --update -y` (copies only files that differ from this CLI, then stamps `cliVersion` in `.fxmind/packs.json`) or `fxmind hooks install`. If everything already matches, it prints `Already up to date` and exits. Restart the MCP client after changes.
 
 ### Auto update check (Cursor)
 
