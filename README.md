@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://avatars.githubusercontent.com/u/296747387?s=200&v=4" alt="fxmind logo" width="120" />
+  <img src="https://i.postimg.cc/Z565rzH8/Chat-GPT-Image-11-09-2026-00-01-28.png" alt="fxmind logo" width="120" />
 </p>
 
 # fxmind — shared project memory for AI agents
