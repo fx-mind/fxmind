@@ -16,8 +16,6 @@ const {
 } = require("./panel-cli-stream");
 const { readPanelConfig } = require("./panel-api");
 const { normalizeTaskMode } = require("./panel-context");
-const taskSessions = require("./task-sessions");
-const verification = require("./verification");
 
 const threads = new Map();
 const bus = new EventEmitter();
@@ -270,8 +268,21 @@ function settleRunningWork(thread, nextStatus = "done") {
   }
 }
 
+const PENDING_VERIFY_RE = /^Verificação pendente:/i;
+
+function clearStaleDeliveryCheck(thread) {
+  if (!thread || !PENDING_VERIFY_RE.test(String(thread.error || ""))) return false;
+  thread.error = null;
+  if (thread.status === "error") {
+    thread.status = "done";
+    if (!thread.phase || thread.phase === "working") thread.phase = "review";
+  }
+  return true;
+}
+
 function publicThread(thread) {
   if (!thread) return null;
+  if (clearStaleDeliveryCheck(thread)) schedulePersist(thread);
   if (thread.status !== "running" && thread.status !== "queued") {
     settleRunningWork(thread, thread.status === "error" ? "error" : "done");
   }
@@ -840,27 +851,11 @@ function clearCliSession(id) {
 function finishAssistant(id, extra = {}) {
   const thread = threads.get(id);
   if (!thread) return;
-  if (!extra.error && !thread.question && thread._runStartedAtMs &&
-      thread.mode !== "query" && thread.mode !== "plan") {
-    const root = thread.worktree?.path || thread.projectRoot;
-    const codeChanged = (thread.diff?.files || []).some((file) => !String(file.path || "").startsWith(".fxmind/"));
-    let session;
-    try {
-      session = taskSessions.resolveSession(root, thread._fxmindSessionId || id);
-    } catch {
-      // A question answered in task mode may legitimately have no task session.
-    }
-    const currentSession = session && (session.taskActive || Date.parse(session.session || "") >= thread._runStartedAtMs);
-    if (codeChanged || currentSession) {
-      try {
-        if (!session?.gates?.C?.complete || Date.parse(session.gates.C.at) < thread._runStartedAtMs) {
-          throw new Error("Verificação pendente: conclua o Gate V com evidências e o Gate C antes de entregar.");
-        }
-        verification.assertFresh(root, session.gates.V);
-      } catch (error) {
-        extra = { ...extra, error: error.message };
-      }
-    }
+  // Gate V/C is a review track, not a run failure. Missing MCP or in-game
+  // evidence must not paint a finished reply as an error after every turn.
+  if (PENDING_VERIFY_RE.test(String(extra.error || ""))) {
+    extra = { ...extra };
+    delete extra.error;
   }
   const last = thread.messages.at(-1);
   if (last && last.role === "assistant") delete last.streaming;

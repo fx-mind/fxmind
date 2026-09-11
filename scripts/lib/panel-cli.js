@@ -20,6 +20,7 @@ const { scheduleGraphRebuildBackground } = require("./graph-freshness");
 const { readPanelSubagentDefaults } = require("./panel-subagents");
 const panelProviders = require("./panel-providers");
 const { installMcpForAgent, mcpStatusForAgent } = require("../mcp-install");
+const commitMessage = require("./panel-commit-message");
 
 const CLI_MCP_AGENTS = {
   opencode: "opencode",
@@ -1499,6 +1500,77 @@ function cleanupJudgeFile(file) {
 // watchdog covering this secondary spawn, unlike the primary run's own
 // startWatchdog.
 const JUDGE_TIMEOUT_MS = 5 * 60 * 1000;
+const COMMIT_TITLE_TIMEOUT_MS = 45_000;
+
+function runCliText({ bin, args, root, stdinPrompt, cliId, timeoutMs }) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawnCli(
+        bin,
+        args,
+        root,
+        buildEnv(),
+        cliId === "codex" || stdinPrompt ? ["pipe", "pipe", "pipe"] : undefined,
+      );
+    } catch (err) {
+      resolve({ ok: false, error: String(err.message || err) });
+      return;
+    }
+
+    let settled = false;
+    let stdout = "";
+    let textOut = "";
+    let errorOut = "";
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = setTimeout(() => {
+      terminateCliProcess(child);
+      finish({
+        ok: false,
+        error: `CLI ${cliId} timed out after ${Math.round((timeoutMs || COMMIT_TITLE_TIMEOUT_MS) / 1000)}s`,
+      });
+    }, timeoutMs || COMMIT_TITLE_TIMEOUT_MS);
+
+    if (child.stdout) child.stdout.setEncoding("utf8");
+    if (child.stderr) child.stderr.setEncoding("utf8");
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk;
+      for (const line of String(chunk).split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          for (const event of stream.parseLineEnriched(line, cliId)) {
+            if (event.kind === "text" && event.text) textOut += event.text;
+            if (event.kind === "cli" && event.status === "error" && event.detail) {
+              errorOut = errorOut || String(event.detail);
+            }
+          }
+        } catch {
+          /* plain-text CLIs don't emit structured JSON lines */
+        }
+      }
+    });
+    child.stderr?.on("data", () => {});
+    if (stdinPrompt && child.stdin) {
+      child.stdin.write(stdinPrompt);
+      child.stdin.end();
+    }
+
+    child.on("error", (err) => finish({ ok: false, error: String(err.message || err) }));
+    child.on("close", () => {
+      const output = (textOut || (cliId === "opencode" || cliId === "codex" ? "" : stdout)).trim();
+      if (output) {
+        finish({ ok: true, output });
+        return;
+      }
+      finish({ ok: false, error: errorOut || "CLI returned no text" });
+    });
+  });
+}
 
 /**
  * Runs a second, read-only CLI pass reviewing the primary run's diff/report
@@ -2254,6 +2326,62 @@ function discardThreadFile(threadId, relPath) {
   return { ok: true, discarded: discarded.discarded, thread: threads.publicThread(raw) };
 }
 
+async function suggestCommitMessage(threadId) {
+  const raw = threads.getThreadRaw(threadId);
+  if (!raw) return { ok: false, status: 404, error: "thread not found" };
+  const root = raw.worktree?.path || raw.projectRoot;
+  if (!root) {
+    return { ok: false, status: 400, error: "thread project root is unavailable" };
+  }
+
+  let diff = raw.diff;
+  try {
+    diff = collectThreadDiff(raw, root);
+    if (diff?.ok !== false) {
+      rememberTaskFiles(raw, diff);
+      threads.setDiff(threadId, diff);
+    }
+  } catch {
+    /* keep the last captured diff */
+  }
+
+  const files = visibleDiffFiles(diff);
+  const fallback = commitMessage.fallbackCommitTitle({ title: raw.title, files });
+  const lastAssistant = [...(raw.messages || [])].reverse().find((message) => message.role === "assistant");
+  const prompt = commitMessage.buildCommitTitlePrompt({
+    title: raw.title,
+    userPrompt: threads.lastUserContent(raw),
+    assistant: lastAssistant?.content || "",
+    files,
+  });
+
+  const cliId = pickCliId(raw._cliId || raw.cliId);
+  if (!cliId) return { ok: true, message: fallback, source: "fallback" };
+  const entry = CLI_CATALOG.find((item) => item.id === cliId);
+  const bin = resolveBin(entry);
+  if (!bin) return { ok: true, message: fallback, source: "fallback" };
+
+  const execOpts = selectedExecution(cliId);
+  const accessArgs = cliAccessArgs(cliId, "ask");
+  const { args, stdinPrompt } = buildJudgeArgs(cliId, {
+    root,
+    body: prompt,
+    accessArgs,
+    execOpts,
+  });
+  const ran = await runCliText({
+    bin,
+    args,
+    root,
+    stdinPrompt,
+    cliId,
+    timeoutMs: COMMIT_TITLE_TIMEOUT_MS,
+  });
+  const parsed = commitMessage.parseCommitTitle(ran.ok ? ran.output : "");
+  if (!parsed) return { ok: true, message: fallback, source: "fallback", cliId };
+  return { ok: true, message: parsed, source: "agent", cliId };
+}
+
 function commitThread(threadId, options = {}) {
   const raw = threads.getThreadRaw(threadId);
   if (!raw) return { ok: false, status: 404, error: "thread not found" };
@@ -2356,6 +2484,7 @@ module.exports = {
   pauseThread,
   resumeThread,
   discardThreadFile,
+  suggestCommitMessage,
   commitThread,
   pushThread,
   refreshThreadDiff,

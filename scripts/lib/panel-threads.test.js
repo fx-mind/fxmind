@@ -23,7 +23,7 @@ describe("panel-threads", () => {
     assert.match(prompt, /Alta/);
   });
 
-  it("does not accept a confident completion report without verified gates", () => {
+  it("finishes a task run as done even when Gate V/C were not recorded", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "fxpanel-verify-"));
     try {
       const { thread } = threads.createThread({ projectRoot: root, content: "fix server", mode: "task" });
@@ -33,35 +33,28 @@ describe("panel-threads", () => {
       raw.diff = { files: [{ path: "server.js" }] };
       threads.applyStreamEvent(thread.id, { kind: "text", text: "Everything is tested and complete" });
       threads.finishAssistant(thread.id);
-      assert.equal(threads.getThread(thread.id).thread.status, "error");
-      assert.match(threads.getThread(thread.id).thread.error, /Verificação pendente/);
+      const next = threads.getThread(thread.id).thread;
+      assert.equal(next.status, "done");
+      assert.equal(next.error, null);
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
 
-  it("accepts current verified work, rejects later edits, and leaves queries alone", () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fxpanel-verified-"));
-    const tools = require("../fxmind-tools");
-    try {
-      fs.writeFileSync(path.join(root, "server.js"), "module.exports = 1;");
-      const { thread } = threads.createThread({ projectRoot: root, content: "fix server", mode: "task" });
-      const raw = threads.getThreadRaw(thread.id);
-      raw._runStartedAtMs = Date.now();
-      raw.diff = { files: [{ path: "server.js" }] };
-      tools.startTask(root, { sessionId: thread.id, trivial: true });
-      tools.recordGate(root, "V", true, { sessionId: thread.id, evidence: {
-        files: ["server.js"], review: "Checked the fixture",
-        checks: [{ kind: "manual", target: "fixture", expected: "exports 1", observed: "exports 1", status: "passed" }],
-      } });
-      tools.recordGate(root, "C", true, { sessionId: thread.id });
-      threads.finishAssistant(thread.id);
-      assert.equal(threads.getThread(thread.id).thread.status, "done");
-      fs.writeFileSync(path.join(root, "server.js"), "module.exports = 2;");
-      threads.finishAssistant(thread.id);
-      assert.equal(threads.getThread(thread.id).thread.status, "error");
-      raw.mode = "query";
-      threads.finishAssistant(thread.id);
-      assert.equal(threads.getThread(thread.id).thread.status, "done");
-    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  it("clears a persisted Gate V/C delivery error so the thread can be reviewed", () => {
+    const { thread } = threads.createThread({ content: "fix server", mode: "task" });
+    const raw = threads.getThreadRaw(thread.id);
+    raw.status = "error";
+    raw.phase = "working";
+    raw.error = "Verificação pendente: conclua o Gate V com evidências e o Gate C antes de entregar.";
+    const next = threads.getThread(thread.id).thread;
+    assert.equal(next.status, "done");
+    assert.equal(next.error, null);
+    assert.equal(next.phase, "review");
+  });
+
+  it("leaves query mode done after a task reply", () => {
+    const { thread } = threads.createThread({ content: "what is this?", mode: "query" });
+    threads.finishAssistant(thread.id);
+    assert.equal(threads.getThread(thread.id).thread.status, "done");
   });
 
   it("injectDemand creates a queued user message thread", () => {

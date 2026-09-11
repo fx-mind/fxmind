@@ -613,6 +613,17 @@ async function handleApi(req, res, url) {
     }
   }
 
+  const commitMessageMatch = pathname.match(/^\/api\/threads\/([^/]+)\/commit-message$/);
+  if (commitMessageMatch && req.method === "POST") {
+    try {
+      const result = await panelCli.suggestCommitMessage(commitMessageMatch[1]);
+      if (!result.ok) return sendJson(res, result.status || 400, result);
+      return sendJson(res, 200, result);
+    } catch (err) {
+      return sendJson(res, 500, { error: String(err.message || err) });
+    }
+  }
+
   const approveMatch = pathname.match(/^\/api\/threads\/([^/]+)\/approve$/);
   if (approveMatch && req.method === "POST") {
     try {
