@@ -431,7 +431,7 @@ Usage:
 Cursor hooks:
   preToolUse   → .cursor/hooks/gate-guard.js      (auto-start Task + enforce Gates A/B; block Write to gates JSON)
   postToolUse  → .cursor/hooks/drift-watcher.js   (memory drift + graph-pending flag)
-  stop         → .cursor/hooks/learn-prompt.js    (remind Gate C once; never after user stop)
+  stop         → .cursor/hooks/learn-prompt.js    (short Gate V/C ping once per task; never after user stop/handoff)
   sessionStart → .cursor/hooks/update-notifier.js (new fxmind version → agent asks user to update)
 
 Git pre-commit:
