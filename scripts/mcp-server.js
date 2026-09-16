@@ -150,7 +150,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_start_task",
     description:
-      "Start a Task session (sets taskActive). Preferred over writing gates JSON. Call before Gate A. Pass trivial=true for one-file tiny edits to auto-complete Gates A and B.",
+      "Start a Task session (sets taskActive). Preferred over writing gates JSON. Call before Gate A. Pass trivial=true for one-file tiny edits to auto-complete Gates A and B. From this gate on, user-facing replies stay short and direct: outcome first, no long text.",
     inputSchema: {
       type: "object",
       properties: {
@@ -188,7 +188,7 @@ const TOOL_DEFS = [
           description:
             "START begins a task; A/B unlock edits; V records verify-by-observation; C closes the task.",
         },
-        note: { type: "string", description: "Optional note (e.g. memories loaded)." },
+        note: { type: "string", description: "Optional note (e.g. memories loaded). Gate A also restates: user replies stay short and direct." },
         evidence: {
           type: "object",
           description: "Required for V. Record actual observations after checks, never predictions. See task-verify.md. Browser unavailable: status=blocked, reason; do not mark passed.",

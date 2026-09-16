@@ -13,4 +13,4 @@ Quick/full controls effort, not quality. Trivial means a known tiny one-file cha
 
 Read `.fxmind/modes/task-verify.md` before UI edits and before V. UI requires browser interactions, visual inspection and an existing screenshot/trace. Build alone cannot verify UI. Failed/blocked checks leave V incomplete, and edits after V require re-verification.
 
-Keep constants/helpers/files only when they add concrete value. Match local conventions; preserve security checks. Record gate notes once instead of duplicating ceremony in chat.
+Keep constants/helpers/files only when they add concrete value. Match local conventions; preserve security checks. Record gate notes once instead of duplicating ceremony in chat. User-facing replies are short and direct — outcome first, no long text.

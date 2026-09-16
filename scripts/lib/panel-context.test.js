@@ -37,6 +37,7 @@ describe("panel-context", () => {
     assert.match(body, /Ferramentas FxMind/);
     assert.match(body, /fxmind_query/);
     assert.match(body, /fxmind_search/);
+    assert.match(body, /short and direct/);
   });
 
   it("normalizeTaskMode defaults unknown to full", () => {

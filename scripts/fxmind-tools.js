@@ -895,6 +895,18 @@ function gateStatus(targetRoot, extra = {}) {
   return taskSessions.getSessionStatus(targetRoot, extra);
 }
 
+const USER_REPLY_STYLE =
+  "Reply to the user short and direct. Lead with the outcome. No long explanations, tables, or gate ceremony in chat.";
+
+function withUserReply(data, gate) {
+  if (!data || data.error) return data;
+  const letter = String(gate || "START").toUpperCase();
+  if (letter === "START" || letter === "0" || letter === "A") {
+    return { ...data, userReply: USER_REPLY_STYLE };
+  }
+  return data;
+}
+
 function startTask(targetRoot, extra = {}) {
   migrateLegacyGates(targetRoot);
   try {
@@ -916,7 +928,7 @@ function startTask(targetRoot, extra = {}) {
     autoStarted: data.autoStarted,
     trivial: data.trivial,
   });
-  return data;
+  return withUserReply(data, "START");
 }
 
 function recordGate(targetRoot, gate, value = true, extra = {}) {
@@ -954,7 +966,7 @@ function recordGate(targetRoot, gate, value = true, extra = {}) {
     taskActive: data.taskActive,
     sessionId: data.sessionId,
   });
-  return data;
+  return withUserReply(data, letter);
 }
 
 function claimPaths(targetRoot, paths, extra = {}) {
@@ -1001,6 +1013,7 @@ module.exports = {
   gateStatus,
   startTask,
   recordGate,
+  USER_REPLY_STYLE,
   claimPaths,
   releasePaths,
   sessionStatus,

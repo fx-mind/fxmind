@@ -109,4 +109,17 @@ describe("task-sessions", () => {
     assert.equal(status.multiSession, true);
     assert.equal(status.sessions.length, 2);
   });
+
+  it("start_task and Gate A carry a short user-reply instruction", () => {
+    const { USER_REPLY_STYLE } = require("../fxmind-tools");
+    const started = startTask(dir, { note: "task" });
+    assert.equal(started.userReply, USER_REPLY_STYLE);
+    assert.match(started.userReply, /short and direct/i);
+
+    const gateA = recordGate(dir, "A", true, { sessionId: started.sessionId });
+    assert.equal(gateA.userReply, USER_REPLY_STYLE);
+
+    const gateB = recordGate(dir, "B", true, { sessionId: started.sessionId });
+    assert.equal(gateB.userReply, undefined);
+  });
 });

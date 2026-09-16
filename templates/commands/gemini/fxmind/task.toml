@@ -12,4 +12,5 @@ Classify first: question | analyze-only | plan-first | trivial | task.
 - else → start_task → A → B → implement → V → judge if required → C
 MCP rejects Gate C without V. Minimum evidence: `.fxmind/policy/minimum-evidence.md` when present.
 Never Write `.fxmind/state/fxmind-gates.json`.
+From Gate A, reply to the user short and direct — outcome first, no long text.
 """

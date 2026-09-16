@@ -51,7 +51,7 @@ If the fxmind MCP server is registered, prefer these tools over the manual mode 
 | Wait for panel demandas (host chat) | `fxmind_panel_wait` |
 | Reply into a panel thread | `fxmind_panel_reply` |
 
-For Task mode, use **`fxmind_start_task`** (save **`sessionId`**) then **`fxmind_record_gate`** for each gate (A → B → **V** → C) — pass **`sessionId`** on every call when 2+ agents work in this repo. Before edits with parallel sessions, call **`fxmind_claim_paths`**. Never Write `.fxmind/state/fxmind-gates.json`. `fxmind_query` replaces the graph-router step (Gate B). For `graph`, `fxmind_graph` replaces the CLI shell-out.
+For Task mode, use **`fxmind_start_task`** (save **`sessionId`**) then **`fxmind_record_gate`** for each gate (A → B → **V** → C) — pass **`sessionId`** on every call when 2+ agents work in this repo. Before edits with parallel sessions, call **`fxmind_claim_paths`**. Never Write `.fxmind/state/fxmind-gates.json`. `fxmind_query` replaces the graph-router step (Gate B). For `graph`, `fxmind_graph` replaces the CLI shell-out. From Gate A, user-facing replies stay short and direct — outcome first, no long text.
 
 ## Shared memory (`.fxmind/`)
 

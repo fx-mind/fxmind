@@ -13,7 +13,7 @@ Read `.fxmind/modes/task-verify.md` before implementation when UI/runtime eviden
 ## Start and context (A → B)
 
 1. `fxmind_start_task` with a compact goal note and `ui: true` for visual/interaction changes (including backend changes that alter UI behavior). Keep the returned sessionId and pass it to gate/claim calls. Reuse FXMIND_SESSION_ID from panel context when supplied.
-2. Gate A: record scope, Done, checks, INTENT/invariants when applicable in `fxmind_record_gate` note. Trivial tasks auto-complete A/B but still need verification.
+2. Gate A: record scope, Done, checks, INTENT/invariants when applicable in `fxmind_record_gate` note. From Gate A on, user-facing replies stay short and direct — lead with the outcome, no long explanations or gate ceremony. Trivial tasks auto-complete A/B but still need verification.
 3. Gate B: use relevant preloaded memories; otherwise query once (~1200–1500 tokens). Memories guide discovery; current source confirms them. Read implementation, callers and nearby conventions before editing.
 4. If hits are missing/stale, use one bounded path/symbol search in the likely folder and read the results. Widen only when evidence requires it; no repeated repository dumps. If this provider denies native search, use an available permitted tool/subagent; don't evade its permissions.
 5. Load only relevant pack references/corrections. For FiveM, read `.fxmind/skills/fivem-development/quality-gates.md` and the affected domain references; capture endpoint/payload/cache/validation/rate-limit/fan-out choices when those actually change. Verify unfamiliar APIs from primary sources.
@@ -44,4 +44,4 @@ Run `.fxmind/modes/task-verify.md`. Record V with structured evidence. Failed or
 
 Gate C requires passing, current V evidence. Save reusable, verified knowledge only; otherwise note "mudança pontual". Validate changed memories. Record reusable user corrections when already authorized; otherwise offer to save them once. Remove temporary instrumentation before final verification.
 
-Use gate notes as the audit record; don't duplicate long markers/checklists in chat. Final reply: actual outcome, checks performed and any remaining limitations.
+Use gate notes as the audit record; don't duplicate long markers/checklists in chat. Final reply: short and direct — actual outcome, then only blockers or the next user action.
