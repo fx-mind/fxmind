@@ -334,7 +334,7 @@ function exportCorrections(targetRoot, options = {}) {
     `Filter: status=${options.status || "open"}${options.category ? ` category=${options.category}` : ""}`,
     `Count: ${items.length}`,
     ``,
-    `Use this digest to update pack skills (e.g. \`fivem-development/architecture.md\` by category).`,
+    `Use this digest to update pack skills (e.g. \`fivem-development/architecture.md\` by category): fold each rule into the section it refines as one \`**Rule (ID):**\` line (principle ID from \`.fxmind/policy/fivem-principles.md\`) — never a new "Learned rule" section.`,
     ``,
   ];
   for (const item of items) {
