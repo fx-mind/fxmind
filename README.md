@@ -96,6 +96,13 @@ when `fxmind --update -y` actually changes project files, or the package install
 
 PortSpace/Trello connection is stored in `~/.fxmind/panel.json`.
 
+**PortSpace card lifecycle** — a PortSpace demand (from the inbox or the demand queue)
+is claimed before its thread starts (card assigned to the key owner and moved to the
+dev column; a card someone else took is skipped). Pushing the thread completes the card
+with the pushed commit, branch and repo URL (moved to the test column). Deleting an
+undelivered thread releases the card back to its source column. The result of the last
+call is kept in the thread's `cardSync`.
+
 `/fxmind painel` in the agent chat runs `fxmind painel` and can **keep that chat as host** (no API key). The panel binds to the nearest `.fxmind/` from cwd when started.
 
 Dev (monorepo): `npm run dev` from the workspace root — Vite on :5173, API on :3847 (`fxmind serve --api-only`).

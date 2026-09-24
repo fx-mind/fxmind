@@ -118,7 +118,7 @@ assistant text and do not block the task.
 
 - **Histórico** drawer: parallel threads.
 
-- **Inbox** drawer: PortSpace demands (connect in Settings if needed).
+- **Inbox** drawer: PortSpace demands (connect in Settings if needed). Starting one claims the card; push completes it; deleting the thread before push releases it.
 
 
 

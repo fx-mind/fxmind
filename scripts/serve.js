@@ -15,6 +15,7 @@ const panelInstall = require("./lib/panel-install");
 const panelTaskGit = require("./lib/panel-task-git");
 const panelProjectGit = require("./lib/panel-project-git");
 const panelTrello = require("./lib/panel-trello");
+const panelPortspace = require("./lib/panel-portspace");
 const panelBuild = require("./lib/panel-build");
 const panelSubagents = require("./lib/panel-subagents");
 const panelProviders = require("./lib/panel-providers");
@@ -462,7 +463,7 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "POST" && pathname === "/api/demand-queue/start") {
-    const result = startDemandQueue();
+    const result = await startDemandQueue();
     if (!result.ok) return sendJson(res, result.status || 400, { error: result.error });
     return sendJson(res, 200, result);
   }
@@ -491,20 +492,35 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "POST" && pathname === "/api/threads/inject") {
+    let body;
     try {
-      const body = await readBody(req);
-      const resolved = resolveThreadProject(body.projectId);
-      if (!resolved.ok) return sendJson(res, resolved.status || 400, { error: resolved.error });
-      const created = threads.injectDemand({
-        projectId: resolved.projectId,
-        projectRoot: resolved.projectRoot,
-        item: body.item || {},
-      });
-      startCli(created.thread.id);
-      return sendJson(res, 201, created);
+      body = await readBody(req);
     } catch {
       return sendJson(res, 400, { error: "invalid JSON body" });
     }
+    const resolved = resolveThreadProject(body.projectId);
+    if (!resolved.ok) return sendJson(res, resolved.status || 400, { error: resolved.error });
+    const item = body.item || {};
+    // Claim before the thread exists: a card someone else took never starts here.
+    let cardSync = null;
+    if (panelPortspace.isPortspaceCard(item)) {
+      const claimed = await panelPortspace.claimCard(item.cardId);
+      cardSync = panelPortspace.syncResult("claim", claimed);
+      if (!claimed.ok) {
+        return sendJson(res, claimed.status === 409 ? 409 : 502, {
+          error: `PortSpace recusou o card: ${cardSync.error}`,
+          cardSync,
+        });
+      }
+    }
+    const created = threads.injectDemand({
+      projectId: resolved.projectId,
+      projectRoot: resolved.projectRoot,
+      item,
+      cardSync,
+    });
+    startCli(created.thread.id);
+    return sendJson(res, 201, created);
   }
 
   if (req.method === "POST" && pathname === "/api/threads") {
@@ -643,7 +659,13 @@ async function handleApi(req, res, url) {
   if (pushMatch && req.method === "POST") {
     const result = panelCli.pushThread(pushMatch[1]);
     if (!result.ok) return sendJson(res, result.status || 400, result);
-    return sendJson(res, 200, result);
+    // The push already happened; a PortSpace failure is reported, never fatal.
+    // Pushing an already-pushed thread retries /complete (idempotent upstream).
+    const raw = threads.getThreadRaw(pushMatch[1]);
+    const cardSync = await panelPortspace.completeThreadCard(raw, result);
+    if (!cardSync) return sendJson(res, 200, result);
+    const synced = threads.setCardSync(pushMatch[1], cardSync);
+    return sendJson(res, 200, { ...result, cardSync, thread: synced.thread || result.thread });
   }
 
   const judgeMatch = pathname.match(/^\/api\/threads\/([^/]+)\/judge$/);
@@ -722,13 +744,15 @@ async function handleApi(req, res, url) {
 
   if (threadMatch && req.method === "DELETE") {
     const raw = threads.getThreadRaw(threadMatch[1]);
+    // Undelivered demand: hand the card back to the source column.
+    const cardSync = raw ? await panelPortspace.releaseThreadCard(raw) : null;
     panelCli.killThread(threadMatch[1]);
     const worktree = raw?.worktree?.path
       ? panelTaskGit.removeWorktree(raw.worktree.path)
       : { ok: true, removed: false };
     const result = await threads.disposeThread(threadMatch[1]);
     if (!result.ok) return sendJson(res, result.status || 500, { error: result.error });
-    return sendJson(res, 200, { ...result, worktree });
+    return sendJson(res, 200, { ...result, worktree, cardSync });
   }
 
   const projectIconMatch = pathname.match(/^\/api\/projects\/([^/]+)\/icon$/);

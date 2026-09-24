@@ -7,6 +7,9 @@
 
 const crypto = require("crypto");
 const { readPanelConfig, writePanelConfig } = require("./panel-api");
+const portspace = require("./panel-portspace");
+
+let cardClient = portspace;
 
 const queues = new Map();
 
@@ -37,6 +40,35 @@ function countRunningItems(queue) {
   return queue.items.filter((item) => item.status === "running").length;
 }
 
+function shortText(value, max) {
+  const text = String(value ?? "").trim();
+  return text ? text.slice(0, max) : null;
+}
+
+/** Inbox card fields the demand prompt and the PortSpace claim need. */
+function normalizeCard(item = {}) {
+  const cardId = shortText(item.cardId, 120);
+  if (!cardId) return {};
+  const column = item.column && typeof item.column === "object"
+    ? { name: shortText(item.column.name, 120), role: shortText(item.column.role, 40) }
+    : null;
+  const assignee = item.assignee && typeof item.assignee === "object"
+    ? { name: shortText(item.assignee.name, 120) }
+    : null;
+  return {
+    cardId,
+    source: shortText(item.source, 40),
+    boardId: shortText(item.boardId, 120),
+    boardName: shortText(item.boardName, 200),
+    priority: shortText(item.priority, 60),
+    category: shortText(item.category, 60),
+    dueDate: shortText(item.dueDate, 40),
+    overdue: Boolean(item.overdue),
+    column,
+    assignee,
+  };
+}
+
 function normalizeItem(item = {}) {
   const title = String(item.title || "").trim();
   return {
@@ -46,7 +78,14 @@ function normalizeItem(item = {}) {
     status: ["pending", "running", "done", "error"].includes(item.status)
       ? item.status
       : "pending",
+    error: shortText(item.error, 300),
+    ...normalizeCard(item),
   };
+}
+
+function demandInput(item) {
+  const { id: _id, status: _status, error: _error, ...rest } = item;
+  return { ...rest, description: item.description || undefined };
 }
 
 function normalizeQueue(data = {}, workspaceRoot = null) {
@@ -90,11 +129,14 @@ function getQueue(workspaceRoot) {
 }
 
 function publicQueue(queue) {
-  const items = queue.items.map(({ id, title, description, status }) => ({
+  const items = queue.items.map(({ id, title, description, status, error, cardId, source }) => ({
     id,
     title,
     description,
     status,
+    error: error || null,
+    cardId: cardId || null,
+    source: source || null,
   }));
   return {
     ok: true,
@@ -135,7 +177,21 @@ function removeItem(workspaceRoot, itemId) {
   return publicQueue(queue);
 }
 
-function injectOne(workspaceRoot, projectId, projectRoot, threads, startCli) {
+/**
+ * Claims a PortSpace card before its thread exists, so two people (or two
+ * panels) never work the same card. A failed claim marks only that item.
+ */
+async function claimItem(item) {
+  if (!portspace.isPortspaceCard(item)) return { ok: true, cardSync: null };
+  const result = await cardClient.claimCard(item.cardId);
+  const cardSync = portspace.syncResult("claim", result);
+  if (!result.ok) {
+    return { ok: false, error: `PortSpace recusou o card: ${cardSync.error}` };
+  }
+  return { ok: true, cardSync };
+}
+
+async function injectOne(workspaceRoot, projectId, projectRoot, threads, startCli) {
   const { key, queue } = getQueue(workspaceRoot);
   if (!queue.active) return { ok: false, error: "queue not active" };
 
@@ -148,14 +204,35 @@ function injectOne(workspaceRoot, projectId, projectRoot, threads, startCli) {
     return { ok: true, finished: true, ...publicQueue(queue) };
   }
 
+  // Mark before awaiting so a concurrent inject never picks the same item.
   next.status = "running";
+  next.error = null;
+  const claimed = await claimItem(next);
+  if (!claimed.ok) {
+    next.status = "error";
+    next.error = claimed.error;
+    saveToConfig();
+    return { ok: true, skipped: next.id, error: claimed.error, ...publicQueue(queue) };
+  }
+  if (!queue.active || queues.get(key) !== queue) {
+    // Stopped or cleared while claiming: hand the card back instead of starting work.
+    if (claimed.cardSync) await cardClient.releaseCard(next.cardId);
+    next.status = "pending";
+    saveToConfig();
+    return { ok: false, error: "queue not active" };
+  }
+
   const created = threads.injectDemand({
     projectId,
     projectRoot,
-    item: { title: next.title, description: next.description || undefined },
+    item: demandInput(next),
+    cardSync: claimed.cardSync,
   });
   if (!created?.ok) {
     next.status = "error";
+    next.error = "could not create demand thread";
+    if (claimed.cardSync) await cardClient.releaseCard(next.cardId);
+    saveToConfig();
     return { ok: false, error: "could not create demand thread" };
   }
 
@@ -172,10 +249,19 @@ function injectNext(workspaceRoot, projectId, projectRoot, threads, startCli) {
   if (isParallelEnabled()) {
     return injectUntilLimit(workspaceRoot, projectId, projectRoot, threads, startCli);
   }
-  return injectOne(workspaceRoot, projectId, projectRoot, threads, startCli);
+  return injectSerial(workspaceRoot, projectId, projectRoot, threads, startCli);
 }
 
-function injectUntilLimit(workspaceRoot, projectId, projectRoot, threads, startCli) {
+async function injectSerial(workspaceRoot, projectId, projectRoot, threads, startCli) {
+  // A card PortSpace refused is skipped; keep going until one thread starts.
+  let result = await injectOne(workspaceRoot, projectId, projectRoot, threads, startCli);
+  while (result.ok && result.skipped) {
+    result = await injectOne(workspaceRoot, projectId, projectRoot, threads, startCli);
+  }
+  return result;
+}
+
+async function injectUntilLimit(workspaceRoot, projectId, projectRoot, threads, startCli) {
   const { queue } = getQueue(workspaceRoot);
   if (!queue.active) return { ok: false, error: "queue not active" };
 
@@ -184,13 +270,17 @@ function injectUntilLimit(workspaceRoot, projectId, projectRoot, threads, startC
   while (queue.active && countRunningItems(queue) < limit) {
     const pending = queue.items.some((item) => item.status === "pending");
     if (!pending) break;
-    lastResult = injectOne(workspaceRoot, projectId, projectRoot, threads, startCli);
+    lastResult = await injectOne(workspaceRoot, projectId, projectRoot, threads, startCli);
     if (!lastResult.ok || lastResult.finished) break;
+  }
+  if (lastResult.ok && !lastResult.finished && !countRunningItems(queue)) {
+    // Every remaining item was refused: close the run like the serial path.
+    return injectOne(workspaceRoot, projectId, projectRoot, threads, startCli);
   }
   return lastResult;
 }
 
-function startQueue(workspaceRoot, projectId, projectRoot, threads, startCli) {
+async function startQueue(workspaceRoot, projectId, projectRoot, threads, startCli) {
   const { queue } = getQueue(workspaceRoot);
   if (!queue.items.some((item) => item.status === "pending")) {
     return { ok: false, status: 400, error: "no pending demands" };
@@ -278,5 +368,9 @@ module.exports = {
   onThreadFinished,
   _resetForTests() {
     queues.clear();
+    cardClient = portspace;
+  },
+  _setCardClientForTests(client) {
+    cardClient = client || portspace;
   },
 };
