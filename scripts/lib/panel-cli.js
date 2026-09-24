@@ -166,9 +166,11 @@ function notifyThreadDone(threadId) {
   if (raw && root && raw.status !== "paused" && raw.status !== "waiting") {
     finalizeRun(threadId, root);
   }
-  demandQueue.onThreadFinished(threadId, threads, (id) => {
-    dispatchThread(id).catch(() => {});
-  });
+  Promise.resolve(
+    demandQueue.onThreadFinished(threadId, threads, (id) => {
+      dispatchThread(id).catch(() => {});
+    }),
+  ).catch(() => {});
   pumpScheduler();
   maybeTriggerJudge(threadId, raw);
 }

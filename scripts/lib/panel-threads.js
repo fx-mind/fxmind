@@ -80,6 +80,8 @@ function persistableThread(thread) {
     projectId: thread.projectId,
     projectRoot: thread.projectRoot || null,
     cardId: thread.cardId || null,
+    cardSource: thread.cardSource || null,
+    cardSync: thread.cardSync || null,
     taskType: thread.taskType || "task",
     mode: thread.mode || "task",
     status: thread.status,
@@ -194,6 +196,8 @@ function normalizeThread(input) {
     projectId: input.projectId || null,
     projectRoot: input.projectRoot || null,
     cardId: input.cardId || null,
+    cardSource: input.cardSource || null,
+    cardSync: input.cardSync && typeof input.cardSync === "object" ? input.cardSync : null,
     taskType: String(input.taskType || "task"),
     mode: normalizeOperationMode(input.mode),
     status: status === "running" ? "paused" : status,
@@ -292,6 +296,8 @@ function publicThread(thread) {
     projectId: thread.projectId,
     projectRoot: thread.projectRoot || null,
     cardId: thread.cardId || null,
+    cardSource: thread.cardSource || null,
+    cardSync: thread.cardSync || null,
     taskType: thread.taskType || "task",
     mode: thread.mode || "task",
     status: thread.status,
@@ -443,7 +449,10 @@ function buildDemandPrompt(item = {}) {
   if (item.column?.name) lines.push(`**Coluna:** ${item.column.name}`);
   if (item.dueDate) lines.push(`**Prazo:** ${item.dueDate}`);
   if (item.overdue) lines.push("**Status:** atrasada");
-  if (item.cardId) lines.push(`**Card PortSpace:** ${item.cardId}`);
+  if (item.cardId) {
+    const label = item.source === "trello" ? "Trello" : "PortSpace";
+    lines.push(`**Card ${label}:** ${item.cardId}`);
+  }
   if (item.assignee?.name) lines.push(`**Assignee:** ${item.assignee.name}`);
   if (item.description) {
     lines.push("", "## Descrição", String(item.description));
@@ -462,6 +471,8 @@ function createThread(input = {}) {
     projectId: input.projectId || null,
     projectRoot: input.projectRoot || null,
     cardId: input.cardId || null,
+    cardSource: input.cardSource || null,
+    cardSync: input.cardSync || null,
     status: hasContent ? "queued" : "idle",
     phase: "working",
     error: null,
@@ -508,6 +519,8 @@ function injectDemand(input = {}) {
     projectId: input.projectId,
     projectRoot: input.projectRoot,
     cardId: item.cardId || null,
+    cardSource: item.cardId ? item.source || null : null,
+    cardSync: input.cardSync || null,
     content: buildDemandPrompt(item),
   });
 }
@@ -1076,6 +1089,15 @@ function recordCommit(id, commit) {
   return { ok: true, thread: publicThread(thread) };
 }
 
+function setCardSync(id, cardSync) {
+  const thread = threads.get(id);
+  if (!thread) return { ok: false, status: 404, error: "thread not found" };
+  thread.cardSync = cardSync || null;
+  thread.updatedAt = new Date().toISOString();
+  emit(id, { type: "card-sync", thread: publicThread(thread) });
+  return { ok: true, thread: publicThread(thread) };
+}
+
 function markPushed(id) {
   const thread = threads.get(id);
   if (!thread) return { ok: false, status: 404, error: "thread not found" };
@@ -1293,5 +1315,6 @@ module.exports = {
   runningCount,
   queuedCount,
   disposeThread,
+  setCardSync,
   _resetForTests,
 };
