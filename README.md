@@ -82,6 +82,12 @@ fxmind -h                  # all options
 
 ---
 
+## Token-efficient context
+
+- **Retrieval** (`fxmind_query`, panel preload, Claude hook) ranks memories with PT↔EN domain synonyms, drops filler words, matches whole terms and weighs each term by rarity, so a word every memory shares ("player") never decides the ranking. Over-budget memories load only the matching sections; graph neighbours are listed, not loaded.
+- **Claude Code preload** — `fxmind -y --claude` registers `fxmind context --hook` as a `UserPromptSubmit` hook in `.claude/settings.json`: relevant memories are injected before the agent answers (nothing when none match). `FXMIND_PRELOAD=0` disables it, `FXMIND_PRELOAD_BUDGET` sets the budget (default 1200). Try it with `fxmind context "garagem nao abre"`.
+- **MCP tool groups** — FiveM tools are listed only with the `fivem` pack, DB query tools only when a MySQL connection is configured. Override with `FXMIND_MCP_TOOLS=all` or a list (`fivem,db,panel`) in the MCP env.
+
 ## Web panel
 
 Local control plane (projects, memories, graph query, gates, PortSpace inbox stub):
@@ -301,7 +307,7 @@ The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP sp
 
 | MCP tool | Action |
 |----------|--------|
-| `fxmind_query` | Graph search with token budget |
+| `fxmind_query` | Memory search (PT/EN) with token budget; returns matching sections as Markdown |
 | `fxmind_graph` | Rebuild `knowledge-graph.json` + `memory-index.json` (optional HTML via `updateHtml`) |
 | `fxmind_check_update` | Compare local vs GitHub fxmind version (read-only) |
 | `fxmind_list_memories` | List topic memories |

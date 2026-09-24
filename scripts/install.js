@@ -58,6 +58,7 @@ const {
   shouldInstallHooks,
   shouldInstallMcp,
   shouldRefreshFivem,
+  shouldInstallClaudeHook,
   installProjectCursorIntegration,
 } = require("./install/integrations");
 const {
@@ -96,6 +97,12 @@ async function main() {
   ) {
     printVersion();
     process.exit(0);
+  }
+
+  if (argv[0] === "context") {
+    const { runPromptContextCli } = require("./prompt-context");
+    runPromptContextCli(argv.slice(1)).then((code) => process.exit(code));
+    return;
   }
 
   if (argv[0] === "graph") {
@@ -251,7 +258,12 @@ async function main() {
 
     const agentEntries = [...installAgentsLayer(options.target, agents, options)];
     let integrationsChanged = false;
-    if (shouldInstallHooks(options, agents) || shouldInstallMcp(options, agents) || shouldRefreshFivem(options, packs)) {
+    if (
+      shouldInstallHooks(options, agents) ||
+      shouldInstallClaudeHook(options, agents) ||
+      shouldInstallMcp(options, agents) ||
+      shouldRefreshFivem(options, packs)
+    ) {
       integrationsChanged = Boolean(
         installProjectCursorIntegration(options.target, options, agents, packs)?.changed,
       );
@@ -539,7 +551,12 @@ async function main() {
     console.log("");
   }
 
-  if (shouldInstallHooks(options, agents) || shouldInstallMcp(options, agents) || shouldRefreshFivem(options, packs)) {
+  if (
+      shouldInstallHooks(options, agents) ||
+      shouldInstallClaudeHook(options, agents) ||
+      shouldInstallMcp(options, agents) ||
+      shouldRefreshFivem(options, packs)
+    ) {
     installProjectCursorIntegration(options.target, options, agents, packs);
   }
 

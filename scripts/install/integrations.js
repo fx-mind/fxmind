@@ -7,6 +7,7 @@ const path = require("path");
 const { installHooks, isGitHookInstalled } = require("../hooks");
 const { installMcp } = require("../mcp-install");
 const fivemRcon = require("../fivem-rcon");
+const { installClaudePromptHook, CLAUDE_HOOK_COMMAND } = require("../prompt-context");
 
 function cursorHooksPresent(targetRoot) {
   return fs.existsSync(path.join(path.resolve(targetRoot), ".cursor", "hooks.json"));
@@ -183,10 +184,35 @@ function installProjectFivem(targetRoot) {
   }
 }
 
+function shouldInstallClaudeHook(options, agents) {
+  if (options.hooks === false) return false;
+  return agents.some((agent) => agent.id === "claude") && Boolean(options.command || options.hooks === true);
+}
+
+function installProjectClaudeHook(targetRoot) {
+  try {
+    const result = installClaudePromptHook(targetRoot);
+    if (result.error) {
+      console.log(`[Claude hook] skipped: ${result.error}`);
+      return { changed: false };
+    }
+    if (!result.changed) return { changed: false };
+    console.log("[Claude hook]");
+    console.log(`  ✓ ${result.path} → UserPromptSubmit: ${CLAUDE_HOOK_COMMAND} (memory preload)`);
+    return { changed: true };
+  } catch (error) {
+    console.log(`[Claude hook] skipped: ${error.message}`);
+    return { changed: false };
+  }
+}
+
 function installProjectCursorIntegration(targetRoot, options, agents, packs = []) {
   let changed = false;
   if (shouldInstallHooks(options, agents)) {
     changed = installProjectHooks(targetRoot).changed || changed;
+  }
+  if (shouldInstallClaudeHook(options, agents)) {
+    changed = installProjectClaudeHook(targetRoot).changed || changed;
   }
   if (shouldInstallMcp(options, agents)) {
     changed = installProjectMcp(targetRoot, agents).changed || changed;
@@ -204,7 +230,9 @@ module.exports = {
   shouldInstallHooks,
   shouldInstallMcp,
   shouldRefreshFivem,
+  shouldInstallClaudeHook,
   installProjectHooks,
+  installProjectClaudeHook,
   installProjectMcp,
   installProjectFivem,
   installProjectCursorIntegration,

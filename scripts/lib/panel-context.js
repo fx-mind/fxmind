@@ -141,9 +141,15 @@ function buildContextFile(root, userPrompt, options = {}) {
       lines.push("", "## Relevant memories (graph query)");
       for (const mem of query.memories) {
         lines.push("", `### ${mem.topic || mem.slug}`);
-        if (mem.file) lines.push(`Source: ${mem.file}`);
+        if (mem.path || mem.file) lines.push(`Source: ${mem.path || mem.file}`);
         if (mem.content) lines.push(String(mem.content));
-        if (mem.truncated) lines.push("[Excerpt truncated: read source for remaining rules.]");
+        if (mem.truncated) {
+          const omitted = mem.omittedSections?.length ? ` Omitted: ${mem.omittedSections.join(", ")}.` : "";
+          lines.push(`[Excerpt truncated:${omitted} read source for remaining rules.]`);
+        }
+      }
+      if (query.related?.length) {
+        lines.push("", `Related memories (not loaded): ${query.related.map((r) => r.slug).join(", ")}`);
       }
     } else {
       lines.push("", "## Graph query note", String(query.note || query.error || "No relevant memories."));

@@ -36,11 +36,13 @@ Save to `.fxmind/memory/<topic>.md` using `.fxmind/templates/memory.md` structur
 
 - Frontmatter **required**: `topic`, `updated`, `lang: en-compact`.
 - Frontmatter **required for routing**: non-empty `paths[]` **or** `triggers[]` (preferably both).
+- `triggers[]` also lists the PT-BR words users actually type for this topic (e.g. `garagem`, `inventario`, `guarda-roupa`) next to the EN terms — retrieval matches the user's words, and memory bodies are English. `symbols[]` holds the real function/export names users paste from errors.
 - Also set: `framework`, `confidence: extracted`, `resources`, `events`, `exports`, `symbols`.
 - Sections: `Files`, `Recipe`, `Example`, `Pitfalls`, `Skills` — **compact technical English only**.
 - No prose, no tables unless essential; bullet lists and short imperative lines.
 - Keep repo literals verbatim: paths, events, item ids, permissions, resource names.
-- **Do not** write memory in Portuguese — memory is shared project context (`lang: en-compact`).
+- **Do not** write memory in Portuguese — memory is shared project context (`lang: en-compact`). Only `triggers[]` carries PT-BR search words.
+- Use one heading or `Label:` line per section: retrieval loads only the sections matching the question when a memory exceeds the budget.
 - **One slug = one file** — update existing `memory/<slug>.md`; do not create `admin2.md` / `admin-fix.md`.
 
 ## Step 5 — Validate + update index

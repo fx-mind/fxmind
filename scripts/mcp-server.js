@@ -17,6 +17,8 @@
  * Never Write .fxmind/state/fxmind-gates.json from the agent.
  */
 
+const fs = require("fs");
+const path = require("path");
 const tools = require("./fxmind-tools");
 const fivemRcon = require("./fivem-rcon");
 const fivemNuiDump = require("./fivem-nui-dump");
@@ -24,6 +26,7 @@ const fxmindMysql = require("./fxmind-mysql");
 const { checkForUpdate } = require("./lib/update-check");
 const panelHost = require("./lib/panel-host");
 const { searchSource } = require("./lib/source-search");
+const { formatQueryResult } = require("./lib/memory-retrieval");
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_INFO = { name: "fxmind", version: require("../package.json").version };
@@ -31,12 +34,11 @@ const SERVER_INFO = { name: "fxmind", version: require("../package.json").versio
 const SESSION_ID_PROP = {
   sessionId: {
     type: "string",
-    description:
-      "Task session id from fxmind_start_task. Required when 2+ Task sessions are active in this repo.",
+    description: "Session id from fxmind_start_task (required with 2+ active sessions).",
   },
   conversationId: {
     type: "string",
-    description: "Optional Cursor conversation/composer id to bind the session to this chat tab.",
+    description: "Optional chat id binding the session to this tab.",
   },
 };
 
@@ -80,12 +82,12 @@ const TOOL_DEFS = [
   {
     name: "fxmind_query",
     description:
-      "Traverse the knowledge graph for a question and load relevant memories within a token budget. Read-only.",
+      "Rank project memories for a question (PT or EN) and return the matching sections within a token budget, plus related topics. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
         question: { type: "string", description: "Natural-language question." },
-        dfs: { type: "boolean", description: "DFS trace (default BFS).", default: false },
+        dfs: { type: "boolean", description: "Also load related memories with leftover budget.", default: false },
         budget: { type: "number", description: "Token budget (default 1500).", default: 1500 },
       },
       required: ["question"],
@@ -534,7 +536,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_subagent_run",
     description:
-      "Delegates a scoped sub-task to a fxmind subagent (explore, reader, general, or scout) and blocks until it returns final text. Works from ANY CLI (OpenCode, Codex, Claude Code, Cursor Agent, Hermes) and the subagent itself may run on a DIFFERENT provider than the one calling this tool — whichever is configured per subagent in the panel's Settings → Subagentes (defaults to the best installed provider). Use 'explore' for broad read-only discovery, 'reader' when you already know the exact paths, 'general' for a narrowly-scoped bounded edit/command, 'scout' for external docs/APIs outside this repo. Prefer this over doing the sub-task inline when a specialized or cheaper model is configured for that role.",
+      "Run a scoped sub-task on a fxmind subagent (provider set per role in the panel) and wait for its final text. explore: broad read-only discovery; reader: known paths; general: small bounded edit/command; scout: external docs/APIs.",
     inputSchema: {
       type: "object",
       properties: {
@@ -778,6 +780,65 @@ function dispatchTool(name, args) {
   }
 }
 
+/** Compact text for the agent: Markdown for memory queries, unindented JSON otherwise. */
+function formatToolResult(toolName, result) {
+  if (toolName === "fxmind_query" && result && result.ok !== false) {
+    return formatQueryResult(result);
+  }
+  return JSON.stringify(result);
+}
+
+/**
+ * Optional tool groups. Core tools are always listed; groups that cannot work
+ * in this project are hidden so their schemas do not cost context every turn.
+ * FXMIND_MCP_TOOLS=all|fivem,db,panel overrides the detection.
+ */
+const TOOL_GROUPS = {
+  fivem: (name) => name.startsWith("fxmind_fivem_"),
+  db: (name) => name.startsWith("fxmind_db_") && name !== "fxmind_db_status",
+  panel: (name) => name.startsWith("fxmind_panel_") || name === "fxmind_subagent_run",
+};
+
+function toolGroupOf(name) {
+  return Object.keys(TOOL_GROUPS).find((group) => TOOL_GROUPS[group](name)) || null;
+}
+
+function hasFivemPack(root) {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, ".fxmind", "packs.json"), "utf8"));
+    const packs = Array.isArray(manifest.packs) ? manifest.packs : [];
+    return packs.some((pack) => (typeof pack === "string" ? pack : pack?.id) === "fivem");
+  } catch {
+    // No manifest (older install / global store): keep the tools available.
+    return true;
+  }
+}
+
+function enabledToolGroups(root, env = process.env) {
+  const explicit = String(env.FXMIND_MCP_TOOLS || "").trim().toLowerCase();
+  if (explicit) {
+    const wanted = new Set(explicit.split(/[\s,]+/).filter(Boolean));
+    if (wanted.has("all")) return new Set(Object.keys(TOOL_GROUPS));
+    return new Set(Object.keys(TOOL_GROUPS).filter((group) => wanted.has(group)));
+  }
+  const groups = new Set(["panel"]);
+  if (hasFivemPack(root)) groups.add("fivem");
+  try {
+    if (fxmindMysql.status({ root }).configured) groups.add("db");
+  } catch {
+    // Unparseable connection string: fxmind_db_status still reports it.
+  }
+  return groups;
+}
+
+function listTools(root = targetRoot(), env = process.env) {
+  const groups = enabledToolGroups(root, env);
+  return TOOL_DEFS.filter((tool) => {
+    const group = toolGroupOf(tool.name);
+    return !group || groups.has(group);
+  });
+}
+
 function send(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
 }
@@ -810,7 +871,7 @@ function handleMessage(msg) {
     send({
       jsonrpc: "2.0",
       id,
-      result: { tools: TOOL_DEFS },
+      result: { tools: listTools() },
     });
     return;
   }
@@ -839,7 +900,7 @@ function handleMessage(msg) {
             jsonrpc: "2.0",
             id,
             result: {
-              content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+              content: [{ type: "text", text: formatToolResult(toolName, result) }],
               isError: result && result.ok === false,
             },
           });
@@ -897,4 +958,7 @@ if (require.main === module) {
 module.exports = {
   SERVER_INFO,
   TOOL_DEFS,
+  listTools,
+  enabledToolGroups,
+  formatToolResult,
 };
