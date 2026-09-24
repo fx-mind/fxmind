@@ -12,15 +12,18 @@ asks to implement fixes after reviewing the plan.
 
 Audit the target Lua/JS resource(s) for **security**, **performance**, and **patterns**. Deliver a structured report + prioritized correction plan.
 
-> **Assertiveness:** Follow **`performance.md` §2.4** (mandatory passes), **§2.5** (quality gates), **§1.6.1** (broadcast), **`security.md` §5.1** (manager events). Incomplete matrix, invented files, or wrong summary counts = **redo audit**.
+> **Assertiveness:** Follow **`audit-passes.md` §2.4** (mandatory passes), **§2.5** (quality gates), **`performance.md` §1.6.1** (broadcast), **`security.md` §5.1** (manager events). Incomplete matrix, invented files, or wrong summary counts = **redo audit**.
 
 ## Step 1 — Load standards
 
-Read from **`.fxmind/skills/`** (installed from [fivem-skill](https://github.com/proelias7/fivem-skill) via fxmind pack):
+Read **`.fxmind/policy/fivem-principles.md`** first: every finding cites the violated principle ID (N1–N6, D1–D3, T1–T2, C1–C4) next to the skill §.
+
+Then read from **`.fxmind/skills/`** (installed from [fivem-skill](https://github.com/proelias7/fivem-skill) via fxmind pack):
 
 | Skill file | Sections |
 |------------|----------|
-| `fivem-development/` (`performance` · `architecture` · `security` · `communication`) | **§1.6.1** broadcast, §2.2–**§2.5**, §3.6, **§4.2**, **§5.1** |
+| `fivem-development/audit-passes.md` | **§2.3–§2.5** — Pass 0–7, V-a…V-j, E-a…E-g, N-a…N-d, report gates |
+| `fivem-development/` (`performance` · `architecture` · `security` · `communication`) | **§1.6.1** broadcast, §2.2, §3.6, **§4.2**, **§5.1** |
 | Framework skill (`vrp-framework`, etc.) | If detected |
 | `fivem-react-nui/ui-guide.md` | If scope includes NUI/web |
 

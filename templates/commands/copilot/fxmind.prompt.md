@@ -1,7 +1,7 @@
 ---
 name: fxmind
-description: "fxmind — FiveM project memory — task, judge, reference, audit, learn, memory health, graph, painel, query, path, explain, update"
-argument-hint: "task <implementation> | judge [target] | reference | audit [scope] | learn <topic> | memory health [fix] [topic] | graph | painel | query \"<question>\" [--dfs] [--budget N] | path <a> <b> | explain <topic> | update | <question>"
+description: "fxmind — FiveM project memory — task, create, refactor, judge, reference, audit, learn, memory health, graph, painel, query, path, explain, update"
+argument-hint: "task <implementation> | create <resource> | refactor <resource> | judge [target] | reference | audit [scope] | learn <topic> | memory health [fix] [topic] | graph | painel | query \"<question>\" [--dfs] [--budget N] | path <a> <b> | explain <topic> | update | <question>"
 agent: agent
 tools: ["fxmind/*"]
 ---
@@ -17,6 +17,8 @@ Parse the input. **Prefer Task for any code/config change** — the `.github/ski
 | Input | Mode file |
 |-------|-----------|
 | `task` or `task ...` | `.fxmind/modes/task.md` (**preferred** for code/config changes) |
+| `create` or `create ...` | `.fxmind/modes/create.md` — new resource: design + approval, then build |
+| `refactor` or `refactor ...` | `.fxmind/modes/refactor.md` — large rewrite of an existing resource with contract parity |
 | `judge` or `judge ...` | `.fxmind/modes/judge.md` (claims vs observation; after Task / any "done") |
 | `reference` or `reference ...` | `.fxmind/modes/reference.md` |
 | `audit` or `audit ...` | `.fxmind/modes/audit.md` |
@@ -28,7 +30,7 @@ Parse the input. **Prefer Task for any code/config change** — the `.github/ski
 | `path <topic-a> <topic-b>` | `.fxmind/modes/path.md` |
 | `explain <topic>` | `.fxmind/modes/explain.md` |
 | `update` | `.fxmind/modes/update.md` |
-| implementation request without `task` | `task.md` — same as Task (auto) |
+| implementation request without `task` | `task.md` — same as Task (auto); new resource → `create.md`; rewrite of a bad resource → `refactor.md` |
 | empty or conceptual question | `.fxmind/modes/help.md` |
 
 **Task text:** when input starts with `task`, strip that keyword — the rest is the implementation request.

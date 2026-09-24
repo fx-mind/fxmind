@@ -57,7 +57,9 @@ Restart your agent IDE/CLI after install or update.
 | `/fxmind task <request>` | Explicit Task shortcut (optional — natural language also auto-runs Task) |
 | `/fxmind learn <topic>` | Save or update a topic memory |
 | `/fxmind query "…"` | Search the knowledge graph |
-| `/fxmind audit [scope]` | Code audit → `.fxmind/audits/` |
+| `/fxmind create <resource>` | New resource: design (`.fxmind/designs/`) → approval → build per slice |
+| `/fxmind refactor <resource>` | Rewrite a bad resource: contract inventory → target design → slices with parity checks |
+| `/fxmind audit [scope]` | Code audit (diagnosis only) → `.fxmind/audits/` |
 | `/fxmind graph` | Rebuild the 2D knowledge graph |
 | `/fxmind painel` | Open the local web panel (inbox + agent chat) |
 | `/fxmind memory health` | Verify memories against the codebase |
@@ -81,6 +83,12 @@ fxmind -h                  # all options
 **Packs** — `--pack fivem`, `--no-packs` (core only), `--all-packs`.
 
 ---
+
+## Token-efficient context
+
+- **Retrieval** (`fxmind_query`, panel preload, Claude hook) ranks memories with PT↔EN domain synonyms, drops filler words, matches whole terms and weighs each term by rarity, so a word every memory shares ("player") never decides the ranking. Over-budget memories load only the matching sections; graph neighbours are listed, not loaded.
+- **Claude Code preload** — `fxmind -y --claude` registers `fxmind context --hook` as a `UserPromptSubmit` hook in `.claude/settings.json`: relevant memories are injected before the agent answers (nothing when none match). `FXMIND_PRELOAD=0` disables it, `FXMIND_PRELOAD_BUDGET` sets the budget (default 1200). Try it with `fxmind context "garagem nao abre"`.
+- **MCP tool groups** — FiveM tools are listed only with the `fivem` pack, DB query tools only when a MySQL connection is configured. Override with `FXMIND_MCP_TOOLS=all` or a list (`fivem,db,panel`) in the MCP env.
 
 ## Web panel
 
@@ -120,6 +128,7 @@ Dev (monorepo): `npm run dev` from the workspace root — Vite on :5173, API on 
 ├── modes/               # /fxmind mode specs (loaded on demand)
 ├── skills/              # pack skills
 ├── audits/              # reports + procedure.md
+├── designs/             # create/refactor designs (contract + decisions; commit)
 ├── corrections/         # skill-improvement backlog
 ├── templates/           # memory/report skeletons (read-only)
 ├── policy/              # failure-modes, topic-catalog, minimum-evidence
@@ -128,7 +137,9 @@ Dev (monorepo): `npm run dev` from the workspace root — Vite on :5173, API on 
 └── state/               # session/runtime (gitignored)
 ```
 
-Commit these: `.fxmind/memory/` (topic knowledge) and `.fxmind/corrections/` (skill feed).
+Commit these: `.fxmind/memory/` (topic knowledge), `.fxmind/corrections/` (skill feed) and `.fxmind/designs/` (resource designs).
+
+**FiveM principles** (`.fxmind/policy/fivem-principles.md`, fivem pack): binding rules with IDs — recipient scope, minimal payload, chunked big data, no periodic fan-out, client-side sync via statebags, anti-flood, no DB in hot paths, dynamic sleep, minimal readable code. Task, create, refactor and audit cite the IDs; Gate V `review` checks them against the diff.
 
 Generated / session-only (gitignored, rebuilt locally): `.fxmind/graph/` — `knowledge-graph.json/html`, `memory-index.json` — and `.fxmind/state/` — gates, metrics, RCON, logs, graph cache, `tmp/`.
 
@@ -301,7 +312,7 @@ The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP sp
 
 | MCP tool | Action |
 |----------|--------|
-| `fxmind_query` | Graph search with token budget |
+| `fxmind_query` | Memory search (PT/EN) with token budget; returns matching sections as Markdown |
 | `fxmind_graph` | Rebuild `knowledge-graph.json` + `memory-index.json` (optional HTML via `updateHtml`) |
 | `fxmind_check_update` | Compare local vs GitHub fxmind version (read-only) |
 | `fxmind_list_memories` | List topic memories |

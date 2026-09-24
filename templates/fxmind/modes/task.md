@@ -16,7 +16,8 @@ Read `.fxmind/modes/task-verify.md` before implementation when UI/runtime eviden
 2. Gate A: record scope, Done, checks, INTENT/invariants when applicable in `fxmind_record_gate` note. From Gate A on, user-facing replies stay short and direct — lead with the outcome, no long explanations or gate ceremony. Trivial tasks auto-complete A/B but still need verification.
 3. Gate B: use relevant preloaded memories; otherwise query once (~1200–1500 tokens). Memories guide discovery; current source confirms them. Read implementation, callers and nearby conventions before editing.
 4. If hits are missing/stale, use one bounded path/symbol search in the likely folder and read the results. Widen only when evidence requires it; no repeated repository dumps. If this provider denies native search, use an available permitted tool/subagent; don't evade its permissions.
-5. Load only relevant pack references/corrections. For FiveM, read `.fxmind/skills/fivem-development/quality-gates.md` and the affected domain references; capture endpoint/payload/cache/validation/rate-limit/fan-out choices when those actually change. Verify unfamiliar APIs from primary sources.
+5. Load only relevant pack references/corrections. For FiveM, read `.fxmind/policy/fivem-principles.md` (binding), then the `quality-gates.md` rows for the artifacts you touch and the affected domain references; for each new/changed event, callback, loop, query or statebag note recipients, payload size, frequency, DB access and whether the client can read it itself. Verify unfamiliar APIs from primary sources.
+   A new resource belongs in `.fxmind/modes/create.md`; a rewrite of most of a resource in `.fxmind/modes/refactor.md`.
 6. Record B with paths, relevant rules and unresolved risks. After B, claim all task files before edits when sessions run in parallel.
 
 Use MCP for gates, memory/graph and available domain operations. Missing MCP blocks gate-controlled implementation; report the missing capability. Read-only investigation can continue. Never write gate/session JSON directly.
@@ -38,7 +39,7 @@ Scratch belongs in OS temp or a session-owned path. Clean up only files this tas
 
 ## Review, verify and finish (V → C)
 
-Review the entire task diff for requirement coverage, invariants, boundary failures and unnecessary complexity. For each new constant/helper/file ask what concrete readability/reuse/domain benefit it provides; simplify unjustified additions. FiveM also runs its quality-gates checklist.
+Review the entire task diff for requirement coverage, invariants, boundary failures and unnecessary complexity. For each new constant/helper/file ask what concrete readability/reuse/domain benefit it provides; simplify unjustified additions. FiveM also checks every principle ID in `.fxmind/policy/fivem-principles.md` against the diff and cites them in the V `review`.
 
 Run `.fxmind/modes/task-verify.md`. Record V with structured evidence. Failed or blocked verification keeps V incomplete; don't call C or claim completion. Fix observed defects within the authorized task, then repeat affected checks. Run Judge when the verification mode requires it; fix actionable findings and re-verify.
 

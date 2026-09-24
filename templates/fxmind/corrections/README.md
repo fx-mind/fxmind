@@ -29,7 +29,7 @@ MCP: `fxmind_record_correction`, `fxmind_list_corrections`.
 | `architecture` | Monolith, file layout, globals, modules | `architecture.md` |
 | `communication` | Tunnel / events / callbacks | `communication.md` |
 | `security` | Auth, validation, SafeEvent | `security.md` |
-| `performance` | Cache, broadcast, ticks | `performance.md` |
+| `performance` | Cache, broadcast, ticks | `performance.md` (audit-process mistakes → `audit-passes.md`) |
 | `style` | Comments, naming, cleanliness | `style.md` |
 | `api` | Wrong framework API / inventing calls | `api.md` |
 
@@ -40,6 +40,6 @@ MCP: `fxmind_record_correction`, `fxmind_list_corrections`.
 ## Workflow
 
 1. User corrects agent → save memory Pitfall **and/or** `fxmind_record_correction`
-2. Periodically: `fxmind corrections export` → edit `fivem-development/<category>.md`
+2. Periodically: `fxmind corrections export` → fold each rule into the section it refines in `fivem-development/<category>.md` as one `**Rule (ID):**` line (principle ID from `.fxmind/policy/fivem-principles.md`) plus a short case — never append a new "Learned rule" section; keep examples to a few lines
 3. `fxmind corrections promote <id>` when the rule is in that file
 4. `fxmind --update` on projects to ship the skill

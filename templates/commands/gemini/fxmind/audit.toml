@@ -8,7 +8,7 @@ If empty, use @ mention, open files, or ask which resource to audit.
 
 ## Load standards
 
-Read `.fxmind/skills/fivem-development/SKILL.md` then on demand: `communication.md`, `performance.md` (§2.4–§2.5), `architecture.md` (§3.5–3.6), `security.md` (§5.1). Framework skill from `.fxmind/skills/` if detected; `fivem-react-nui` if NUI in scope.
+Read `.fxmind/skills/fivem-development/SKILL.md` then on demand: `communication.md`, `audit-passes.md` (§2.3–§2.5), `performance.md` (§1.6.1, §2.2), `architecture.md` (§3.5–3.6), `security.md` (§5.1). Framework skill from `.fxmind/skills/` if detected; `fivem-react-nui` if NUI in scope.
 Read `.fxmind/audit.template.md` for report structure.
 Read `.fxmind/reference.md` at project root if present.
 
@@ -31,7 +31,9 @@ Save report **only** to **`.fxmind/audits/<resource-name>.md`** (e.g. `garages` 
 
 Use audit.template.md structure + phased correction plan.
 
-Reply with executive summary, top 3 fixes, report path. Ask if user wants Phase 1 implemented — wait for approval.
+Judge findings against `.fxmind/policy/fivem-principles.md` and cite principle IDs.
+
+Reply with executive summary, top 3 fixes, report path. Ask if user wants Phase 1 implemented (Task) — or, when problems span most of the resource, suggest `/fxmind:refactor <resource>`, which reuses this report. Wait for approval.
 
 Do NOT recommend functions whose only body is TriggerEvent(...). Inline cross-resource events at call site.
 """

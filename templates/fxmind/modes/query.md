@@ -4,7 +4,7 @@ Answer a question by **traversing the topic knowledge graph** and loading only r
 
 ## MCP fast path
 
-If the fxmind MCP server is available, call **`fxmind_query`** with `{ question, dfs?, budget? }` — it does BFS/DFS + budget-aware memory loading in Node and returns ready-to-use memory content. Skip Steps 1–4 below and answer from the tool result.
+If the fxmind MCP server is available, call **`fxmind_query`** with `{ question, dfs?, budget? }` once. It ranks memories (PT or EN questions; rare terms weigh more than words every memory shares), returns only the matching sections within the budget as Markdown, and lists related topics without loading them. Answer from the result; read a memory file only for an omitted section you need. `dfs: true` also loads related memories with leftover budget. Skip Steps 1–4 below. With the Claude Code preload hook, relevant memories may already be in context — do not query them again.
 
 ## Manual path
 

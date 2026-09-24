@@ -7,6 +7,8 @@
 
 Audit the target Lua/JS resource(s) for **security**, **performance**, and **patterns**. Deliver a structured report + prioritized correction plan.
 
+Audit diagnoses; it does not fix. After the report: a few local findings → implement Phase 1 via Task mode; widespread problems (most of the resource needs rewriting) → **`/fxmind refactor <resource>`**, which reuses this report as input. Judge findings against `.fxmind/policy/fivem-principles.md` and cite the principle ID in each finding.
+
 ## Full procedure is external
 
 The complete audit matrix (view-cache V-a..V-j, broadcast, globals, manager events, severity/phase, report sections, rules) lives in **`.fxmind/audits/procedure.md`** — **read it now** before continuing. It is intentionally kept out of the command body to save context on non-audit invocations.
@@ -24,6 +26,7 @@ If `.fxmind/audits/procedure.md` is missing, run `fxmind --update -y` (or `npx -
 - Read the **full `fxmanifest.lua`** scope — never audit a single file unless explicitly scoped.
 - Every finding cites `file:line` + the exact event/symbol — read the line before citing.
 - Report every view-cache row V-a–V-j as **Found** or **N/A**; never skip.
+- Passes and matrices live in `.fxmind/skills/fivem-development/audit-passes.md` (§2.3–§2.5).
 - **Pass 2b is mandatory** — inventory **every** client-callable endpoint (net events + each `Tunnel.bindInterface` `func.*` + NUI→server); check E-a…E-g. A resource with 0 `RegisterNetEvent` still exposes endpoints via Tunnel.
 - **Pass NUI is mandatory** when `ui_page` or NUI `files` exist — matrix N-a–N-d (Vite hash, rgba overlay fill, fadeIn, oklch). Read `fivem-react-nui/ui-guide.md` §2 + §6.
 - **Estimate response KB** per read endpoint (`tunnel_res` counts toward the §1.6 budget; > ~64 KB = High).
@@ -33,4 +36,4 @@ If `.fxmind/audits/procedure.md` is missing, run `fxmind --update -y` (or `npx -
 - Severity→Phase: Critical→1, High→2, Medium→3, Low→4. Never downgrade.
 - Summary counts must equal findings rows; Files reviewed = manifest paths only.
 - Each pass ends with its `🛑 AUDIT PASS <id> COMPLETE` marker — do not skip.
-- Do not auto-fix; ask before implementing Phase 1.
+- Do not auto-fix; ask before implementing Phase 1. Recommend `refactor` instead when Critical/High findings span most files.

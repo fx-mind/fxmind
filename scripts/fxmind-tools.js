@@ -30,6 +30,7 @@ const { isGraphStale, ensureGraphFresh } = require("./lib/graph-freshness");
 const { ensureProjectGitignore } = require("./lib/project-gitignore");
 const taskSessions = require("./lib/task-sessions");
 const { withFileLock } = require("./lib/fs-lock");
+const retrieval = require("./lib/memory-retrieval");
 
 const SCHEMA_VERSION = 1;
 const GATES_FILE = "fxmind-gates.json";
@@ -333,7 +334,7 @@ function exportCorrections(targetRoot, options = {}) {
     `Filter: status=${options.status || "open"}${options.category ? ` category=${options.category}` : ""}`,
     `Count: ${items.length}`,
     ``,
-    `Use this digest to update pack skills (e.g. \`fivem-development/architecture.md\` by category).`,
+    `Use this digest to update pack skills (e.g. \`fivem-development/architecture.md\` by category): fold each rule into the section it refines as one \`**Rule (ID):**\` line (principle ID from \`.fxmind/policy/fivem-principles.md\`) — never a new "Learned rule" section.`,
     ``,
   ];
   for (const item of items) {
@@ -722,31 +723,12 @@ function loadGraphData(targetRoot) {
   return null;
 }
 
-function canonicalize(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function scoreNode(node, tokens) {
-  const haystack = canonicalize(
-    `${node.id} ${node.name} ${node.triggers} ${node.paths} ${node.events} ${node.exports} ${node.resources}`,
-  );
-  let score = 0;
-  for (const token of tokens) {
-    if (!token) continue;
-    if (haystack.includes(token)) score += 1;
-    if (node.id && canonicalize(node.id) === token) score += 2;
-  }
-  return score;
-}
-
 /**
- * Query the topic graph. Read-only. Loads memory files for matched + traversed
- * nodes up to a token budget (chars/4).
+ * Query project memories for a question. Read-only. Ranks memories with
+ * lib/memory-retrieval (PT↔EN, rare terms weigh more), loads only the
+ * matching sections that fit the token budget (chars/4) and lists graph
+ * neighbours as related topics instead of loading them. `dfs: true` also
+ * loads related memories with any budget left.
  */
 function queryGraph(targetRoot, question, options = {}) {
   const rebuild = options.rebuild !== false;
@@ -755,11 +737,6 @@ function queryGraph(targetRoot, question, options = {}) {
   if (rebuild && stale) {
     ensureGraphFresh(targetRoot, { updateHtml: false, useCache: true });
     graph = loadGraphData(targetRoot);
-  } else if (!graph) {
-    return {
-      ok: false,
-      error: "Missing knowledge-graph.json — run fxmind graph or /fxmind learn first.",
-    };
   }
   const graphStale = stale && !rebuild;
 
@@ -767,79 +744,105 @@ function queryGraph(targetRoot, question, options = {}) {
   const budget = Number.isFinite(requestedBudget) && requestedBudget > 0
     ? Math.max(1, Math.min(8000, Math.floor(requestedBudget))) : 1500;
   const mode = options.dfs ? "dfs" : "bfs";
-  const tokens = canonicalize(question).split(/\s+/).filter((t) => t.length >= 3);
 
-  const learned = (graph.nodes || []).filter((n) => n.group === "learned");
-  if (learned.length === 0) {
-    return { ok: false, error: "No learned topics in graph — run /fxmind learn first." };
+  const memories = listMemories(targetRoot).map((memory) => ({
+    ...memory,
+    absFile: path.join(memoryDir(targetRoot), path.basename(memory.file)),
+  }));
+  if (memories.length === 0) {
+    return graph
+      ? { ok: false, error: "No learned topics in graph — run /fxmind learn first." }
+      : { ok: false, error: "Missing knowledge-graph.json — run fxmind graph or /fxmind learn first." };
   }
+  // Ranking reads memory files directly; without a graph only `related` is empty.
 
-  const ranked = learned
-    .map((n) => ({ node: n, score: scoreNode(n, tokens) }))
-    .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3);
+  const contents = new Map();
+  const readContent = (memory) => {
+    if (!contents.has(memory.slug)) {
+      let text = "";
+      try {
+        text = fs.readFileSync(memory.absFile, "utf8");
+      } catch {
+        text = "";
+      }
+      contents.set(memory.slug, text);
+    }
+    return contents.get(memory.slug);
+  };
+  const { concepts, hits } = retrieval.rankMemories(question, memories, readContent);
 
-  if (ranked.length === 0) {
+  if (hits.length === 0) {
     return {
       ok: true,
       graphStale,
+      mode,
       expanded: [],
       memories: [],
-      note: "No graph nodes matched the question vocabulary.",
+      note: "No memory matched the question vocabulary.",
     };
   }
 
-  const startIds = new Set(ranked.map((r) => r.node.id));
-  const links = graph.links || [];
-  const adjacency = new Map();
-  for (const link of links) {
-    if (!adjacency.has(link.source)) adjacency.set(link.source, []);
-    adjacency.get(link.source).push(link.target);
-    if (!adjacency.has(link.target)) adjacency.set(link.target, []);
-    adjacency.get(link.target).push(link.source);
-  }
-
-  const visited = new Set(startIds);
-  const order = [];
-  const queue = [...startIds];
-  const maxDepth = mode === "dfs" ? 6 : 3;
-  const depthMap = new Map([...startIds].map((id) => [id, 0]));
-
-  while (queue.length) {
-    const id = mode === "dfs" ? queue.pop() : queue.shift();
-    const depth = depthMap.get(id) ?? 0;
-    if (depth > maxDepth) continue;
-    order.push(id);
-    for (const next of adjacency.get(id) || []) {
-      if (!visited.has(next)) {
-        visited.add(next);
-        depthMap.set(next, depth + 1);
-        queue.push(next);
+  const hitIds = new Set(hits.map((hit) => hit.doc.memory.slug));
+  const names = new Map(memories.map((m) => [m.slug, m.topic || m.slug]));
+  const related = [];
+  const relatedSeen = new Set(hitIds);
+  for (const link of graph?.links || []) {
+    for (const [from, to] of [[link.source, link.target], [link.target, link.source]]) {
+      if (hitIds.has(from) && names.has(to) && !relatedSeen.has(to)) {
+        relatedSeen.add(to);
+        related.push({ slug: to, name: names.get(to) });
       }
     }
   }
 
   const loaded = [];
   let spent = 0;
-  for (const id of order) {
-    if (spent >= budget) break;
-    const memPath = path.join(memoryDir(targetRoot), `${id}.md`);
-    if (!fs.existsSync(memPath)) continue;
-    const source = fs.readFileSync(memPath, "utf8");
-    const content = source.slice(0, (budget - spent) * 4);
-    const tokensUsed = Math.ceil(content.length / 4);
-    loaded.push({ slug: id, file: memPath, tokens: tokensUsed, content, truncated: content.length < source.length });
-    spent += tokensUsed;
+  const pushMemory = (doc, cap, score, matched) => {
+    const fitted = retrieval.fitMemory(doc, concepts, cap);
+    const tokens = retrieval.estimateTokens(fitted.content);
+    loaded.push({
+      slug: doc.memory.slug,
+      topic: doc.memory.topic,
+      file: doc.memory.absFile,
+      path: doc.memory.file,
+      score: Math.round(score * 100) / 100,
+      matched,
+      tokens,
+      content: fitted.content,
+      truncated: fitted.truncated,
+      omittedSections: fitted.omittedSections,
+    });
+    spent += tokens;
+  };
+
+  // Budget share follows relevance; unused share flows to the next hit.
+  let remainingScore = hits.reduce((sum, hit) => sum + hit.score, 0);
+  for (const hit of hits) {
+    const remaining = budget - spent;
+    if (remaining <= 0) break;
+    const cap = Math.max(1, Math.floor((remaining * hit.score) / remainingScore));
+    remainingScore -= hit.score;
+    pushMemory(hit.doc, cap, hit.score, hit.matched);
   }
+
+  if (mode === "dfs") {
+    for (const rel of related) {
+      const remaining = budget - spent;
+      if (remaining < 40) break;
+      const memory = memories.find((m) => m.slug === rel.slug);
+      pushMemory(retrieval.buildDoc(memory, readContent(memory)), remaining, 0, []);
+    }
+  }
+  const loadedIds = new Set(loaded.map((m) => m.slug));
 
   const result = {
     ok: true,
     graphStale,
     mode,
-    expanded: order,
-    startNodes: [...startIds],
+    expanded: [...hitIds, ...related.map((r) => r.slug)],
+    startNodes: [...hitIds],
     memories: loaded,
+    related: related.filter((r) => !loadedIds.has(r.slug)).slice(0, 8),
     tokensUsed: spent,
     budget,
   };

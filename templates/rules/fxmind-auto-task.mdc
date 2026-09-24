@@ -5,7 +5,7 @@ alwaysApply: true
 
 # fxmind — auto Task
 
-For implementation requests read `.fxmind/modes/task.md`. Questions/reviews remain read-only unless changes are requested. "Analyze and fix" authorizes implementation; respect decisions already made and user stop.
+For implementation requests read `.fxmind/modes/task.md`; new resource → `.fxmind/modes/create.md`; large rewrite of an existing resource → `.fxmind/modes/refactor.md`. Questions/reviews remain read-only unless changes are requested. "Analyze and fix" authorizes implementation; respect decisions already made and user stop.
 
 Use relevant preloaded memories or fxmind_query; confirm with current source. Missing coverage → fxmind_search in the affected directory, or permitted native search. Use MCP for gates and available domain operations. Missing MCP blocks gated edits, not read-only diagnosis.
 
@@ -13,4 +13,4 @@ Quick/full controls effort, not quality. Trivial means a known tiny one-file cha
 
 Read `.fxmind/modes/task-verify.md` before UI edits and before V. UI requires browser interactions, visual inspection and an existing screenshot/trace. Build alone cannot verify UI. Failed/blocked checks leave V incomplete, and edits after V require re-verification.
 
-Keep constants/helpers/files only when they add concrete value. Match local conventions; preserve security checks. Record gate notes once instead of duplicating ceremony in chat. User-facing replies are short and direct — outcome first, no long text.
+FiveM: `.fxmind/policy/fivem-principles.md` is binding. Keep constants/helpers/files only when they add concrete value. Match local conventions; preserve security checks. Record gate notes once instead of duplicating ceremony in chat. User-facing replies are short and direct — outcome first, no long text.

@@ -4,10 +4,11 @@ Binding for agents when the task is FiveM resource work. **Open these before edi
 
 ## Must open (every non-trivial FiveM task)
 
-1. Target resource **`fxmanifest.lua`** (full file list + deps).
-2. **`.fxmind/reference.md`** if present (project map / anti-bug notes).
-3. Matching **`.fxmind/memory/<topic>.md`** via `fxmind_query` or index (3–5 max) — or state none matched.
-4. Framework skill for the detected stack (`vrp` / `qb-core` / `qbx_core` / `es_extended`) when calling framework APIs.
+1. **`.fxmind/policy/fivem-principles.md`** — binding rules (network scope, payload, chunks, statebags, anti-flood, DB, threads, minimal code).
+2. Target resource **`fxmanifest.lua`** (full file list + deps).
+3. **`.fxmind/reference.md`** if present (project map / anti-bug notes).
+4. Matching **`.fxmind/memory/<topic>.md`** via `fxmind_query` or index (3–5 max) — or state none matched.
+5. Framework skill for the detected stack (`vrp` / `qb-core` / `qbx_core` / `es_extended`) when calling framework APIs.
 
 ## Must open when the topic matches
 
@@ -17,6 +18,8 @@ Binding for agents when the task is FiveM resource work. **Open these before edi
 | View cache / NUI / React | `fivem-react-nui/SKILL.md` + performance view-cache rows |
 | Security / money / inventory / admin | `fivem-development/security.md` |
 | Audit request | `.fxmind/audits/procedure.md` (not this file) |
+| New resource | `.fxmind/modes/create.md` + `.fxmind/templates/resource-design.md` |
+| Large rewrite | `.fxmind/modes/refactor.md` (+ `.fxmind/audits/<resource>.md` if present) |
 
 ## Authority order (FiveM)
 

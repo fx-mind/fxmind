@@ -48,9 +48,10 @@ describe("queryGraph auto-rebuild", () => {
     fs.appendFileSync(path.join(dir, ".fxmind", "memory", "craft.md"), "craft rule ".repeat(3000));
     const result = tools.queryGraph(dir, "craft", { budget: 25 });
     assert.equal(result.ok, true);
-    assert.equal(result.tokensUsed, 25);
+    assert.ok(result.tokensUsed <= 25);
     assert.ok(result.memories[0].truncated);
-    assert.equal(result.memories[0].content.length, 100);
+    assert.ok(result.memories[0].content.length <= 100);
+    assert.match(result.memories[0].content, /^Paths: resources\/craft\/server\.lua/);
     assert.ok(fs.existsSync(result.memories[0].file));
   });
 });

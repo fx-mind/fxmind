@@ -58,6 +58,7 @@ const {
   shouldInstallHooks,
   shouldInstallMcp,
   shouldRefreshFivem,
+  shouldInstallClaudeHook,
   installProjectCursorIntegration,
 } = require("./install/integrations");
 const {
@@ -96,6 +97,12 @@ async function main() {
   ) {
     printVersion();
     process.exit(0);
+  }
+
+  if (argv[0] === "context") {
+    const { runPromptContextCli } = require("./prompt-context");
+    runPromptContextCli(argv.slice(1)).then((code) => process.exit(code));
+    return;
   }
 
   if (argv[0] === "graph") {
@@ -251,7 +258,12 @@ async function main() {
 
     const agentEntries = [...installAgentsLayer(options.target, agents, options)];
     let integrationsChanged = false;
-    if (shouldInstallHooks(options, agents) || shouldInstallMcp(options, agents) || shouldRefreshFivem(options, packs)) {
+    if (
+      shouldInstallHooks(options, agents) ||
+      shouldInstallClaudeHook(options, agents) ||
+      shouldInstallMcp(options, agents) ||
+      shouldRefreshFivem(options, packs)
+    ) {
       integrationsChanged = Boolean(
         installProjectCursorIntegration(options.target, options, agents, packs)?.changed,
       );
@@ -539,7 +551,12 @@ async function main() {
     console.log("");
   }
 
-  if (shouldInstallHooks(options, agents) || shouldInstallMcp(options, agents) || shouldRefreshFivem(options, packs)) {
+  if (
+      shouldInstallHooks(options, agents) ||
+      shouldInstallClaudeHook(options, agents) ||
+      shouldInstallMcp(options, agents) ||
+      shouldRefreshFivem(options, packs)
+    ) {
     installProjectCursorIntegration(options.target, options, agents, packs);
   }
 
@@ -555,6 +572,8 @@ async function main() {
   console.log(
     "Run /fxmind reference (or /fxmind:reference) to generate reference.mdc at project root.",
   );
+  console.log("Run /fxmind create <resource> to design (then build) a new resource with the FiveM principles.");
+  console.log("Run /fxmind refactor <resource> to rewrite a badly written resource with contract parity.");
   console.log("Run /fxmind audit [scope] for security/perf/pattern audit + fix plan.");
   console.log(
     "Run /fxmind learn <topic> to scan the codebase and save compact English topic memory under .fxmind/memory/ (shared by all agents).",

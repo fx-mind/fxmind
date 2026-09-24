@@ -10,6 +10,8 @@ Shared knowledge lives under `.fxmind/`; domain skills live in `.fxmind/skills/`
 ## Routing
 
 - Code/config implementation, including "analyze and fix": read `.fxmind/modes/task.md`.
+- New resource/system: read `.fxmind/modes/create.md` (design + approval before code).
+- Large rewrite/optimization of an existing resource: read `.fxmind/modes/refactor.md`.
 - Review/question only: investigate and answer; do not turn it into implementation.
 - Explicit `/fxmind judge`: read `.fxmind/modes/judge.md`.
 - Other `/fxmind` commands: read `.fxmind/fxmind.md`, then only the matching mode.
@@ -28,7 +30,7 @@ Read gate requirements from the mode files instead of duplicating them in chat. 
 ## Domain routing
 
 Read only installed entries from `.fxmind/skills/_index.md`:
-- FiveM implementation/refactor: `fivem-development/quality-gates.md` and relevant style/security/performance/communication/API references.
+- FiveM: `.fxmind/policy/fivem-principles.md` is binding for every change (scope/payload/chunks/statebags/anti-flood, no DB in hot paths, minimal code); then `fivem-development/quality-gates.md` rows for the touched artifacts and relevant references.
 - Framework calls: the matching vRP, QBCore, Qbox or ESX skill.
 - NUI/React: `fivem-react-nui/SKILL.md`.
 
