@@ -57,7 +57,9 @@ Restart your agent IDE/CLI after install or update.
 | `/fxmind task <request>` | Explicit Task shortcut (optional — natural language also auto-runs Task) |
 | `/fxmind learn <topic>` | Save or update a topic memory |
 | `/fxmind query "…"` | Search the knowledge graph |
-| `/fxmind audit [scope]` | Code audit → `.fxmind/audits/` |
+| `/fxmind create <resource>` | New resource: design (`.fxmind/designs/`) → approval → build per slice |
+| `/fxmind refactor <resource>` | Rewrite a bad resource: contract inventory → target design → slices with parity checks |
+| `/fxmind audit [scope]` | Code audit (diagnosis only) → `.fxmind/audits/` |
 | `/fxmind graph` | Rebuild the 2D knowledge graph |
 | `/fxmind painel` | Open the local web panel (inbox + agent chat) |
 | `/fxmind memory health` | Verify memories against the codebase |
@@ -126,6 +128,7 @@ Dev (monorepo): `npm run dev` from the workspace root — Vite on :5173, API on 
 ├── modes/               # /fxmind mode specs (loaded on demand)
 ├── skills/              # pack skills
 ├── audits/              # reports + procedure.md
+├── designs/             # create/refactor designs (contract + decisions; commit)
 ├── corrections/         # skill-improvement backlog
 ├── templates/           # memory/report skeletons (read-only)
 ├── policy/              # failure-modes, topic-catalog, minimum-evidence
@@ -134,7 +137,9 @@ Dev (monorepo): `npm run dev` from the workspace root — Vite on :5173, API on 
 └── state/               # session/runtime (gitignored)
 ```
 
-Commit these: `.fxmind/memory/` (topic knowledge) and `.fxmind/corrections/` (skill feed).
+Commit these: `.fxmind/memory/` (topic knowledge), `.fxmind/corrections/` (skill feed) and `.fxmind/designs/` (resource designs).
+
+**FiveM principles** (`.fxmind/policy/fivem-principles.md`, fivem pack): binding rules with IDs — recipient scope, minimal payload, chunked big data, no periodic fan-out, client-side sync via statebags, anti-flood, no DB in hot paths, dynamic sleep, minimal readable code. Task, create, refactor and audit cite the IDs; Gate V `review` checks them against the diff.
 
 Generated / session-only (gitignored, rebuilt locally): `.fxmind/graph/` — `knowledge-graph.json/html`, `memory-index.json` — and `.fxmind/state/` — gates, metrics, RCON, logs, graph cache, `tmp/`.
 

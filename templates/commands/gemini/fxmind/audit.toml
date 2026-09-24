@@ -31,7 +31,9 @@ Save report **only** to **`.fxmind/audits/<resource-name>.md`** (e.g. `garages` 
 
 Use audit.template.md structure + phased correction plan.
 
-Reply with executive summary, top 3 fixes, report path. Ask if user wants Phase 1 implemented — wait for approval.
+Judge findings against `.fxmind/policy/fivem-principles.md` and cite principle IDs.
+
+Reply with executive summary, top 3 fixes, report path. Ask if user wants Phase 1 implemented (Task) — or, when problems span most of the resource, suggest `/fxmind:refactor <resource>`, which reuses this report. Wait for approval.
 
 Do NOT recommend functions whose only body is TriggerEvent(...). Inline cross-resource events at call site.
 """

@@ -1,0 +1,11 @@
+description = "Create a new resource — design with FiveM principles, approval, then build via Task"
+
+prompt = """
+**Create a new resource.**
+
+**Request:** {{args}}
+
+Read **`.fxmind/modes/create.md`** (source of truth) and follow it: discover → design in `.fxmind/designs/<resource>.md` from `.fxmind/templates/resource-design.md` → approval → build per slice with Task mode → verify against the design.
+FiveM: `.fxmind/policy/fivem-principles.md` is binding.
+Reply short and direct — outcome first.
+"""

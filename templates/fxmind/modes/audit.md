@@ -7,6 +7,8 @@
 
 Audit the target Lua/JS resource(s) for **security**, **performance**, and **patterns**. Deliver a structured report + prioritized correction plan.
 
+Audit diagnoses; it does not fix. After the report: a few local findings → implement Phase 1 via Task mode; widespread problems (most of the resource needs rewriting) → **`/fxmind refactor <resource>`**, which reuses this report as input. Judge findings against `.fxmind/policy/fivem-principles.md` and cite the principle ID in each finding.
+
 ## Full procedure is external
 
 The complete audit matrix (view-cache V-a..V-j, broadcast, globals, manager events, severity/phase, report sections, rules) lives in **`.fxmind/audits/procedure.md`** — **read it now** before continuing. It is intentionally kept out of the command body to save context on non-audit invocations.
@@ -33,4 +35,4 @@ If `.fxmind/audits/procedure.md` is missing, run `fxmind --update -y` (or `npx -
 - Severity→Phase: Critical→1, High→2, Medium→3, Low→4. Never downgrade.
 - Summary counts must equal findings rows; Files reviewed = manifest paths only.
 - Each pass ends with its `🛑 AUDIT PASS <id> COMPLETE` marker — do not skip.
-- Do not auto-fix; ask before implementing Phase 1.
+- Do not auto-fix; ask before implementing Phase 1. Recommend `refactor` instead when Critical/High findings span most files.

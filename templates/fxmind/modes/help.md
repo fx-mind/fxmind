@@ -18,7 +18,9 @@ You are a FiveM development expert. Help the user with their FiveM scripting que
    - Asset (prop, vehicle, ped) → Read skill `fivem-development` (`asset-discovery.md`) + PlebMasters
    - NUI/React UI → Read skill `fivem-react-nui`
    - Patterns/best practices → Read skill `fivem-development` (`SKILL.md` router → topic files)
-   - Code audit → suggest `/fxmind audit [scope]`
+   - Code audit (diagnosis report) → suggest `/fxmind audit [scope]`
+   - New resource → suggest **`/fxmind create <description>`** (design + approval before code)
+   - Rewrite/optimize a badly written resource → suggest **`/fxmind refactor <resource>`**
    - Verify claims / "did that actually work?" → suggest **`/fxmind judge`**
    - Implement, fix, refactor, add/remove code → suggest **`/fxmind task <request>`**
    - Recurring project flow (craft, item, loja, NUI) → read `.fxmind/memory/<topic>.md` if exists; else suggest `/fxmind learn <topic>`

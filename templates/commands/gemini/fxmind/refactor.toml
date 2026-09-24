@@ -1,0 +1,11 @@
+description = "Refactor/rewrite a resource — contract inventory, target design, slices with parity checks"
+
+prompt = """
+**Refactor a resource.**
+
+**Target:** {{args}}
+
+Read **`.fxmind/modes/refactor.md`** (source of truth) and follow it: reuse `.fxmind/audits/<resource>.md` if present → current contract + target design in `.fxmind/designs/<resource>.md` → approve slices → one Task per slice → parity verification.
+FiveM: `.fxmind/policy/fivem-principles.md` is binding.
+Reply short and direct — outcome first.
+"""

@@ -15,6 +15,8 @@
   "templateFiles": [
     { "src": "topic-catalog.md", "dest": "policy/topic-catalog.md" },
     { "src": "reference.example.mdc", "dest": "templates/reference.example.mdc" },
-    { "src": "minimum-evidence.md", "dest": "policy/minimum-evidence.md" }
+    { "src": "minimum-evidence.md", "dest": "policy/minimum-evidence.md" },
+    { "src": "fivem-principles.md", "dest": "policy/fivem-principles.md" },
+    { "src": "resource-design.template.md", "dest": "templates/resource-design.md" }
   ]
 }

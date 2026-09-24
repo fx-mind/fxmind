@@ -572,6 +572,8 @@ async function main() {
   console.log(
     "Run /fxmind reference (or /fxmind:reference) to generate reference.mdc at project root.",
   );
+  console.log("Run /fxmind create <resource> to design (then build) a new resource with the FiveM principles.");
+  console.log("Run /fxmind refactor <resource> to rewrite a badly written resource with contract parity.");
   console.log("Run /fxmind audit [scope] for security/perf/pattern audit + fix plan.");
   console.log(
     "Run /fxmind learn <topic> to scan the codebase and save compact English topic memory under .fxmind/memory/ (shared by all agents).",
