@@ -41,6 +41,19 @@ describe("bounded source search", () => {
     assert.equal(result.matches.length, 2);
     assert.ok(result.matches.every((match) => match.file === "src/one.js"));
   });
+  it("searches the whole Git tree and confirms absence", () => {
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    for (let i = 0; i < 40; i += 1) fs.writeFileSync(path.join(root, "src", `pad${i}.js`), "x".repeat(250 * 1024));
+    fs.writeFileSync(path.join(root, "src", "zz-late.lua"), "RegisterCommand('spec', function() end)\n");
+    fs.writeFileSync(path.join(root, "src", "bundle.min.js"), "RegisterCommand('spec')");
+    const found = searchSource(root, { query: "registercommand('spec'" });
+    assert.equal(found.engine, "git-grep");
+    assert.deepEqual(found.matches.map(({ file, line }) => ({ file, line })), [{ file: "src/zz-late.lua", line: 1 }]);
+    assert.equal(found.truncated, false);
+    const missing = searchSource(root, { query: "no_such_symbol" });
+    assert.equal(missing.total, 0);
+    assert.match(missing.note, /Absence is confirmed/);
+  });
   it("rejects escaping directories and invalid queries", () => {
     assert.throws(() => searchSource(root, { directory: "..", query: "save" }), /inside the project/);
     assert.throws(() => searchSource(root, { query: "" }), /non-empty/);

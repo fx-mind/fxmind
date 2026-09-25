@@ -136,20 +136,4 @@ describe("panel-portspace", () => {
     assert.equal(await portspace.completeThreadCard({ cardSource: "portspace" }), null);
     assert.equal(calls.length, 0);
   });
-
-  it("releaseThreadCard skips delivered threads", async () => {
-    writeConfig(tmpHome, { baseUrl: "https://api.example.com", integrationKey: "key-123" });
-    assert.equal(
-      await portspace.releaseThreadCard({ cardId: "c1", cardSource: "portspace", phase: "pushed" }),
-      null,
-    );
-    const sync = await portspace.releaseThreadCard({
-      cardId: "c1",
-      cardSource: "portspace",
-      phase: "review",
-    });
-    assert.equal(sync.ok, true);
-    assert.equal(calls.length, 1);
-    assert.match(calls[0].url, /\/cards\/c1\/release$/);
-  });
 });

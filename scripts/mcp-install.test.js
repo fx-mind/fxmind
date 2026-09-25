@@ -59,3 +59,21 @@ describe("mcp install agent filtering", () => {
     assert.equal(config.mcpServers, undefined);
   });
 });
+
+describe("mcp server path", () => {
+  it("writes the explicit server path instead of the default APPDATA one", { skip: process.platform !== "win32" }, () => {
+    const previous = process.env.FXMIND_MCP_SERVER_PATH;
+    process.env.FXMIND_MCP_SERVER_PATH = "C:\\custom\\fxmind\\scripts\\mcp-server.js";
+    try {
+      assert.deepEqual(mcp.buildFxmindMcpEntry().args, ["C:/custom/fxmind/scripts/mcp-server.js"]);
+      assert.deepEqual(mcp.resolveOpenCodeMcpLaunch().command, ["node", "C:/custom/fxmind/scripts/mcp-server.js"]);
+    } finally {
+      if (previous === undefined) delete process.env.FXMIND_MCP_SERVER_PATH;
+      else process.env.FXMIND_MCP_SERVER_PATH = previous;
+    }
+  });
+
+  it("keeps the portable APPDATA form from a dev checkout", { skip: process.platform !== "win32" }, () => {
+    assert.deepEqual(mcp.buildFxmindMcpEntry().args, ["${env:APPDATA}/npm/node_modules/fxmind/scripts/mcp-server.js"]);
+  });
+});

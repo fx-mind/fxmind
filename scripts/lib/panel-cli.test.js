@@ -71,8 +71,9 @@ describe("panel-cli", () => {
       messages.push({ role: i % 2 === 0 ? "user" : "assistant", content: `msg ${i}` });
     }
     const out = panelCli.transcript({ messages }, { maxMessages: 4 });
-    assert.match(out, /8 earlier message/);
+    assert.match(out, /7 earlier message/);
     assert.match(out, /msg 11/);
+    assert.match(out, /^User \(original request\):\nmsg 0\n/);
   });
 
   it("pickCliId respects explicit unavailable id fallback", () => {

@@ -1157,9 +1157,26 @@ function transcript(thread, options = {}) {
   }
 
   if (omitted > 0) {
-    return `${omitted} earlier message(s) omitted.\n\n${body}`;
+    // The first message is usually the demand itself; keep it so long
+    // threads never lose what was originally asked.
+    const first = messages[0];
+    const origin = `${first.role === "user" ? "User" : "Assistant"} (original request):\n${String(first.content || "").slice(0, 3000)}`;
+    return `${origin}\n\n${omitted - 1 > 0 ? `${omitted - 1} earlier message(s) omitted.\n\n` : ""}${body}`;
   }
   return body;
+}
+
+/** Prompt for CLIs that read the context file themselves: request + thread. */
+function threadPrompt(root, contextFile, prompt, thread) {
+  return [
+    workspaceInstruction(root),
+    "",
+    `Read ${contextFile} for FxMind context, then complete the latest user request:`,
+    prompt,
+    "",
+    "## Thread (earlier messages, for context)",
+    transcript(thread),
+  ].join("\n");
 }
 
 function workspaceInstruction(root) {
@@ -1173,8 +1190,9 @@ function workspaceInstruction(root) {
     "Use -LiteralPath whenever passing this workspace path to PowerShell, then verify with Get-Location.",
     "Keep user-facing progress human: do not mention CLI, shell, process startup, or raw commands.",
     'Say "Consultando as memórias…" / "Utilizando o FxMind MCP" — never narrate grep or bash.',
-    "MANDATORY: use fxmind MCP tools for discovery, gates, graph, FiveM, and DB — this project is optimized for them.",
-    "Read relevant preloaded FxMind memories, confirm with current source; missing paths/symbols → fxmind_search in a bounded directory. Avoid repeated blind lookups.",
+    "Use fxmind MCP tools for gates, memories/graph, FiveM, and DB.",
+    "Read relevant preloaded FxMind memories, confirm with current source. To locate files/symbols use native search (rg) or fxmind_search once — never repeat the same lookup with trivial variants.",
+    "Stay strictly within the latest user request and the thread below; make the smallest change that satisfies it.",
     "Pass repository-relative paths from FxMind memories/query to reader. Do not prefix the workspace root, use wildcard directory reads, or trigger external_directory for this repository.",
     "If fxmind MCP tools are missing from your tool list, stop and ask the user to enable fxmind MCP.",
   ].join("\n");
@@ -2004,12 +2022,12 @@ async function runThreadDirect(threadId, options = {}) {
     const body = [
       workspaceInstruction(root),
       "",
-      "Read the FxMind context file and respond to the latest user message.",
-      "",
-      fs.readFileSync(contextFile, "utf8"),
+      "Respond to the latest user message of the thread below, using the FxMind context after it.",
       "",
       "## Thread",
       transcript(raw),
+      "",
+      fs.readFileSync(contextFile, "utf8"),
     ].join("\n");
     // Prompt goes through stdin, never argv: on Windows the CLI is a `.cmd`
     // shim run via `cmd.exe /c`, which truncates any argument at its first
@@ -2021,7 +2039,7 @@ async function runThreadDirect(threadId, options = {}) {
   } else if (cliId === "hermes") {
     args = ["-p"];
     stdinPrompt =
-      `${workspaceInstruction(root)}\n\n${fs.readFileSync(contextFile, "utf8")}\n\n${transcript(raw)}`.slice(
+      `${workspaceInstruction(root)}\n\n## Thread\n${transcript(raw)}\n\n${fs.readFileSync(contextFile, "utf8")}`.slice(
         0,
         12000,
       );
@@ -2031,10 +2049,12 @@ async function runThreadDirect(threadId, options = {}) {
       "",
       prompt || "Use the FxMind context and help with this project.",
       "",
-      fs.readFileSync(contextFile, "utf8"),
-      "",
+      // Thread before context: the 12k cut below must drop context, not the
+      // conversation the latest request depends on.
       "## Thread",
       transcript(raw),
+      "",
+      fs.readFileSync(contextFile, "utf8"),
     ].join("\n");
     args = ["exec", "--cd", root, "--json", ...accessArgs];
     if (execOpts.model) args.push("-m", execOpts.model);
@@ -2058,14 +2078,17 @@ async function runThreadDirect(threadId, options = {}) {
     // so a multi-line prompt would reach the agent as just its first line
     // ("You are working inside the selected repository below.") and the demand
     // itself would be lost. `cursor-agent -p` reads the prompt from stdin.
-    stdinPrompt = `${workspaceInstruction(root)}\n\nRead ${contextFile} then complete the user request:\n${prompt}`;
+    // Each run is a fresh cursor-agent chat, so the thread must travel with
+    // the prompt — without it a follow-up like "analise novamente" arrived
+    // with no demand at all and the agent answered about unrelated work.
+    stdinPrompt = threadPrompt(root, contextFile, prompt, raw);
   } else {
     args = [
       "-p",
       ...accessArgs,
       "--workspace",
       root,
-      `${workspaceInstruction(root)}\n\nRead ${contextFile} then complete the user request:\n${prompt}`,
+      threadPrompt(root, contextFile, prompt, raw),
     ];
   }
 

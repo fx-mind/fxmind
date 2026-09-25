@@ -61,6 +61,27 @@ function writeJson(filePath, data) {
   return writeJsonIfChanged(filePath, data);
 }
 
+function defaultGlobalServerPath() {
+  const appData = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
+  return path.join(appData, "npm", "node_modules", "fxmind", "scripts", "mcp-server.js");
+}
+
+/**
+ * Absolute MCP server path when fxmind runs from an install outside the
+ * default npm global dir (e.g. `npm i -g --prefix ~/.fxmind/npm`, used when
+ * %APPDATA%\npm\node_modules\fxmind is a dead junction). Null means the
+ * default location — keep the portable ${env:APPDATA} form in that case.
+ * FXMIND_MCP_SERVER_PATH overrides both.
+ */
+function customServerPath() {
+  if (process.env.FXMIND_MCP_SERVER_PATH) return path.resolve(process.env.FXMIND_MCP_SERVER_PATH);
+  const own = path.join(__dirname, "mcp-server.js");
+  if (!own.split(path.sep).includes("node_modules")) return null; // dev checkout
+  return path.resolve(own).toLowerCase() === path.resolve(defaultGlobalServerPath()).toLowerCase()
+    ? null
+    : own;
+}
+
 function buildFxmindMcpEntry() {
   // Requires: npm install -g github:fx-mind/fxmind
   //
@@ -76,8 +97,11 @@ function buildFxmindMcpEntry() {
 
   if (process.platform === "win32") {
     entry.command = "node";
+    const custom = customServerPath();
     entry.args = [
-      "${env:APPDATA}/npm/node_modules/fxmind/scripts/mcp-server.js",
+      custom
+        ? custom.replace(/\\/g, "/")
+        : "${env:APPDATA}/npm/node_modules/fxmind/scripts/mcp-server.js",
     ];
   } else {
     entry.command = FXMIND_MCP_COMMAND;
@@ -265,14 +289,7 @@ function codexMcpArgs(entry) {
   if (process.platform !== "win32" || entry.command !== "node" || !process.env.APPDATA) {
     return entry.args;
   }
-  const serverPath = path.join(
-    process.env.APPDATA,
-    "npm",
-    "node_modules",
-    "fxmind",
-    "scripts",
-    "mcp-server.js",
-  );
+  const serverPath = customServerPath() || defaultGlobalServerPath();
   return fs.existsSync(serverPath) ? [serverPath] : entry.args;
 }
 
@@ -344,10 +361,7 @@ function mcpStatusMcpServersJson(configPath) {
 
 function resolveOpenCodeMcpLaunch() {
   if (process.platform === "win32") {
-    const appData = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
-    const script = path
-      .join(appData, "npm", "node_modules", "fxmind", "scripts", "mcp-server.js")
-      .replace(/\\/g, "/");
+    const script = (customServerPath() || defaultGlobalServerPath()).replace(/\\/g, "/");
     return {
       type: "local",
       command: ["node", script],

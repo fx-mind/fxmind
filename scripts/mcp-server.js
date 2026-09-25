@@ -138,7 +138,7 @@ const TOOL_DEFS = [
   },
   {
     name: "fxmind_search",
-    description: "Read-only bounded literal source search when memories lack coverage or for twin checks. Returns paths, line numbers and short excerpts. Prefer a specific directory; never infer absence from truncated results.",
+    description: "Read-only literal (case-insensitive) source search when memories lack coverage or for twin checks. In Git projects it covers every tracked and untracked file; returns total count, paths, line numbers and short excerpts. When the note says absence is confirmed, do not retry the same literal or trivial variants — change the term or read the likely file. Prefer a specific directory to narrow large result sets.",
     inputSchema: {
       type: "object",
       properties: {

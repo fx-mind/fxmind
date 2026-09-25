@@ -160,13 +160,6 @@ async function completeThreadCard(thread, push = {}) {
   return syncResult("complete", await completeCard(thread.cardId, payload));
 }
 
-async function releaseThreadCard(thread) {
-  if (!isPortspaceCard({ source: thread?.cardSource, cardId: thread?.cardId })) return null;
-  // Already delivered: the card belongs to the test column now.
-  if (thread.phase === "pushed") return null;
-  return syncResult("release", await releaseCard(thread.cardId));
-}
-
 module.exports = {
   isPortspaceCard,
   claimCard,
@@ -175,6 +168,5 @@ module.exports = {
   publicRepoUrl,
   buildCompletePayload,
   completeThreadCard,
-  releaseThreadCard,
   syncResult,
 };

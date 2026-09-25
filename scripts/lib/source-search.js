@@ -4,6 +4,72 @@ const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
 
+const IGNORED_DIRS = [".git", ".fxmind", "node_modules", "dist", "build", "vendor", "coverage"];
+// Minified bundles and source maps are single huge lines that bury real hits.
+const IGNORED_GLOBS = ["*.map", "*.min.js", "*.min.css"];
+const GIT_GREP_TIMEOUT_MS = 15_000;
+
+/**
+ * Whole-repo literal search through `git grep` (tracked + untracked, honoring
+ * .gitignore). It covers every file in well under a second on large FiveM
+ * repos, where the JS scan below stops at its byte budget after a few hundred
+ * files and reports false "no match" results that make agents retry in loops.
+ * Git only reports per-file counts (`-c`): printing the matching lines of
+ * minified assets can reach tens of MB. Excerpts are then read from just the
+ * first files needed to fill the limit.
+ * Returns null when the folder is not inside a Git work tree.
+ */
+function gitGrep(project, folder, query, maxResults) {
+  const excludes = [
+    ...IGNORED_DIRS.map((dir) => `:(exclude,glob)**/${dir}/**`),
+    ...IGNORED_GLOBS.map((glob) => `:(exclude,glob)**/${glob}`),
+  ];
+  const args = ["grep", "-c", "-I", "-i", "-F", "--untracked", "--no-color", "-e", query, "--", ".", ...excludes];
+  let stdout;
+  try {
+    stdout = execFileSync("git", args, {
+      cwd: folder, encoding: "utf8", timeout: GIT_GREP_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
+    });
+  } catch (error) {
+    // Exit 1 without stderr is git grep's "no matches"; anything else falls
+    // back to the bounded JS scan.
+    if (error.status !== 1 || String(error.stderr || "").trim()) return null;
+    stdout = "";
+  }
+  const files = [];
+  let total = 0;
+  for (const raw of stdout.split(/\r?\n/)) {
+    const hit = /^(.*):(\d+)$/.exec(raw);
+    if (!hit) continue;
+    files.push(hit[1]);
+    total += Number(hit[2]);
+  }
+  const needle = query.toLowerCase();
+  const matches = [];
+  for (const rel of files) {
+    if (matches.length >= maxResults) break;
+    const absolute = path.resolve(folder, rel);
+    let content;
+    try {
+      content = fs.readFileSync(absolute, "utf8");
+    } catch {
+      continue;
+    }
+    const file = path.relative(project, absolute).replace(/\\/g, "/");
+    const lines = content.split(/\r?\n/);
+    for (let i = 0; i < lines.length && matches.length < maxResults; i += 1) {
+      if (lines[i].toLowerCase().includes(needle)) matches.push({ file, line: i + 1, text: lines[i].slice(0, 300) });
+    }
+  }
+  const truncated = total > matches.length;
+  let note;
+  if (!total) note = "No matches in any tracked or untracked file of this directory (minified bundles/maps excluded). Absence is confirmed; do not retry this literal — try a different term or read the likely file.";
+  else if (truncated) note = `${total} matches in ${files.length} files, showing ${matches.length}; narrow the directory or use a more specific literal.`;
+  else note = "Complete: every tracked and untracked file was searched (case-insensitive literal).";
+  return { ok: true, engine: "git-grep", matches, total, files: files.length, truncated, note };
+}
+
 /** Bounded literal source search when the memory graph has no coverage. */
 function searchSource(root, { directory = ".", query, limit = 20 } = {}) {
   if (typeof query !== "string" || !query.trim() || query.length > 200) {
@@ -17,7 +83,9 @@ function searchSource(root, { directory = ".", query, limit = 20 } = {}) {
   }
   if (!fs.statSync(folder).isDirectory()) throw new Error("Search directory must be a directory.");
   const maxResults = Number.isFinite(Number(limit)) ? Math.max(1, Math.min(50, Math.floor(Number(limit)))) : 20;
-  const ignored = new Set([".git", ".fxmind", "node_modules", "dist", "build", "vendor", "coverage"]);
+  const viaGit = gitGrep(project, folder, query, maxResults);
+  if (viaGit) return viaGit;
+  const ignored = new Set(IGNORED_DIRS);
   let candidates;
   let truncated = false;
   try {

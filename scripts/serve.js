@@ -744,15 +744,16 @@ async function handleApi(req, res, url) {
 
   if (threadMatch && req.method === "DELETE") {
     const raw = threads.getThreadRaw(threadMatch[1]);
-    // Undelivered demand: hand the card back to the source column.
-    const cardSync = raw ? await panelPortspace.releaseThreadCard(raw) : null;
+    // Deleting is local only: the PortSpace card keeps its assignee and
+    // column. Releasing it here unassigned cards the dev was still on and
+    // blocked the delete for up to 15s whenever PortSpace was slow.
     panelCli.killThread(threadMatch[1]);
     const worktree = raw?.worktree?.path
       ? panelTaskGit.removeWorktree(raw.worktree.path)
       : { ok: true, removed: false };
     const result = await threads.disposeThread(threadMatch[1]);
     if (!result.ok) return sendJson(res, result.status || 500, { error: result.error });
-    return sendJson(res, 200, { ...result, worktree, cardSync });
+    return sendJson(res, 200, { ...result, worktree });
   }
 
   const projectIconMatch = pathname.match(/^\/api\/projects\/([^/]+)\/icon$/);

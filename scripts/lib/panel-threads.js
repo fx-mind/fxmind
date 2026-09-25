@@ -430,8 +430,12 @@ function buildDemandPrompt(item = {}) {
   } catch {
     /* ignore */
   }
+  // Native search finds a command/symbol in one shot; forcing every lookup
+  // through MCP made agents loop on fxmind_search for minutes.
   const toolsLine =
-    "Use somente ferramentas MCP fxmind para descoberta, gates, grafo, FiveM e DB — não use grep nem busca manual no repo.";
+    "Para localizar código use a busca nativa (rg / leitura de arquivos) direto no repo; use o MCP fxmind para memórias, gates, FiveM e DB.";
+  const scopeLine =
+    "Faça somente o que a descrição pede, com a menor mudança possível — não refatore nem mexa em outros recursos.";
   const pipelineLine =
     taskMode === "quick"
       ? "Modo rápido (PANEL_MODE: quick): fxmind_start_task trivial=true → implemente com paths do contexto → Gate V/C via MCP."
@@ -439,6 +443,7 @@ function buildDemandPrompt(item = {}) {
   const lines = [
     "Implemente esta demanda no repositório do projeto ativo.",
     toolsLine,
+    scopeLine,
     pipelineLine,
     "Não invente natives, APIs ou caminhos — verifique no código e nas memórias `.fxmind/`.",
     "",
