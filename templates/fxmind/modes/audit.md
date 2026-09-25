@@ -11,7 +11,7 @@ Audit diagnoses; it does not fix. After the report: a few local findings → imp
 
 ## Full procedure is external
 
-The complete audit matrix (view-cache V-a..V-j, broadcast, globals, manager events, severity/phase, report sections, rules) lives in **`.fxmind/audits/procedure.md`** — **read it now** before continuing. It is intentionally kept out of the command body to save context on non-audit invocations.
+The complete audit matrix (view-cache V-a..V-k, broadcast, globals, manager events, severity/phase, report sections, rules) lives in **`.fxmind/audits/procedure.md`** — **read it now** before continuing. It is intentionally kept out of the command body to save context on non-audit invocations.
 
 If `.fxmind/audits/procedure.md` is missing, run `fxmind --update -y` (or `npx --yes github:fx-mind/fxmind --update -y`) to restore it, then retry. Do not improvise the matrix from memory.
 
@@ -25,7 +25,7 @@ If `.fxmind/audits/procedure.md` is missing, run `fxmind --update -y` (or `npx -
 
 - Read the **full `fxmanifest.lua`** scope — never audit a single file unless explicitly scoped.
 - Every finding cites `file:line` + the exact event/symbol — read the line before citing.
-- Report every view-cache row V-a–V-j as **Found** or **N/A**; never skip.
+- Report every view-cache row V-a–V-k as **Found** or **N/A**; never skip.
 - Passes and matrices live in `.fxmind/skills/fivem-development/audit-passes.md` (§2.3–§2.5).
 - **Pass 2b is mandatory** — inventory **every** client-callable endpoint (net events + each `Tunnel.bindInterface` `func.*` + NUI→server); check E-a…E-g. A resource with 0 `RegisterNetEvent` still exposes endpoints via Tunnel.
 - **Pass NUI is mandatory** when `ui_page` or NUI `files` exist — matrix N-a–N-d (Vite hash, rgba overlay fill, fadeIn, oklch). Read `fivem-react-nui/ui-guide.md` §2 + §6.

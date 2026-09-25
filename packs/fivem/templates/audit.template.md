@@ -44,12 +44,13 @@ Or: **N/A** — no manager/admin events in scope.
 | V-b | `build*List()` / `Get*Summary*()` in handler | | | High |
 | V-c | Double build (item + list same handler) | | | High |
 | V-d | Redundant sync storm (list every send in CRUD) | | | High |
-| V-e | `Load*Player` on connect | | | High |
+| V-e | Connect hook queries DB / rebuilds / re-chunks per player | | | High |
 | V-f | `Load*Player` after CRUD + delta exists | | | High |
 | V-g | Full `Load*Cache()` after one DB write | | | Medium |
 | V-h | Duplicate transform / duplicate fn | | | Medium |
-| V-i | Manual `ChunkTable` + `Wait` | | | Medium |
+| V-i | Chunks re-built per player, no `Wait`, or cerberus ignored | | | Medium |
 | V-j | Broadcast misuse (`manager:*` or large payload to `-1`) | | | High / Critical |
+| V-k | Client-pull bootstrap (`*:requestSync` from client start thread) | | | High |
 
 > **V-b detail:** list **every** call site (grep `build*List\(` and `Get*Summary*`).
 > **V-d detail:** count each sync line — e.g. manager + full list + `Load*Player` + world delta = 4 paths.
@@ -142,7 +143,7 @@ exports["cerberus"]:SendFullSync(source, "garages:fullSync", SanitizedGarageCach
 ### Phase 2 — High (view cache + hot paths)
 
 1. [ ] V-a–V-f — view cache layer; remove hot-path rebuilds; **nil view cache on delete**
-2. [ ] Large sync → cerberus instead of manual chunks (V-i)
+2. [ ] Seeding → server push at start + player-loaded hook, pre-built view, CRUD delta (V-e, V-i, V-k — §2.2.1)
 
 ### Phase 3 — Medium
 
@@ -157,7 +158,7 @@ exports["cerberus"]:SendFullSync(source, "garages:fullSync", SanitizedGarageCach
 ## Pass 6 + Pass 7 Self-Check (§2.4 + §2.5)
 
 - [ ] **Files reviewed** = only `fxmanifest` script paths (+ NUI if scoped) — no invented paths
-- [ ] View cache matrix V-a–V-j each marked Found or N/A
+- [ ] View cache matrix V-a–V-k each marked Found or N/A
 - [ ] V-b detail lists **all** `build*List` / `Get*Summary*` callers
 - [ ] V-d lists **each** sync line in CRUD handlers (exact count, not "triple")
 - [ ] Cooldown helper usage count from grep (not guessed)

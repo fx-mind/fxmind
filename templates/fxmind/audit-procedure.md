@@ -152,24 +152,25 @@ Report as **systemic finding** when multiple endpoints share the same missing-au
 
 ### Performance — view cache & hot-path rebuild (§2.2–2.4)
 
-Report **separate findings** for each matrix row hit (V-a through V-i):
+Report **separate findings** for each matrix row hit (V-a through V-k):
 
 - **V-a** `build*` inside `TriggerClientEvent` argument
 - **V-b** `build*List()` / `Get*Summary*()` — **every** call site with `file:line`
 - **V-c** double build (item + list same handler)
 - **V-d** redundant sync storm — list **each** send in CRUD handler (manager + list + `Load*Player` + world delta)
-- **V-e** `Load*Player` on connect/bootstrap
+- **V-e** player-loaded hook that queries DB / rebuilds / sorts / re-chunks per player (sending the pre-built view is correct — §2.2.1)
 - **V-f** `Load*Player` after single CRUD when delta exists
 - **V-g** full `Load*Cache()` after one DB write
 - **V-h** duplicate transform / duplicate function definitions
-- **V-i** manual chunk + `Wait` loop
+- **V-i** chunk loop that re-sanitizes or re-chunks per call/player, lacks `Wait`, or ignores cerberus already ensured
 - **V-j** `TriggerClientEvent(-1, ...)` on admin/manager events or large payload without cerberus (§1.6.1)
+- **V-k** client-pull bootstrap — client start thread `TriggerServerEvent("*:requestSync")`, server reloads/rebuilds per request (§2.2.1)
 
 ### Performance — broadcast (§1.6.1)
 
 - `manager:*` / admin UI sent to `-1` → **Critical**
 - Full cache / large table via `TriggerClientEvent(-1, ...)` → **High** — use cerberus
-- Manual chunk to all players when cerberus exists → **Medium** (also V-i)
+- Chunk loop to all players when cerberus is ensured, or chunks rebuilt per player → **Medium** (also V-i)
 
 ### Performance — general
 
@@ -263,7 +264,7 @@ Use this structure — **required sections:**
 
 1. Summary table — **counts must equal findings rows**
 2. **Client-callable endpoint matrix** (Pass 4) — every endpoint; admin/manager marked as class
-3. **View cache matrix** (rows V-a–V-j: Found / N/A)
+3. **View cache matrix** (rows V-a–V-k: Found / N/A)
 4. **NUI matrix** (rows N-a–N-d: Found / N/A) — when `ui_page` present
 5. **Endpoint flow / broadcast matrix** (Pass 2b + §1.6.1) — every endpoint + `-1` send reviewed, with response KB estimate
 6. **Globals table** (Symbol | Declared | Used in | Verdict)
@@ -298,7 +299,7 @@ In chat, provide:
 - **Never treat the manager matrix as a separate check** — `manager:*`/`admin:*` are a class inside the endpoint matrix; 0 manager events does not skip the endpoint matrix
 - **Never recommend `TriggerClientEvent("manager:*", -1, ...)`** — admin UI → `source` only (§1.6.1)
 - **Never use `TriggerClientEvent(-1, largeTable)`** in fixes — cerberus `SendFullSync` / `SendDeltaSync` + scope (§4.2)
-- **Never skip view-cache matrix rows** — report each V-a–V-j as found or N/A
+- **Never skip view-cache matrix rows** — report each V-a–V-k as found or N/A
 - **Never mismatch severity and phase** — High findings go to Phase 2, not Phase 3
 - **Never list files not in `fxmanifest`** in Files reviewed (§2.5)
 - **Never guess summary counts** — count Findings rows; grep before "N events use cooldown" (§2.5)
