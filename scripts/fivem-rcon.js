@@ -944,24 +944,8 @@ function installFivemDev(options = {}) {
     action: gitignore.added?.length ? "updated" : "kept",
   });
 
-  const bridge = copyNuiBridgeResource(root);
-  steps.push({
-    step: "nui-bridge",
-    path: bridge.path,
-    action: bridge.action,
-    ok: bridge.ok !== false,
-  });
-  if (bridge.ok !== false) {
-    const nuiCfg = ensureNuiDumpCfg(cfgAbs, root);
-    steps.push({
-      step: "nui-dump-cfg",
-      path: execCfg,
-      action: nuiCfg.action,
-      dumpPath: nuiCfg.dumpPath,
-    });
-  } else {
-    warnings.push("fxmind-nui-bridge template missing — NUI dump MCP will not work until pack is complete");
-  }
+  // fxmind-nui-bridge is not installed here: fxmind_fivem_nui_wire copies it and
+  // wires the cfg only when an agent is asked to inspect a NUI.
 
   const port = readPortFromCfgFile(cfgAbs) || 30120;
   const marker = writeInstallMarker(root, {

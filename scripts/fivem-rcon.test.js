@@ -100,12 +100,10 @@ describe("fivem rcon allowlist", () => {
     assert.doesNotMatch(ps1, /2>&1\s*\|\s*ForEach-Object/);
     assert.ok(fs.existsSync(path.join(dir, ".vscode", "tasks.json")));
     const cfg = fs.readFileSync(path.join(dir, "dev", "dev.cfg"), "utf8");
-    assert.match(cfg, /ensure\s+fxmind-nui-bridge/);
-    assert.match(cfg, /fxmind_nui_dump_path/);
-    assert.ok(
-      fs.existsSync(path.join(dir, "resources", "[local]", "fxmind-nui-bridge", "server.lua")) ||
-        fs.existsSync(path.join(dir, "resources", "fxmind-nui-bridge", "server.lua")),
-    );
+    assert.doesNotMatch(cfg, /fxmind-nui-bridge/);
+    assert.doesNotMatch(cfg, /fxmind_nui_dump_path/);
+    assert.ok(!fs.existsSync(path.join(dir, "resources", "[local]", "fxmind-nui-bridge")));
+    assert.ok(!fs.existsSync(path.join(dir, "resources", "fxmind-nui-bridge")));
     const second = fivem.installFivemDev({ root: dir });
     assert.equal(second.needsServerRestart, false);
     assert.equal(

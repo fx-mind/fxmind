@@ -190,7 +190,7 @@ fxmind fivem — local FXServer RCON (dev; no txAdmin).
 
   --json   raw JSON output (default on errors)
 
-  install     writes rcon_password to cfg + nui-bridge resource + .vscode/fivem-start.ps1 + tasks.json
+  install     writes rcon_password to cfg + .vscode/fivem-start.ps1 + tasks.json (no nui-bridge; nui-wire adds it)
   ensure      UDP RCON reload
   tail        last lines of .fxmind/state/fivem-console.log (terminal mirror)
   nui-wire    TEMP patch resource for agent NUI vision (MCP: fxmind_fivem_nui_wire)

@@ -19,7 +19,7 @@ fxmind fivem nui-unwire              # MCP: fxmind_fivem_nui_unwire (mandatory)
 
 ## Install
 
-Copied by `fxmind fivem install` into `resources/[local]/fxmind-nui-bridge` (or `resources/fxmind-nui-bridge`).
+Not created by `fxmind fivem install` or `--update`. Copied on demand by `fxmind fivem nui-wire` / MCP `fxmind_fivem_nui_wire` into `resources/[local]/fxmind-nui-bridge` (or `resources/fxmind-nui-bridge`), which also adds to the cfg:
 
 ```cfg
 ensure fxmind-nui-bridge

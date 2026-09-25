@@ -352,7 +352,7 @@ Writes `rcon_password` into **dev/dev.cfg**, `.vscode/fivem-start.ps1` (interact
 | Full log for `tail` / MCP | RCON exchanges → `.fxmind/state/fivem-console.log`; optional `server-debug.log` |
 | NUI vision for agents | `fxmind fivem nui-dump` / MCP `fxmind_fivem_nui_dump` → `.fxmind/state/nui-dump.json` |
 
-`fivem install` also copies **`fxmind-nui-bridge`** and sets `fxmind_nui_dump_path`. Agents should **auto-wire** (no manual script edits):
+`fivem install` / `--update` do **not** create **`fxmind-nui-bridge`**. It is copied (and `ensure` + `fxmind_nui_dump_path` added to the cfg) only when an agent is asked to inspect a NUI and runs `nui-wire` (MCP `fxmind_fivem_nui_wire`). No manual script edits:
 
 ```bash
 fxmind fivem nui-wire my_nui
