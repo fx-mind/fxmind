@@ -3,6 +3,7 @@
  */
 
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { execSync, spawnSync } = require("child_process");
 
@@ -14,27 +15,68 @@ function isLocalDevelopmentInstall(packageRoot = PACKAGE_ROOT) {
   return !root.includes("/node_modules/fxmind");
 }
 
+/**
+ * Fallback prefix used when the default npm global dir cannot be written
+ * (e.g. the npm global fxmind folder is a dead junction that even
+ * `npm install -g` cannot replace).
+ */
+function fallbackPrefix() {
+  return path.join(os.homedir(), ".fxmind", "npm");
+}
+
+function fallbackInstallScript() {
+  const root = process.platform === "win32"
+    ? path.join(fallbackPrefix(), "node_modules")
+    : path.join(fallbackPrefix(), "lib", "node_modules");
+  return path.join(root, "fxmind", "scripts", "install.js");
+}
+
+/** True when `dir` can be listed (a dead junction throws UNKNOWN here). */
+function isReadableDir(dir) {
+  try {
+    fs.readdirSync(dir);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function resolveGlobalInstallScript() {
   try {
     const npmRoot = execSync("npm root -g", {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     }).trim();
-    const script = path.join(npmRoot, "fxmind", "scripts", "install.js");
-    if (fs.existsSync(script)) {
+    const dir = path.join(npmRoot, "fxmind");
+    const script = path.join(dir, "scripts", "install.js");
+    if (isReadableDir(dir) && fs.existsSync(script)) {
       return script;
     }
   } catch {
     // fall through
   }
+  const fallback = fallbackInstallScript();
+  if (fs.existsSync(fallback)) return fallback;
   return path.join(PACKAGE_ROOT, "scripts", "install.js");
 }
 
 function updateGlobalInstall() {
-  execSync(`npm install -g ${GITHUB_PKG}`, {
-    stdio: "inherit",
-    shell: true,
-  });
+  try {
+    execSync(`npm install -g ${GITHUB_PKG}`, {
+      stdio: "inherit",
+      shell: true,
+    });
+    return { prefix: null };
+  } catch (error) {
+    const reason = String(error.message).trim().slice(0, 160);
+    console.log(`[Self-update] default global install failed (${reason}).`);
+    console.log(`[Self-update] retrying into ${fallbackPrefix()} ...`);
+    execSync(`npm install -g --prefix "${fallbackPrefix()}" ${GITHUB_PKG}`, {
+      stdio: "inherit",
+      shell: true,
+    });
+    return { prefix: fallbackPrefix() };
+  }
 }
 
 function maybeSelfUpdateAndReexec(argv, options = {}) {
@@ -63,6 +105,12 @@ function maybeSelfUpdateAndReexec(argv, options = {}) {
   }
 
   const entry = resolveGlobalInstallScript();
+  if (path.resolve(entry).startsWith(path.resolve(fallbackPrefix()))) {
+    console.log(
+      `[Self-update] the default npm global dir is unusable — fxmind now runs from ${fallbackPrefix()}. ` +
+        "Remove the broken npm global fxmind folder to go back to the default.",
+    );
+  }
   console.log("[Self-update] Restarting with updated fxmind...\n");
   const child = spawnSync(process.execPath, [entry, ...argv], {
     stdio: "inherit",
@@ -76,6 +124,9 @@ function maybeSelfUpdateAndReexec(argv, options = {}) {
 module.exports = {
   GITHUB_PKG,
   isLocalDevelopmentInstall,
+  isReadableDir,
+  fallbackPrefix,
+  fallbackInstallScript,
   resolveGlobalInstallScript,
   updateGlobalInstall,
   maybeSelfUpdateAndReexec,
