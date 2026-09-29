@@ -163,8 +163,31 @@ const TOOL_DEFS = [
           description:
             "If true, marks Gates A and B complete immediately (tiny one-file edits). Still requires Gate V before Gate C.",
         },
+        kind: {
+          type: "string",
+          enum: ["config", "fix", "mechanic", "create"],
+          description: "Task kind confirmed at Gate A (config entry, defect, behavior change, new resource).",
+        },
+        playbook: {
+          type: "string",
+          description: "Playbook id being followed. A verified, non-stale playbook auto-completes Gates A and B (V and C still apply).",
+        },
         ...SESSION_ID_PROP,
       },
+    },
+  },
+  {
+    name: "fxmind_playbook",
+    description:
+      "Playbooks are surgical instructions for repeated tasks (files, anchors, snippets, verify). action=list | match (query) | get (id, anchors resolved to current lines) | check (id, or all). Read-only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["list", "match", "get", "check"] },
+        id: { type: "string", description: "Playbook id (get/check)." },
+        query: { type: "string", description: "User request (match)." },
+      },
+      required: ["action"],
     },
   },
   {
@@ -594,6 +617,33 @@ function reportHostMcp(threadId, toolName, args, status) {
     .catch(() => {});
 }
 
+function playbookTool(root, args = {}) {
+  const playbooks = require("./lib/playbooks");
+  const action = args.action || "list";
+  if (action === "list") return { ok: true, playbooks: playbooks.loadPlaybooks(root).map(playbooks.summarize) };
+  if (action === "match") {
+    const plan = playbooks.planTask(root, args.query || "");
+    return {
+      ok: true,
+      kind: plan.kind,
+      confidence: plan.confidence,
+      playbook: plan.playbook,
+      stale: plan.stale,
+      text: plan.playbookText || undefined,
+    };
+  }
+  const targets = args.id ? [playbooks.getPlaybook(root, args.id)] : action === "check" ? playbooks.loadPlaybooks(root) : [];
+  if (!targets.length || targets.includes(null)) return { ok: false, error: `Playbook not found: ${args.id || "(id required)"}` };
+  if (action === "get") {
+    return { ok: true, text: playbooks.renderPlaybook(root, targets[0], playbooks.resolveSteps(root, targets[0])) };
+  }
+  if (action === "check") {
+    const results = targets.map((pb) => ({ id: pb.id, ...playbooks.checkPlaybook(root, pb) }));
+    return { ok: results.every((r) => r.ok), results };
+  }
+  return { ok: false, error: `Unknown action: ${action}` };
+}
+
 function dispatchTool(name, args) {
   const root = targetRoot();
   switch (name) {
@@ -637,9 +687,14 @@ function dispatchTool(name, args) {
           note: args.note || "",
           trivial: Boolean(args.trivial),
           ui: Boolean(args.ui),
+          kind: args.kind,
+          playbook: args.playbook,
           ...sessionExtra(args),
         }),
       };
+
+    case "fxmind_playbook":
+      return playbookTool(root, args);
 
     case "fxmind_search":
       return searchSource(root, args);
@@ -784,6 +839,9 @@ function dispatchTool(name, args) {
 function formatToolResult(toolName, result) {
   if (toolName === "fxmind_query" && result && result.ok !== false) {
     return formatQueryResult(result);
+  }
+  if (toolName === "fxmind_playbook" && result?.ok && result.text && !result.playbook) {
+    return result.text;
   }
   return JSON.stringify(result);
 }

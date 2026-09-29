@@ -35,18 +35,30 @@ function shouldSkipPrompt(prompt) {
   return text.startsWith("/") && !/^\/fxmind\b/i.test(text);
 }
 
+/** FXMIND_PRELOAD_BUDGET when set; otherwise null so the task kind picks its own budget. */
 function preloadBudget(env = process.env) {
   const value = Number(env.FXMIND_PRELOAD_BUDGET);
-  return Number.isFinite(value) && value > 0 ? Math.min(Math.floor(value), 4000) : DEFAULT_BUDGET;
+  return Number.isFinite(value) && value > 0 ? Math.min(Math.floor(value), 4000) : null;
 }
 
-/** Context text for a prompt, or "" when nothing relevant exists. */
+/**
+ * Context text for a prompt, or "" when nothing relevant exists.
+ * A matching playbook replaces memory retrieval (it already names the files);
+ * otherwise memories load with the budget and section priority of the task kind.
+ */
 function buildPromptContext(root, prompt, options = {}) {
   if (!root || shouldSkipPrompt(prompt)) return "";
+  const playbooks = require("./lib/playbooks");
+  const plan = playbooks.planTask(root, prompt, { playbooks: options.playbooks });
+  if (plan.playbook) return plan.playbookText;
+
   const tools = require("./fxmind-tools");
   const { formatQueryResult } = require("./lib/memory-retrieval");
+  const profile = plan.profile;
   const result = tools.queryGraph(root, prompt, {
-    budget: options.budget || DEFAULT_BUDGET,
+    budget: options.budget || profile?.budget || DEFAULT_BUDGET,
+    priority: profile?.priority,
+    dfs: Boolean(profile?.dfs),
     // Never rebuild on the prompt path; ranking reads memory files directly.
     rebuild: false,
   });
@@ -54,6 +66,7 @@ function buildPromptContext(root, prompt, options = {}) {
   return [
     "# fxmind — preloaded project memories",
     "Use these first and confirm against current source. Skip fxmind_query for these topics.",
+    ...[playbooks.kindLine(plan), playbooks.staleLine(plan)].filter(Boolean),
     "",
     formatQueryResult(result),
   ].join("\n");

@@ -24,6 +24,7 @@ const COPILOT_PROMPT_FILE = "fxmind.prompt.md";
 const CORE_TEMPLATE_FILES = [
   { src: "reference.template.mdc", dest: "templates/reference.mdc", srcDir: "rules" },
   { src: "memory.template.md", dest: "templates/memory.md" },
+  { src: "playbook.template.md", dest: "templates/playbook.md" },
   { src: "memory-health.template.md", dest: "templates/memory-health.md" },
   { src: "audit-procedure.md", dest: "audits/procedure.md" },
   { src: "failure-modes.md", dest: "policy/failure-modes.md" },

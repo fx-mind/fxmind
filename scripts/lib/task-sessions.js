@@ -235,6 +235,8 @@ function publicSession(session) {
     })),
     claimedPaths: Array.isArray(session.claimedPaths) ? [...session.claimedPaths] : [],
     ui: Boolean(session.ui),
+    kind: session.kind || null,
+    playbook: session.playbook || null,
     conversationId: session.conversationId || null,
     note: session.note || "",
     completedAt: session.completedAt || null,
@@ -270,9 +272,18 @@ function startSession(targetRoot, extra = {}) {
       ui: Boolean(extra.ui),
       gates: {},
       claimedPaths: [],
+      kind: extra.kind || null,
+      playbook: extra.playbook || null,
       conversationId: extra.conversationId ? String(extra.conversationId) : null,
       note: extra.note ? String(extra.note) : "",
     };
+
+    // A verified playbook already did the discovery A/B exist for; V and C still apply.
+    if (extra.playbookAuto && !extra.ui && !trivial) {
+      const note = `playbook: ${extra.playbook}`;
+      session.gates.A = { complete: true, at: now, note };
+      session.gates.B = { complete: true, at: now, note };
+    }
 
     if (trivial) {
       const note = extra.note ? `trivial: ${extra.note}` : "trivial";

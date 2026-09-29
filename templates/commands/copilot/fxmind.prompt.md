@@ -1,7 +1,7 @@
 ---
 name: fxmind
-description: "fxmind — FiveM project memory — task, create, refactor, judge, reference, audit, learn, memory health, graph, painel, query, path, explain, update"
-argument-hint: "task <implementation> | create <resource> | refactor <resource> | judge [target] | reference | audit [scope] | learn <topic> | memory health [fix] [topic] | graph | painel | query \"<question>\" [--dfs] [--budget N] | path <a> <b> | explain <topic> | update | <question>"
+description: "fxmind — FiveM project memory — task, create, refactor, judge, reference, audit, learn, teach, memory health, graph, painel, query, path, explain, update"
+argument-hint: "task <implementation> | create <resource> | refactor <resource> | judge [target] | reference | audit [scope] | learn <topic> | teach <playbook> | memory health [fix] [topic] | graph | painel | query \"<question>\" [--dfs] [--budget N] | path <a> <b> | explain <topic> | update | <question>"
 agent: agent
 tools: ["fxmind/*"]
 ---
@@ -23,6 +23,7 @@ Parse the input. **Prefer Task for any code/config change** — the `.github/ski
 | `reference` or `reference ...` | `.fxmind/modes/reference.md` |
 | `audit` or `audit ...` | `.fxmind/modes/audit.md` |
 | `learn` or `learn <topic>` / `learn list` | `.fxmind/modes/learn.md` |
+| `teach <name>` | `.fxmind/modes/teach.md` — turn a task that worked into a playbook (surgical steps for repeated requests) |
 | `memory health [fix] [topic]` | `.fxmind/modes/memory-health.md` |
 | `graph` | `.fxmind/modes/graph.md` — **just run `fxmind graph`** |
 | `painel` or `panel` | `.fxmind/modes/painel.md` — run `fxmind painel`, **stay in this chat** as host (no API key) |

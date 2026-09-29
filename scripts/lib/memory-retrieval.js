@@ -270,7 +270,7 @@ function sectionScore(section, concepts) {
  * in original order. Omitted section headings are reported so the agent
  * knows what to read from the file.
  */
-function fitMemory(doc, concepts, cap) {
+function fitMemory(doc, concepts, cap, priority = PRIORITY_SECTIONS) {
   const header = doc.memory.paths.length ? `Paths: ${doc.memory.paths.join(", ")}\n` : "";
   const full = `${header}${doc.body.trim()}`;
   if (estimateTokens(full) <= cap) {
@@ -281,7 +281,7 @@ function fitMemory(doc, concepts, cap) {
     ...section,
     index,
     score: sectionScore(section, concepts),
-    priority: PRIORITY_SECTIONS.findIndex((p) => section.label.startsWith(p)),
+    priority: priority.findIndex((p) => section.label.startsWith(p)),
   }));
   const [title, ...rest] = sections;
   const order = rest.sort(
@@ -318,6 +318,11 @@ function fitMemory(doc, concepts, cap) {
     .filter((s) => !kept.has(s.index) && s.heading)
     .map((s) => s.heading.replace(/:$/, ""));
   return { content, truncated: true, omittedSections };
+}
+
+/** Stemmed synonym group for a stemmed term (the term itself when it has none). */
+function expandTerm(term) {
+  return SYNONYMS.get(term) || [term];
 }
 
 /** Markdown view of a query result: far fewer tokens than pretty JSON with escaped newlines. */
@@ -359,6 +364,7 @@ module.exports = {
   buildDoc,
   rankMemories,
   fitMemory,
+  expandTerm,
   estimateTokens,
   formatQueryResult,
 };

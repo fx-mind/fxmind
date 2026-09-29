@@ -79,6 +79,22 @@ function readGates() {
   }
 }
 
+/**
+ * The legacy gates file is only a mirror: with 2+ active sessions it is not
+ * rewritten when one of them closes Gate C, so it can still show that session
+ * as open. The session file is the source of truth.
+ */
+function withSessionState(mirror) {
+  if (!mirror || !mirror.sessionId) return mirror;
+  try {
+    const file = path.join(fxmindDir(PROJECT_ROOT), "state", "sessions", `${mirror.sessionId}.json`);
+    if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    // fall back to the mirror
+  }
+  return mirror;
+}
+
 function followup(message) {
   process.stdout.write(JSON.stringify({ followup_message: message }));
   process.exit(0);
@@ -105,7 +121,7 @@ async function main() {
     payload = {};
   }
 
-  const gates = readGates();
+  const gates = withSessionState(readGates());
   if (!gates || !gates.taskActive) {
     noop();
   }

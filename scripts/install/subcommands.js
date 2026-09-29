@@ -10,6 +10,91 @@ const fxmindMysql = require("../fxmind-mysql");
 const { SHARED_DIR } = require("./config");
 const { installAuditsDir, migrateAuditReports } = require("./legacy");
 
+function runPlaybooksCli(argv = []) {
+  const playbooks = require("../lib/playbooks");
+  const args = [...argv];
+  const targetAt = args.indexOf("--target");
+  const root = targetAt >= 0 ? path.resolve(args.splice(targetAt, 2)[1] || "") : process.cwd();
+  const sub = args.shift() || "list";
+
+  if (sub === "-h" || sub === "--help") {
+    console.log(`
+fxmind playbooks — surgical instructions for repeated tasks (.fxmind/playbooks/).
+
+Usage:
+  fxmind playbooks list                 id, kind, status, uses
+  fxmind playbooks show <id>            playbook with anchors resolved to current lines
+  fxmind playbooks check [id]           validate format, files and anchors (exit 1 on errors)
+  fxmind playbooks match "<request>"    kind + playbook the hook would select for a request
+
+Create one in the agent chat with /fxmind teach <name> after a task that worked.
+`);
+    return 0;
+  }
+
+  if (sub === "list") {
+    const uses = {};
+    try {
+      const metrics = fs.readFileSync(path.join(root, ".fxmind", "state", "metrics.jsonl"), "utf8");
+      for (const line of metrics.split(/\r?\n/)) {
+        if (!line.includes("playbook_done")) continue;
+        const event = JSON.parse(line);
+        if (event.event === "playbook_done") uses[event.playbook] = (uses[event.playbook] || 0) + 1;
+      }
+    } catch {
+      // no metrics yet
+    }
+    const list = playbooks.loadPlaybooks(root);
+    if (!list.length) {
+      console.log("No playbooks. Do a task once, then run /fxmind teach <name> in the agent chat.");
+      return 0;
+    }
+    for (const pb of list) {
+      console.log(`${pb.id.padEnd(28)} ${String(pb.kind).padEnd(9)} ${pb.status.padEnd(9)} ${String(uses[pb.id] || 0).padStart(3)} uses  ${pb.title}`);
+    }
+    return 0;
+  }
+
+  if (sub === "show" || sub === "check") {
+    const id = args[0];
+    const targets = id ? [playbooks.getPlaybook(root, id)] : sub === "check" ? playbooks.loadPlaybooks(root) : [];
+    if (!targets.length || targets.includes(null)) {
+      console.error(id ? `Playbook not found: ${id}` : "Usage: fxmind playbooks show <id>");
+      return 1;
+    }
+    if (sub === "show") {
+      console.log(playbooks.renderPlaybook(root, targets[0], playbooks.resolveSteps(root, targets[0])));
+      return 0;
+    }
+    let failed = false;
+    for (const pb of targets) {
+      const result = playbooks.checkPlaybook(root, pb);
+      failed = failed || !result.ok;
+      console.log(`${result.ok ? "ok  " : "FAIL"} ${pb.id}`);
+      for (const message of result.errors) console.log(`  error: ${message}`);
+      for (const message of result.warnings) console.log(`  warn:  ${message}`);
+    }
+    return failed ? 1 : 0;
+  }
+
+  if (sub === "match") {
+    const request = args.join(" ").trim();
+    if (!request) {
+      console.error('Usage: fxmind playbooks match "<request>"');
+      return 1;
+    }
+    const plan = playbooks.planTask(root, request);
+    console.log(`kind: ${plan.kind || "unknown"} (${plan.confidence}, ${plan.source})`);
+    if (plan.playbook) console.log(`playbook: ${plan.playbook.id} (trigger "${plan.playbook.trigger}")`);
+    else if (plan.stale) console.log(`playbook: ${plan.stale.id} is stale — ${plan.stale.problems.join("; ")}`);
+    else console.log("playbook: none");
+    return 0;
+  }
+
+  console.error(`Unknown playbooks subcommand: ${sub}`);
+  return 1;
+}
+
 function runCorrectionsCli(argv = []) {
   const tools = require("../fxmind-tools");
   const sub = argv[0] || "list";
@@ -440,6 +525,7 @@ Also ensures .fxmind/audits/ exists with README.
 
 module.exports = {
   runCorrectionsCli,
+  runPlaybooksCli,
   fivemAnsi,
   printFivemCmdResult,
   runFivemCli,

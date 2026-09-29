@@ -14,6 +14,7 @@ Shared knowledge lives under `.fxmind/`; domain skills live in `.fxmind/skills/`
 - Large rewrite/optimization of an existing resource: read `.fxmind/modes/refactor.md`.
 - Review/question only: investigate and answer; do not turn it into implementation.
 - Explicit `/fxmind judge`: read `.fxmind/modes/judge.md`.
+- Explicit `/fxmind teach <name>`: read `.fxmind/modes/teach.md` (turn a task that worked into a playbook).
 - Other `/fxmind` commands: read `.fxmind/fxmind.md`, then only the matching mode.
 - Verification: read `.fxmind/modes/task-verify.md`; for UI, read it before editing to prepare browser checks.
 
@@ -21,7 +22,7 @@ Quick/full adjusts effort and narration, not quality requirements. Quick does no
 
 ## Context and control
 
-Use relevant preloaded memories, otherwise `fxmind_query`. Read source to confirm memory claims. If retrieval lacks coverage, use bounded permitted source search; never invent paths or repeat blind queries. Load only relevant references/corrections.
+A `# fxmind — playbook` block in the preloaded context is the procedure for a repeated request: follow its files/anchors, skip discovery, pass `kind` + `playbook` to `fxmind_start_task`. Task kind (config / fix / mechanic / create) is stated at Gate A; see `task.md`. Use relevant preloaded memories, otherwise `fxmind_query`. Read source to confirm memory claims. If retrieval lacks coverage, use bounded permitted source search; never invent paths or repeat blind queries. Load only relevant references/corrections.
 
 Gates are MCP-managed: start → A → B → implement/review → V with evidence → C. Keep sessionId; parallel agents claim task paths before editing. Never write gate/session JSON directly. Missing MCP prevents gate-controlled edits but need not prevent read-only investigation.
 

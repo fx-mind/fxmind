@@ -5,6 +5,7 @@
 const fs = require("fs");
 const path = require("path");
 const tools = require("../fxmind-tools");
+const playbooks = require("./playbooks");
 
 const FXMIND_TOOLS_MANDATE = [
   "## Ferramentas FxMind",
@@ -12,6 +13,7 @@ const FXMIND_TOOLS_MANDATE = [
   "Use preloaded relevant memories first; otherwise fxmind_query once. Confirm them against current source.",
   "For missing paths/symbols use fxmind_search with a bounded directory, or permitted native search. Do not repeat blind queries.",
   "Use MCP for gates, memory/graph, corrections and available FiveM/DB operations. Missing MCP blocks gated edits; read-only investigation may continue.",
+  "Task kind (config | fix | mechanic | create): confirm it at Gate A and pass kind (and playbook, when a Playbook section is present) to fxmind_start_task. A Playbook section replaces discovery — follow its files/anchors and skip fxmind_query.",
   "Implementation: read .fxmind/modes/task.md. UI: read task-verify.md before editing to prepare browser validation.",
   "Gate V requires evidence (files, review, checks); UI also needs browser interactions, visual/console observations and a real screenshot/trace path. Failed/blocked checks cannot close V/C.",
   "Review unnecessary constants/helpers/files; preserve local conventions and required validation.",
@@ -129,8 +131,19 @@ function buildContextFile(root, userPrompt, options = {}) {
   const question = String(userPrompt || "").trim();
   if (question) {
     lines.push("", "## Latest user request", question);
+    // Query mode only answers questions; task/plan get the kind + playbook treatment.
+    const plan = operationMode === "query" ? null : playbooks.planTask(root, question);
+    if (plan?.playbook) {
+      lines.push("", plan.playbookText);
+      return lines.join("\n");
+    }
+    if (plan) {
+      lines.push("", ...[playbooks.kindLine(plan), playbooks.staleLine(plan)].filter(Boolean));
+    }
     const query = tools.queryGraph(root, question, {
-      budget,
+      budget: options.budget ? budget : plan?.profile?.budget || budget,
+      priority: plan?.profile?.priority,
+      dfs: Boolean(plan?.profile?.dfs),
       updateHtml: false,
       rebuild: false,
     });

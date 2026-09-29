@@ -56,6 +56,7 @@ Restart your agent IDE/CLI after install or update.
 |---------|---------|
 | `/fxmind task <request>` | Explicit Task shortcut (optional — natural language also auto-runs Task) |
 | `/fxmind learn <topic>` | Save or update a topic memory |
+| `/fxmind teach <name>` | Turn a task that worked into a **playbook** (surgical steps for a repeated request) |
 | `/fxmind query "…"` | Search the knowledge graph |
 | `/fxmind create <resource>` | New resource: design (`.fxmind/designs/`) → approval → build per slice |
 | `/fxmind refactor <resource>` | Rewrite a bad resource: contract inventory → target design → slices with parity checks |
@@ -89,6 +90,51 @@ fxmind -h                  # all options
 - **Retrieval** (`fxmind_query`, panel preload, Claude hook) ranks memories with PT↔EN domain synonyms, drops filler words, matches whole terms and weighs each term by rarity, so a word every memory shares ("player") never decides the ranking. Over-budget memories load only the matching sections; graph neighbours are listed, not loaded.
 - **Claude Code preload** — `fxmind -y --claude` registers `fxmind context --hook` as a `UserPromptSubmit` hook in `.claude/settings.json`: relevant memories are injected before the agent answers (nothing when none match). `FXMIND_PRELOAD=0` disables it, `FXMIND_PRELOAD_BUDGET` sets the budget (default 1200). Try it with `fxmind context "garagem nao abre"`.
 - **MCP tool groups** — FiveM tools are listed only with the `fivem` pack, DB query tools only when a MySQL connection is configured. Override with `FXMIND_MCP_TOOLS=all` or a list (`fivem,db,panel`) in the MCP env.
+
+## Task kinds and playbooks
+
+Memories describe a topic; **playbooks** (`.fxmind/playbooks/<id>.md`, committed) are the procedure for a request you repeat — e.g. *cadastrar skin de arma*: which file, which anchor, what to insert, how to verify.
+
+````md
+---
+id: add-weapon-skin
+kind: config
+triggers: [cadastrar skin de arma, adicionar skin]
+memories: [skins-armas]        # their Pitfalls are appended automatically
+status: draft                  # becomes verified after one task closes Gate C with it
+---
+Inputs:
+- skinId — key in ConfigWeapons (= skinid in DB)
+Steps:
+1. `resources/boxes/weapons.lua` @ `ConfigWeapons.Items = {` — add the entry under general or police
+   ```lua
+   ['{{skinId}}'] = { meta = { weaponModel = '...', originalModel = '...' } },
+   ```
+Verify:
+- ensure boxes; equip the skin in the UI
+````
+
+- **Anchors, not line numbers.** Each step names a file and a text anchor (`{{name}}` = variable part). The current line is resolved when the playbook loads; a missing file/anchor marks it *stale* and the agent falls back to memories.
+- **Detection is deterministic** (no LLM): `fxmind context --hook` matches the request against `triggers[]` (PT/EN, action synonyms). A match injects the playbook — files, current lines, snippets, verify, memory pitfalls — instead of memories.
+- **Every task has a kind** — `config`, `fix`, `mechanic`, `create` — guessed by the hook and confirmed at Gate A (`fxmind_start_task { kind, playbook }`). Without a playbook the kind picks how memories load:
+
+| kind | Loads | Budget |
+|------|-------|--------|
+| config | memory Files + Recipe | 1200 |
+| fix | Files + Pitfalls, symbols from the error | 1500 |
+| mechanic | whole flow + graph neighbours (dfs) | 2200 |
+| create | `modes/create.md` flow | 1200 |
+
+- A **verified** playbook auto-completes Gates A/B (V and C still required); a draft one keeps them manual. UI tasks never auto-complete.
+
+```bash
+fxmind playbooks list                     # id, kind, status, uses
+fxmind playbooks check [id]               # format, files and anchors resolve
+fxmind playbooks match "cadastrar skin"   # kind + playbook the hook would pick
+fxmind playbooks show <id>                # rendered with current lines
+```
+
+MCP: `fxmind_playbook` (list / match / get / check). `FXMIND_PRELOAD_BUDGET` overrides the per-kind budget.
 
 ## Web panel
 
@@ -316,6 +362,7 @@ The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP sp
 | `fxmind_graph` | Rebuild `knowledge-graph.json` + `memory-index.json` (optional HTML via `updateHtml`) |
 | `fxmind_check_update` | Compare local vs GitHub fxmind version (read-only) |
 | `fxmind_list_memories` | List topic memories |
+| `fxmind_playbook` | List / match / get / check playbooks (surgical steps for repeated tasks) |
 | `fxmind_validate_memories` | Schema + path checks + duplicates |
 | `fxmind_drift_check` | Memories referencing a file |
 | `fxmind_start_task` | Begin Task session |

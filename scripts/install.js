@@ -63,6 +63,7 @@ const {
 } = require("./install/integrations");
 const {
   runCorrectionsCli,
+  runPlaybooksCli,
   runFivemCli,
   runDbCli,
   runMigrateCli,
@@ -127,6 +128,10 @@ async function main() {
     console.error(`Unknown memory subcommand: ${sub}`);
     console.error("Usage: fxmind memory validate [--target <dir>] [--strict]");
     process.exit(1);
+  }
+
+  if (argv[0] === "playbooks" || argv[0] === "playbook") {
+    process.exit(runPlaybooksCli(argv.slice(1)));
   }
 
   if (argv[0] === "corrections" || argv[0] === "correction") {

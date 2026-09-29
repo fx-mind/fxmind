@@ -74,7 +74,7 @@ function installSharedFxmind(targetRoot, packIds, installOptions = {}) {
   const destDir = path.join(targetRoot, relativeDestDir);
   migrateProjectLayout(targetRoot);
   fs.mkdirSync(destDir, { recursive: true });
-  for (const name of ["templates", "policy", "graph", "state", "reports", "memory", "modes"]) {
+  for (const name of ["templates", "policy", "graph", "state", "reports", "memory", "playbooks", "modes"]) {
     fs.mkdirSync(path.join(destDir, name), { recursive: true });
   }
   const removed = cleanLegacyFivemFiles(targetRoot, relativeDestDir);

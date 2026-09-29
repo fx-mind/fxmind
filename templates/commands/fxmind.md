@@ -1,6 +1,6 @@
 ---
-description: "fxmind — FiveM project memory — task, create, refactor, judge, reference, audit, learn, memory health, graph, painel, query, path, explain, update"
-argument-hint: "task <implementation> | create <resource> | refactor <resource> | judge [target] | reference | audit [scope] | learn <topic> | memory health [fix] [topic] | graph | painel | query \"<question>\" [--dfs] [--budget N] | path <a> <b> | explain <topic> | update | <question>"
+description: "fxmind — FiveM project memory — task, create, refactor, judge, reference, audit, learn, teach, memory health, graph, painel, query, path, explain, update"
+argument-hint: "task <implementation> | create <resource> | refactor <resource> | judge [target] | reference | audit [scope] | learn <topic> | teach <playbook> | memory health [fix] [topic] | graph | painel | query \"<question>\" [--dfs] [--budget N] | path <a> <b> | explain <topic> | update | <question>"
 ---
 
 # fxmind
@@ -20,6 +20,7 @@ Parse `$ARGUMENTS` (trim, case-insensitive). **Prefer Task for any code/config c
 | `reference` or `reference ...` | `.fxmind/modes/reference.md` |
 | `audit` or `audit ...` | `.fxmind/modes/audit.md` |
 | `learn` or `learn <topic>` / `learn list` | `.fxmind/modes/learn.md` |
+| `teach <name>` | `.fxmind/modes/teach.md` — turn a task that worked into a playbook (surgical steps for repeated requests) |
 | `memory health [fix] [topic]` | `.fxmind/modes/memory-health.md` |
 | `graph` | `.fxmind/modes/graph.md` — **just run `fxmind graph`** |
 | `painel` or `panel` | `.fxmind/modes/painel.md` — run `fxmind painel`, **stay in this chat** as host (no API key) |
@@ -48,6 +49,7 @@ If the fxmind MCP server is registered, prefer these tools over the manual mode 
 | Start Task session | `fxmind_start_task` (save `sessionId`) |
 | Claim files (parallel tabs) | `fxmind_claim_paths` |
 | Active sessions | `fxmind_session_status` |
+| List / match / show / check playbooks | `fxmind_playbook` |
 | Read Gate A/B/V/C status | `fxmind_gate_status` |
 | Record a Gate marker (START/A/B/V/C) | `fxmind_record_gate` |
 | Wait for panel demandas (host chat) | `fxmind_panel_wait` |
@@ -66,6 +68,7 @@ All agents read and write the **same project memory** under `.fxmind/` at the pr
 | `.fxmind/memory/<topic>.md` | Shared topic memories (compact English, `lang: en-compact`) |
 | `.fxmind/memory/_index.md` | Memory router |
 | `.fxmind/modes/<mode>.md` | On-demand mode specs (read only the matched one) |
+| `.fxmind/playbooks/<id>.md` | Surgical instructions for repeated tasks (files, anchors, snippets, verify); injected by the preload when a request matches |
 | `.fxmind/modes/task-verify.md` | Gate V + Judge triggers (load after Implement) |
 | `.fxmind/policy/failure-modes.md` | Behavioral failure map (judge / Task self-audit) |
 | `.fxmind/policy/minimum-evidence.md` | Pack binding evidence set (FiveM when installed) |

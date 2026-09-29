@@ -10,6 +10,26 @@ Quick mode reduces lookup and narration, not correctness. Use `trivial: true` on
 
 Read `.fxmind/modes/task-verify.md` before implementation when UI/runtime evidence is needed, so verification is feasible before coding.
 
+## Kind and playbook
+
+Every task has a **kind**; it decides how context loads. State `KIND: <kind>` in Gate A (the preload gives a first guess — correct it when wrong) and pass `kind` to `fxmind_start_task`.
+
+| kind | What it is | Context to load | Extra rules |
+|------|-----------|-----------------|-------------|
+| `config` | Register/change a data entry: item, skin, price, permission, list row | **Playbook** if one matched; else memory `Files` + `Recipe` only | No design, no broad search. If no playbook existed and it worked, offer `/fxmind teach <name>` at Gate C |
+| `fix` | Defect: error, "não funciona", wrong result | Memory `Files` + `Pitfalls` + `symbols[]` matching the error, recent `corrections`, console tail | Reproduce first, name the cause, run TWINS |
+| `mechanic` | Change how existing behavior works | Whole memory flow + graph neighbours (callers, events, exports) + relevant principle IDs | INTENT (code / check / spec) before editing |
+| `create` | New resource | `.fxmind/modes/create.md` | Design + approval first |
+
+**Playbook** (`.fxmind/playbooks/<id>.md`): the preload injects a `# fxmind — playbook` block when the request matches one — files, current line numbers of the anchors, snippets, verify checks and the related memory Pitfalls. It replaces discovery:
+
+1. Confirm the request fits the playbook and collect its inputs; ask only for what is missing.
+2. `fxmind_start_task { kind, playbook }`. A **verified** playbook auto-completes Gates A and B; a `draft` one still records A/B normally. V and C are always required.
+3. Read ~25 lines around each listed anchor, edit, then run the playbook's `Verify` checks at Gate V. Skip `fxmind_query` and repository search.
+4. File or anchor not found, or the code contradicts a step → stop, say so, continue with the memory flow, and at Gate C fix the playbook (`.fxmind/modes/teach.md`). Never edit at a guessed location.
+
+`fxmind_playbook` (MCP) lists, matches, shows and checks playbooks when the preload did not include one but the request looks like a repeated task.
+
 ## Start and context (A → B)
 
 1. `fxmind_start_task` with a compact goal note and `ui: true` for visual/interaction changes (including backend changes that alter UI behavior). Keep the returned sessionId and pass it to gate/claim calls. Reuse FXMIND_SESSION_ID from panel context when supplied.
@@ -43,6 +63,6 @@ Review the entire task diff for requirement coverage, invariants, boundary failu
 
 Run `.fxmind/modes/task-verify.md`. Record V with structured evidence. Failed or blocked verification keeps V incomplete; don't call C or claim completion. Fix observed defects within the authorized task, then repeat affected checks. Run Judge when the verification mode requires it; fix actionable findings and re-verify.
 
-Gate C requires passing, current V evidence. Save reusable, verified knowledge only; otherwise note "mudança pontual". Validate changed memories. Record reusable user corrections when already authorized; otherwise offer to save them once. Remove temporary instrumentation before final verification.
+Gate C requires passing, current V evidence. Save reusable, verified knowledge only; otherwise note "mudança pontual". For a `config` task done without a playbook, or one that deviated from its playbook, offer `/fxmind teach <name>` once (the diff you just verified is the source). Validate changed memories. Record reusable user corrections when already authorized; otherwise offer to save them once. Remove temporary instrumentation before final verification.
 
 Use gate notes as the audit record; don't duplicate long markers/checklists in chat. Final reply: short and direct — actual outcome, then only blockers or the next user action.

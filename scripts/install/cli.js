@@ -74,6 +74,7 @@ Without global install:
   ${npxInstall("hooks uninstall-mcp")} Remove fxmind MCP entries for installed agents
   ${npxInstall("hooks status")}       Show installed hooks
   ${npxInstall("memory validate")}    Validate memory frontmatter + duplicates
+  ${npxInstall("playbooks list")}     Playbooks: surgical instructions for repeated tasks (show|check|match)
   ${npxInstall("corrections list")}   List skill-improvement corrections backlog
   ${npxInstall("corrections export")} Export open corrections for editing best-practices
   ${npxInstall("fivem install")}      Configure local RCON + Cursor fivem-start tee

@@ -1,0 +1,11 @@
+description = "Teach — turn a task that worked into a playbook for repeated requests"
+
+prompt = """
+**Create or fix a playbook.**
+
+**Name / instruction:** {{args}}
+
+Read **`.fxmind/modes/teach.md`** (source of truth) and follow it: source the steps from a verified diff (or the user's instruction), write `.fxmind/playbooks/<id>.md` from `.fxmind/templates/playbook.md`, then run `fxmind playbooks check <id>`.
+Do not implement code. Anchors are text, never line numbers; every path must exist.
+Reply short and direct — outcome first.
+"""

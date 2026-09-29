@@ -798,7 +798,7 @@ function queryGraph(targetRoot, question, options = {}) {
   const loaded = [];
   let spent = 0;
   const pushMemory = (doc, cap, score, matched) => {
-    const fitted = retrieval.fitMemory(doc, concepts, cap);
+    const fitted = retrieval.fitMemory(doc, concepts, cap, options.priority);
     const tokens = retrieval.estimateTokens(fitted.content);
     loaded.push({
       slug: doc.memory.slug,
@@ -917,6 +917,23 @@ function startTask(targetRoot, extra = {}) {
   } catch {
     // gitignore heal is best-effort
   }
+  const playbooks = require("./lib/playbooks");
+  let kind = playbooks.normalizeKind(extra.kind);
+  let playbookId = null;
+  let playbookAuto = false;
+  let playbookWarning = "";
+  if (extra.playbook) {
+    const playbook = playbooks.getPlaybook(targetRoot, extra.playbook);
+    if (!playbook) {
+      playbookWarning = `Playbook not found: ${extra.playbook}`;
+    } else {
+      const resolved = playbooks.resolveSteps(targetRoot, playbook);
+      playbookId = playbook.id;
+      kind = kind || playbook.kind;
+      if (resolved.stale) playbookWarning = `Playbook ${playbook.id} is stale: ${resolved.problems.join("; ")}`;
+      else playbookAuto = playbook.status === "verified";
+    }
+  }
   const data = taskSessions.startSession(targetRoot, {
     note: extra.note || "",
     trivial: Boolean(extra.trivial),
@@ -924,14 +941,19 @@ function startTask(targetRoot, extra = {}) {
     autoStarted: Boolean(extra.autoStarted),
     sessionId: extra.sessionId,
     conversationId: extra.conversationId,
+    kind,
+    playbook: playbookId,
+    playbookAuto,
   });
   appendMetric(targetRoot, {
     event: "task_start",
     sessionId: data.sessionId,
     autoStarted: data.autoStarted,
     trivial: data.trivial,
+    kind,
+    playbook: playbookId,
   });
-  return withUserReply(data, "START");
+  return withUserReply(playbookWarning ? { ...data, playbookWarning } : data, "START");
 }
 
 function recordGate(targetRoot, gate, value = true, extra = {}) {
@@ -944,6 +966,8 @@ function recordGate(targetRoot, gate, value = true, extra = {}) {
       autoStarted: false,
       trivial: Boolean(extra.trivial),
       ui: Boolean(extra.ui),
+      kind: extra.kind,
+      playbook: extra.playbook,
       sessionId: extra.sessionId,
       conversationId: extra.conversationId,
     });
@@ -969,6 +993,16 @@ function recordGate(targetRoot, gate, value = true, extra = {}) {
     taskActive: data.taskActive,
     sessionId: data.sessionId,
   });
+  if (letter === "C" && value && data.playbook) {
+    // Gate C requires a passing V, so a draft playbook that got this far worked.
+    let promoted = false;
+    try {
+      promoted = require("./lib/playbooks").markVerified(targetRoot, data.playbook);
+    } catch {
+      // promotion is best-effort; the task itself is already complete
+    }
+    appendMetric(targetRoot, { event: "playbook_done", sessionId: data.sessionId, playbook: data.playbook, promoted });
+  }
   return withUserReply(data, letter);
 }
 
