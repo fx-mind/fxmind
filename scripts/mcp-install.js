@@ -82,7 +82,19 @@ function customServerPath() {
     : own;
 }
 
-function buildFxmindMcpEntry() {
+/**
+ * Claude Code only expands ${VAR} (not Cursor's ${env:VAR} / ${workspaceFolder}):
+ * with the Cursor form node receives the literal path and dies with "Cannot find
+ * module". The server falls back to CLAUDE_PROJECT_DIR, so FXMIND_TARGET is dropped.
+ */
+function claudeMcpEntry(entry) {
+  const claude = { ...entry, env: { ...entry.env } };
+  delete claude.env.FXMIND_TARGET;
+  if (Array.isArray(claude.args)) claude.args = claude.args.map((arg) => arg.replace("${env:", "${"));
+  return claude;
+}
+
+function buildFxmindMcpEntry(agentId) {
   // Requires: npm install -g github:fx-mind/fxmind
   //
   // Windows/Cursor: Electron spawn(shell:false) cannot run npm shims
@@ -121,7 +133,7 @@ function buildFxmindMcpEntry() {
     entry.env.FXMIND_FIVEM_LOG = process.env.FXMIND_FIVEM_LOG;
   }
 
-  return entry;
+  return agentId === "claude" ? claudeMcpEntry(entry) : entry;
 }
 
 function buildFxmindVscodeMcpServer() {
@@ -551,7 +563,7 @@ function installMcpForAgent(targetRoot, agentId, options = {}) {
 
   const projectRoot = path.resolve(targetRoot);
   const configPath = path.join(projectRoot, target.configRel);
-  const entry = buildFxmindMcpEntry();
+  const entry = buildFxmindMcpEntry(agentId);
   const vscodeServer = buildFxmindVscodeMcpServer();
 
   let changed = false;

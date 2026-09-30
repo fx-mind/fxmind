@@ -77,3 +77,29 @@ describe("mcp server path", () => {
     assert.deepEqual(mcp.buildFxmindMcpEntry().args, ["${env:APPDATA}/npm/node_modules/fxmind/scripts/mcp-server.js"]);
   });
 });
+
+describe("claude mcp entry", () => {
+  it("uses Claude Code's ${VAR} expansion and no FXMIND_TARGET", { skip: process.platform !== "win32" }, () => {
+    const entry = mcp.buildFxmindMcpEntry("claude");
+    assert.deepEqual(entry.args, ["${APPDATA}/npm/node_modules/fxmind/scripts/mcp-server.js"]);
+    assert.equal(entry.env.FXMIND_TARGET, undefined);
+    assert.equal(mcp.buildFxmindMcpEntry("cursor").env.FXMIND_TARGET, "${workspaceFolder}");
+    assert.match(mcp.buildFxmindMcpEntry("cursor").args[0], /\$\{env:APPDATA\}/);
+  });
+
+  it("writes it to .mcp.json and heals an entry written in Cursor syntax", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fxmcp-claude-"));
+    try {
+      fs.writeFileSync(
+        path.join(dir, ".mcp.json"),
+        JSON.stringify({ mcpServers: { fxmind: { command: "node", args: ["${env:APPDATA}/x.js"], env: { FXMIND_TARGET: "${workspaceFolder}" } }, other: { command: "x" } } }),
+      );
+      mcp.installMcpForAgent(dir, "claude");
+      const config = JSON.parse(fs.readFileSync(path.join(dir, ".mcp.json"), "utf8"));
+      assert.ok(config.mcpServers.other);
+      assert.doesNotMatch(JSON.stringify(config.mcpServers.fxmind), /env:|workspaceFolder/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
