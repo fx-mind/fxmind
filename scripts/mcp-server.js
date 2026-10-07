@@ -862,6 +862,7 @@ function dispatchTool(name, args) {
         if (!result?.ok) return result;
         const record = independentReview.recordReview(root, {
           sessionId: session.sessionId,
+          session,
           files,
           reviewer: { agent: "reviewer", cliId: result.cliId || null },
           output: result.output || "",

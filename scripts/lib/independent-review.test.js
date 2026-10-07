@@ -20,6 +20,7 @@ describe("independent review artifact", () => {
       const session = { sessionId: "s1", trivial: false, kind: "fix" };
       review.recordReview(root, {
         sessionId: "s1",
+        session,
         files: ["server.lua"],
         reviewer: { agent: "reviewer", cliId: "codex" },
         output: "Looks correct.\nVERDICT: VERIFIED",
@@ -27,6 +28,39 @@ describe("independent review artifact", () => {
       assert.equal(review.assertVerifiedFresh(root, session, ["server.lua"]).verdict, "verified");
       fs.writeFileSync(path.join(root, "server.lua"), "local x = 2\n");
       assert.throws(() => review.assertVerifiedFresh(root, session, ["server.lua"]), /stale/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("invalidates a verified review when the task context changes", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fx-review-"));
+    try {
+      fs.mkdirSync(path.join(root, ".fxmind", "state"), { recursive: true });
+      fs.writeFileSync(path.join(root, "server.lua"), "local x = 1\n");
+      const session = {
+        sessionId: "s-context",
+        trivial: false,
+        kind: "fix",
+        note: "fix disconnect save",
+        gates: { A: { note: "fix disconnect save" } },
+      };
+      review.recordReview(root, {
+        sessionId: session.sessionId,
+        session,
+        files: ["server.lua"],
+        reviewer: { agent: "reviewer" },
+        output: "Reviewed current task.\nVERDICT: VERIFIED",
+      });
+      assert.equal(review.assertVerifiedFresh(root, session, ["server.lua"]).verdict, "verified");
+      const changedGoal = {
+        ...session,
+        gates: { A: { note: "change disconnect behavior instead" } },
+      };
+      assert.throws(
+        () => review.assertVerifiedFresh(root, changedGoal, ["server.lua"]),
+        /task goal\/kind\/playbook changed/,
+      );
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -40,6 +74,7 @@ describe("independent review artifact", () => {
       const session = { sessionId: "s2", trivial: false, kind: "fix" };
       review.recordReview(root, {
         sessionId: "s2",
+        session,
         files: ["server.lua"],
         reviewer: { agent: "reviewer" },
         output: "Potential issue.\nVERDICT: VERIFIED WITH CAVEATS",

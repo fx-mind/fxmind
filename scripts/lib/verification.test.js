@@ -168,6 +168,7 @@ describe("verification gates", () => {
 
     independentReview.recordReview(root, {
       sessionId: session.sessionId,
+      session,
       files: ["server.lua"],
       reviewer: { agent: "reviewer", cliId: "codex" },
       output: "No blocking defect, but one caveat.\nVERDICT: VERIFIED WITH CAVEATS",
@@ -179,6 +180,7 @@ describe("verification gates", () => {
 
     independentReview.recordReview(root, {
       sessionId: session.sessionId,
+      session,
       files: ["server.lua"],
       reviewer: { agent: "reviewer", cliId: "codex" },
       output: "Reviewed current source and callers.\nVERDICT: VERIFIED",

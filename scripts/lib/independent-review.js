@@ -66,6 +66,22 @@ function fingerprint(snap) {
   return crypto.createHash("sha256").update(JSON.stringify(snap)).digest("hex");
 }
 
+function reviewContext(session) {
+  const goal = session?.gates?.A?.note || session?.note || "";
+  return {
+    goal: String(goal),
+    kind: session?.kind || null,
+    playbook: session?.playbook || null,
+    ui: Boolean(session?.ui),
+  };
+}
+
+function contextFingerprint(session) {
+  return crypto.createHash("sha256")
+    .update(JSON.stringify(reviewContext(session)))
+    .digest("hex");
+}
+
 function parseVerdict(output) {
   const lines = String(output || "")
     .split(/\r?\n/)
@@ -129,6 +145,7 @@ function recordReview(root, options) {
     files: normalized,
     snapshot: snap,
     fingerprint: fingerprint(snap),
+    contextFingerprint: contextFingerprint(options?.session || {}),
     output: String((options && options.output) || "").slice(0, 12000),
   };
   fs.mkdirSync(stateDir(root), { recursive: true });
@@ -166,11 +183,15 @@ function assertVerifiedFresh(root, session, files) {
   if (fingerprint(current) !== record.fingerprint) {
     throw new Error("Independent review is stale: code changed after review. Run it again.");
   }
+  if (!record.contextFingerprint || record.contextFingerprint !== contextFingerprint(session)) {
+    throw new Error("Independent review is stale: task goal/kind/playbook changed after review. Run it again.");
+  }
   return {
     reviewId: record.reviewId,
     reviewer: record.reviewer,
     verdict: record.verdict,
     fingerprint: record.fingerprint,
+    contextFingerprint: record.contextFingerprint,
   };
 }
 
@@ -178,6 +199,8 @@ module.exports = {
   changedFiles,
   snapshot,
   fingerprint,
+  reviewContext,
+  contextFingerprint,
   parseVerdict,
   requiresIndependentReview,
   buildPrompt,
