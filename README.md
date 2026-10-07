@@ -198,7 +198,7 @@ Gate V now requires structured `evidence` (`files`, `review`, `checks`) through
 `fxmind_record_gate`; a note-only call no longer completes verification. UI changes
 also require browser interactions, visual/console observations and an existing
 screenshot/trace file. Declare `ui: true` at task start for backend-driven UI changes.
-Failed or blocked checks keep V incomplete; C rejects code changed since V.
+Failed or blocked checks keep V incomplete; C rejects code changed since V. Lua files also pass a deterministic lexical-scope check. Normal `fix`/`mechanic`/`create` tasks, Lua changes and multi-file changes require `fxmind_independent_review`: a fresh read-only reviewer sees the original goal and actual source/diff (not the executor's rationale), and Gate V accepts only a strict `VERIFIED` artifact bound to the current file fingerprints.
 See `templates/fxmind/modes/task-verify.md` for the contract.
 
 Quick mode reduces overhead without bypassing quality checks. `fxmind_search`
@@ -208,8 +208,7 @@ truncated memories include their source path for targeted follow-up reading.
 
 Update the package **and installed project templates/hooks together**, then restart
 the agent/MCP session. Existing V markers without structured evidence must be recorded
-again. These controls validate evidence structure and file freshness; they cannot
-prove that an agent's observations are truthful. Independent review remains necessary.
+again. Gate V now combines evidence structure/freshness with deterministic Lua lexical-scope checks and, on meaningful tasks, an independent reviewer artifact. Runtime/browser observations still cannot be cryptographically authenticated; Judge remains the stronger proof path when risk requires it.
 
 Just ask for the change in natural language — Task mode runs **automatically** (no `/fxmind task` required). With Cursor hooks installed:
 
@@ -218,13 +217,14 @@ Just ask for the change in natural language — Task mode runs **automatically**
 3. **Gate A** — CLASS, Done+verify, INTENT if needed → `fxmind_record_gate` A
 4. **Gate B** — load memories → `fxmind_record_gate` B
 5. **Implement** — surgical edits; max 3 fix→verify retries
-6. **Gate V** — read `.fxmind/modes/task-verify.md`; observe Done (+ TWINS) → `fxmind_record_gate` V (**required before C**)
-7. **Judge** — when task-verify says mandatory (blast radius / money-permission / INTENT)
-8. **Gate C** — post-task learn → `fxmind_record_gate` C (clears session)
+6. **Independent review** — when required, call `fxmind_independent_review`; fix `REFUTED` / `VERIFIED WITH CAVEATS`, then rerun until strict `VERIFIED`
+7. **Gate V** — read `.fxmind/modes/task-verify.md`; deterministic checks + observed Done (+ TWINS) → `fxmind_record_gate` V (**required before C**)
+8. **Judge** — when task-verify says mandatory (blast radius / money-permission / INTENT)
+9. **Gate C** — post-task learn → `fxmind_record_gate` C (clears session)
 
 Prove claims: **`/fxmind judge`**. Behavioral map: `.fxmind/policy/failure-modes.md`. FiveM evidence: `.fxmind/policy/minimum-evidence.md`.
 
-**Gates are session state (MCP only).** Agents must not Write `.fxmind/state/fxmind-gates.json` — `gate-guard` blocks it. The file is gitignored (ephemeral).
+**Gates and independent-review artifacts are managed session state (MCP only).** Agents must not write `.fxmind/state/fxmind-gates.json`, `.fxmind/state/sessions/`, or `.fxmind/state/reviews/` directly — `gate-guard` blocks them. The state tree is gitignored (ephemeral).
 
 `/fxmind task <request>` still works as an explicit shortcut.
 
@@ -367,6 +367,7 @@ The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP sp
 | `fxmind_drift_check` | Memories referencing a file |
 | `fxmind_start_task` | Begin Task session |
 | `fxmind_gate_status` / `fxmind_record_gate` | Gates START/A/B/V/C (session only) |
+| `fxmind_independent_review` | Fresh read-only reviewer; stores a strict verdict tied to the current task files/fingerprint. Required before V for Lua, multi-file and normal fix/mechanic/create tasks. |
 | `fxmind_record_correction` / `fxmind_list_corrections` | Skill-improvement backlog |
 | `fxmind_fivem_status` / `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` | Local FXServer RCON + log tail (dev). **Status probes reachability** — use cmd/tail only when `available: true`; otherwise ask user to run console commands manually. |
 | `fxmind_fivem_nui_wire` / `fxmind_fivem_nui_dump` / `fxmind_fivem_nui_unwire` | Agent TEMP-wires a NUI resource, dumps structured state, then **must unwire**. Better than screenshots. |

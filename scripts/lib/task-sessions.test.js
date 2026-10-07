@@ -37,8 +37,8 @@ describe("task-sessions", () => {
   });
 
   it("Gate C on one session does not close the other", () => {
-    const a = startTask(dir, { note: "A" });
-    const b = startTask(dir, { note: "B" });
+    const a = startTask(dir, { note: "A", trivial: true });
+    const b = startTask(dir, { note: "B", trivial: true });
 
     for (const id of [a.sessionId, b.sessionId]) {
       recordGate(dir, "A", true, { sessionId: id });
@@ -54,8 +54,8 @@ describe("task-sessions", () => {
   });
 
   it("claim_paths rejects conflicts and releases on Gate C", () => {
-    const a = startTask(dir, { note: "A" });
-    const b = startTask(dir, { note: "B" });
+    const a = startTask(dir, { note: "A", trivial: true });
+    const b = startTask(dir, { note: "B", trivial: true });
 
     const first = claimPaths(dir, ["resources/radio/client.lua"], { sessionId: a.sessionId });
     assert.equal(first.ok, true);
@@ -71,6 +71,34 @@ describe("task-sessions", () => {
 
     const after = claimPaths(dir, ["resources/radio/client.lua"], { sessionId: b.sessionId });
     assert.equal(after.ok, true);
+  });
+
+  it("explicit start enriches an already active auto-started session", () => {
+    const auto = taskSessions.startSession(dir, { sessionId: "auto-session", autoStarted: true });
+    const enriched = taskSessions.startSession(dir, {
+      sessionId: auto.sessionId,
+      kind: "fix",
+      playbook: "disconnect-save",
+      note: "fix disconnect save",
+      conversationId: "chat-1",
+    });
+    assert.equal(enriched.kind, "fix");
+    assert.equal(enriched.playbook, "disconnect-save");
+    assert.equal(enriched.note, "fix disconnect save");
+    assert.equal(enriched.conversationId, "chat-1");
+  });
+
+  it("invalidates planning gates when an active task goal changes", () => {
+    const session = startTask(dir, { note: "goal A" });
+    recordGate(dir, "A", true, { sessionId: session.sessionId, note: "goal A" });
+    recordGate(dir, "B", true, { sessionId: session.sessionId });
+    const changed = taskSessions.startSession(dir, {
+      sessionId: session.sessionId,
+      note: "goal B",
+    });
+    assert.equal(changed.note, "goal B");
+    assert.equal(changed.gates.A, undefined);
+    assert.equal(changed.gates.B, undefined);
   });
 
   it("requires sessionId when multiple sessions are active", () => {

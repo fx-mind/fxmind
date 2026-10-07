@@ -29,7 +29,8 @@ Short rules with IDs. Cite the IDs in Gate A/B notes and in the Gate V `review` 
 - **C2 Readable flow.** Domain names, early returns, `local` everything, no globals, no deep nesting, no clever metatables. One file per side (`shared/config`, `server`, `client`, `nui`) unless size demands a split by domain — never a `utils` dump.
 - **C3 Validate once at the boundary.** Type/range/ownership/permission checks at the event entry, not repeated inside helpers.
 - **C4 Clean diff.** No debug prints, commented-out code, dead code or unrelated formatting.
+- **C5 Lexical locals.** A local helper/value must be declared in a lexical scope visible to every caller before that caller is defined. Default order is callee → caller. A later `local function name()` does not retroactively bind earlier references; those earlier references resolve outside that later local and may be nil globals. Use `local name` + later `name = function(...) ... end` only for genuine cyclic dependencies. Never hide a helper inside a narrower block than its caller.
 
 ## Review question for every artifact
 
-For each new event, callback, loop, query, statebag and function: who receives it (N1), how big is it (N2/N3), how often does it run (N4/T1), does it touch the DB (D1), could the client read it itself (N5), and would the code be shorter without it (C1)?
+For each new event, callback, loop, query, statebag and function: who receives it (N1), how big is it (N2/N3), how often does it run (N4/T1), does it touch the DB (D1), could the client read it itself (N5), would the code be shorter without it (C1), and are every local declaration/caller lexically ordered and visible (C5)?

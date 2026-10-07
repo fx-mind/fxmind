@@ -16,7 +16,7 @@ Audit the target Lua/JS resource(s) for **security**, **performance**, and **pat
 
 ## Step 1 — Load standards
 
-Read **`.fxmind/policy/fivem-principles.md`** first: every finding cites the violated principle ID (N1–N6, D1–D3, T1–T2, C1–C4) next to the skill §.
+Read **`.fxmind/policy/fivem-principles.md`** first: every finding cites the violated principle ID (N1–N7, D1–D3, T1–T2, C1–C5) next to the skill §.
 
 Then read from **`.fxmind/skills/`** (installed from [fivem-skill](https://github.com/proelias7/fivem-skill) via fxmind pack):
 

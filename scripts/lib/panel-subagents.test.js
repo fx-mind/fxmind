@@ -36,7 +36,8 @@ describe("panel-subagents", () => {
     const result = subagents.getSubagentSettings(projectRoot);
     assert.equal(result.ok, true);
     assert.equal(result.installed, false);
-    assert.equal(result.subagents.length, 4);
+    assert.equal(result.subagents.length, 5);
+    assert.ok(result.subagents.some((a) => a.id === "reviewer"));
     assert.equal(result.subagents[0].model, null);
   });
 

@@ -27,6 +27,7 @@ const { checkForUpdate } = require("./lib/update-check");
 const panelHost = require("./lib/panel-host");
 const { searchSource } = require("./lib/source-search");
 const { formatQueryResult } = require("./lib/memory-retrieval");
+const independentReview = require("./lib/independent-review");
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_INFO = { name: "fxmind", version: require("../package.json").version };
@@ -557,15 +558,35 @@ const TOOL_DEFS = [
     },
   },
   {
+    name: "fxmind_independent_review",
+    description:
+      "Run a fresh read-only reviewer on the current Task diff, persist a server-created review artifact bound to the exact file fingerprint, and return its verdict. Required before Gate V for Lua, multi-file and normal fix/mechanic/create tasks.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sessionId: SESSION_ID_PROP.sessionId,
+        executorCliId: {
+          type: "string",
+          description: "Optional executor CLI id so FxMind can prefer a different provider for the reviewer.",
+        },
+        files: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional task files when Git discovery/claims are unavailable. Gate V still checks the reviewed set against its actual files.",
+        },
+      },
+    },
+  },
+  {
     name: "fxmind_subagent_run",
     description:
-      "Run a scoped sub-task on a fxmind subagent (provider set per role in the panel) and wait for its final text. explore: broad read-only discovery; reader: known paths; general: small bounded edit/command; scout: external docs/APIs.",
+      "Run a scoped sub-task on a fxmind subagent (provider set per role in the panel) and wait for its final text. explore: discovery; reader: known paths; general: bounded implementation; scout: external docs; reviewer: independent read-only verification.",
     inputSchema: {
       type: "object",
       properties: {
         agent: {
           type: "string",
-          description: "Subagent id: explore | reader | general | scout.",
+          description: "Subagent id: explore | reader | general | scout | reviewer.",
         },
         prompt: { type: "string", description: "The scoped task/question for the subagent." },
         paths: {
@@ -817,6 +838,45 @@ function dispatchTool(name, args) {
 
     case "fxmind_panel_fail":
       return panelHost.fail(args.threadId, args.error);
+
+    case "fxmind_independent_review": {
+      const session = tools.gateStatus(root, sessionExtra(args));
+      if (!session?.taskActive || !session.sessionId) {
+        return { ok: false, error: "no_active_session", message: "Start the Task before independent review." };
+      }
+      const files = Array.isArray(args.files) && args.files.length
+        ? [...new Set(args.files)]
+        : session.claimedPaths?.length
+          ? [...session.claimedPaths]
+          : independentReview.changedFiles(root);
+      if (!files.length) {
+        return { ok: false, error: "no_changed_files", message: "No task files are available for independent review." };
+      }
+      const panelCli = require("./lib/panel-cli");
+      return Promise.resolve(panelCli.runSubagentTask(root, {
+        agent: "reviewer",
+        prompt: independentReview.buildPrompt(session, files),
+        paths: files,
+        avoidCliId: args.executorCliId || undefined,
+      })).then((result) => {
+        if (!result?.ok) return result;
+        const record = independentReview.recordReview(root, {
+          sessionId: session.sessionId,
+          session,
+          files,
+          reviewer: { agent: "reviewer", cliId: result.cliId || null },
+          output: result.output || "",
+        });
+        return {
+          ok: record.verdict === "verified",
+          reviewId: record.reviewId,
+          verdict: record.verdict,
+          reviewer: record.reviewer,
+          fingerprint: record.fingerprint,
+          output: result.output || "",
+        };
+      });
+    }
 
     case "fxmind_subagent_run": {
       // Lazy require: panel-cli.js pulls in the panel's thread store on

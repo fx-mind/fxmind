@@ -24,7 +24,7 @@ Quick/full adjusts effort and narration, not quality requirements. Quick does no
 
 A `# fxmind — playbook` block in the preloaded context is the procedure for a repeated request: follow its files/anchors, skip discovery, pass `kind` + `playbook` to `fxmind_start_task`. Task kind (config / fix / mechanic / create) is stated at Gate A; see `task.md`. Use relevant preloaded memories, otherwise `fxmind_query`. Read source to confirm memory claims. If retrieval lacks coverage, use bounded permitted source search; never invent paths or repeat blind queries. Load only relevant references/corrections.
 
-Gates are MCP-managed: start → A → B → implement/review → V with evidence → C. Keep sessionId; parallel agents claim task paths before editing. Never write gate/session JSON directly. Missing MCP prevents gate-controlled edits but need not prevent read-only investigation.
+Gates are MCP-managed: start → A → B → implement/review → independent review when required → V with evidence → C. Lua, multi-file and normal fix/mechanic/create tasks call `fxmind_independent_review`; only strict VERIFIED passes, and its file fingerprint must still match at V. Keep sessionId; parallel agents claim task paths before editing. Never write gate/session JSON directly. Missing MCP prevents gate-controlled edits but need not prevent read-only investigation.
 
 Read gate requirements from the mode files instead of duplicating them in chat. User-facing replies stay short and direct: outcome first, no long explanations. Failed/blocked V stays open. Browser interaction, screenshot inspection and console observations are required for UI; build alone is insufficient. State missing verification honestly.
 

@@ -38,9 +38,11 @@ describe("panel-cli", () => {
     assert.ok(clis.every((c) => "installed" in c && "status" in c));
   });
 
-  it("getAgentSettings defaults to cli mode", () => {
+  it("getAgentSettings defaults to cli mode with independent judge on diff", () => {
     const settings = panelCli.getAgentSettings();
     assert.equal(settings.mode, "cli");
+    assert.equal(settings.judge.enabled, true);
+    assert.equal(settings.judge.trigger, "on_diff");
     assert.ok(!JSON.stringify(settings).includes("sk-"));
   });
 
@@ -174,6 +176,11 @@ describe("panel-cli", () => {
 
       const scout = panelCli.readSubagentPersona("scout");
       assert.equal(scout.denyEdit, true);
+
+      const reviewer = panelCli.readSubagentPersona("reviewer");
+      assert.equal(reviewer.denyEdit, true);
+      assert.equal(reviewer.denyBash, true);
+      assert.match(reviewer.body, /independent reviewer/i);
     });
 
     it("does not force read-only on the general subagent (it's a bounded implementer)", () => {
