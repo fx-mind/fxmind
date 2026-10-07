@@ -15,7 +15,7 @@ function tmpProject() {
 }
 
 describe("OpenCode subagents", () => {
-  it("copies explore/reader/general/scout and delegate-io", () => {
+  it("copies explore/reader/general/scout/reviewer and delegate-io", () => {
     const root = tmpProject();
     const installed = installOpenCodeSubagents(root);
 
@@ -23,6 +23,7 @@ describe("OpenCode subagents", () => {
     assert.ok(installed.includes(".opencode/agents/reader.md"));
     assert.ok(installed.includes(".opencode/agents/general.md"));
     assert.ok(installed.includes(".opencode/agents/scout.md"));
+    assert.ok(installed.includes(".opencode/agents/reviewer.md"));
     assert.ok(installed.includes(".opencode/instructions/fxmind-tools-only.md"));
 
     const explore = fs.readFileSync(path.join(root, ".opencode", "agents", "explore.md"), "utf8");
@@ -45,11 +46,13 @@ describe("OpenCode subagents", () => {
     assert.equal(config.agent.explore.permission.glob, "allow");
     assert.equal(config.agent.explore.model, "opencode/muse-spark-1.2-contributor-free");
     assert.equal(config.agent.reader.model, "opencode/muse-spark-1.2-contributor-free");
-    assert.equal(config.agent.general.model, "opencode/muse-spark-1.2-contributor-free");
+    assert.equal(config.agent.general.model, undefined);
+    assert.equal(config.agent.reviewer.model, undefined);
     assert.equal(config.agent.explore.mode, "subagent");
     assert.equal(config.agent.reader.mode, "subagent");
     assert.equal(config.agent.general.mode, "subagent");
     assert.equal(config.agent.scout.mode, "subagent");
+    assert.equal(config.agent.reviewer.mode, "subagent");
   });
 
   it("preserves existing mcp entry and agent models", () => {

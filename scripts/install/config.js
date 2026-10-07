@@ -72,7 +72,7 @@ const LEGACY_FIVEM_FILES = [
   path.join("scripts", "update-knowledge-graph.js"),
   path.join("scripts", "update-knowledge-graph.py"),
 ];
-const OPENCODE_SUBAGENT_NAMES = ["explore", "reader", "general", "scout"];
+const OPENCODE_SUBAGENT_NAMES = ["explore", "reader", "general", "scout", "reviewer"];
 const OPENCODE_INSTRUCTION_FILE = "delegate-io.md";
 const OPENCODE_TOOLS_INSTRUCTION_FILE = "fxmind-tools-only.md";
 const OPENCODE_INSTRUCTION_REL = path.join(".opencode", "instructions", OPENCODE_INSTRUCTION_FILE);

@@ -5,6 +5,7 @@ const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const { startTask, recordGate, gateStatus, claimPaths } = require("../fxmind-tools");
+const independentReview = require("./independent-review");
 
 describe("verification gates", () => {
   let root;
@@ -128,6 +129,69 @@ describe("verification gates", () => {
     assert.throws(() => record(sessionId), /requires evidence/);
     assert.equal(gateStatus(root, { sessionId }).gates.V.complete, false);
     assert.throws(() => recordGate(root, "C", true, { sessionId }), /requires Gate V/);
+  });
+
+  it("blocks a Lua forward-reference defect before independent review", () => {
+    fs.writeFileSync(path.join(root, "server.lua"), [
+      "local function playerDropped()",
+      "  syncDatatableNeeds()",
+      "end",
+      "",
+      "local function syncDatatableNeeds()",
+      "end",
+    ].join("\n"));
+    const session = startTask(root, { kind: "fix", note: "fix disconnect save" });
+    recordGate(root, "A", true, { sessionId: session.sessionId, note: "fix disconnect save" });
+    recordGate(root, "B", true, { sessionId: session.sessionId });
+    assert.throws(
+      () => record(session.sessionId, evidence(["server.lua"])),
+      /Lua lexical-scope verification failed.*syncDatatableNeeds/,
+    );
+  });
+
+  it("requires a strict fresh independent review for normal Lua fixes", () => {
+    fs.writeFileSync(path.join(root, "server.lua"), [
+      "local function syncDatatableNeeds()",
+      "end",
+      "",
+      "local function playerDropped()",
+      "  syncDatatableNeeds()",
+      "end",
+    ].join("\n"));
+    const session = startTask(root, { kind: "fix", note: "fix disconnect save" });
+    recordGate(root, "A", true, { sessionId: session.sessionId, note: "fix disconnect save" });
+    recordGate(root, "B", true, { sessionId: session.sessionId });
+    assert.throws(
+      () => record(session.sessionId, evidence(["server.lua"])),
+      /requires a fresh independent review/,
+    );
+
+    independentReview.recordReview(root, {
+      sessionId: session.sessionId,
+      files: ["server.lua"],
+      reviewer: { agent: "reviewer", cliId: "codex" },
+      output: "No blocking defect, but one caveat.\nVERDICT: VERIFIED WITH CAVEATS",
+    });
+    assert.throws(
+      () => record(session.sessionId, evidence(["server.lua"])),
+      /did not verify/,
+    );
+
+    independentReview.recordReview(root, {
+      sessionId: session.sessionId,
+      files: ["server.lua"],
+      reviewer: { agent: "reviewer", cliId: "codex" },
+      output: "Reviewed current source and callers.\nVERDICT: VERIFIED",
+    });
+    assert.equal(record(session.sessionId, evidence(["server.lua"])).gates.V.complete, true);
+
+    fs.appendFileSync(path.join(root, "server.lua"), "\n-- changed after review\n");
+    recordGate(root, "A", true, { sessionId: session.sessionId, note: "re-open after edit" });
+    recordGate(root, "B", true, { sessionId: session.sessionId });
+    assert.throws(
+      () => record(session.sessionId, evidence(["server.lua"])),
+      /Independent review is stale/,
+    );
   });
 
   it("UI declaration disables trivial bypass and upgrades active sessions", () => {

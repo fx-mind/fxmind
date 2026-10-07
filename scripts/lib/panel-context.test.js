@@ -62,6 +62,21 @@ describe("panel-context", () => {
     fs.unlinkSync(file);
   });
 
+  it("judge context excludes the executor completion report", () => {
+    const file = panelContext.buildJudgeContextFile(tmpDir, "judge-1", {
+      userPrompt: "fix the disconnect save",
+      primaryOutput: "I implemented everything and it is definitely correct",
+      diff: "M resources/vrp/modules/base.lua",
+    });
+    const body = fs.readFileSync(file, "utf8");
+    assert.match(body, /Original user request/);
+    assert.match(body, /fix the disconnect save/);
+    assert.match(body, /inspect git status\/diff/i);
+    assert.doesNotMatch(body, /definitely correct/);
+    assert.doesNotMatch(body, /Executing agent's final report/);
+    fs.unlinkSync(file);
+  });
+
   it("uses bounded hits without duplicating the memory index, and marks excerpts", () => {
     fs.writeFileSync(path.join(tmpDir, ".fxmind", "memory", "radio.md"),
       "---\ntopic: radio\nupdated: 2026-09-10\nlang: en-compact\npaths: [src/radio.js]\ntriggers: [radio]\n---\n" + "radio rules ".repeat(2000));

@@ -980,14 +980,14 @@ function cliAccessArgs(cliId, accessMode) {
 }
 
 function normalizeJudgeTrigger(value) {
-  return ["manual", "always", "on_diff"].includes(value) ? value : "manual";
+  return ["manual", "always", "on_diff"].includes(value) ? value : "on_diff";
 }
 
 function getJudgeSettings() {
   const config = readPanelConfig();
   const judge = config.agent?.judge || {};
   return {
-    enabled: Boolean(judge.enabled),
+    enabled: judge.enabled !== false,
     cliId: judge.cliId || null,
     model: judge.model || null,
     trigger: normalizeJudgeTrigger(judge.trigger),
@@ -1066,7 +1066,7 @@ function putAgentSettings(body = {}) {
   }
   if (body.judge !== undefined && body.judge && typeof body.judge === "object") {
     config.agent.judge = {
-      enabled: Boolean(body.judge.enabled),
+      enabled: body.judge.enabled !== undefined ? Boolean(body.judge.enabled) : prev.judge?.enabled !== false,
       cliId: body.judge.cliId !== undefined ? String(body.judge.cliId || "") || null : prev.judge?.cliId || null,
       model: body.judge.model !== undefined ? String(body.judge.model || "") || null : prev.judge?.model || null,
       trigger: normalizeJudgeTrigger(body.judge.trigger ?? prev.judge?.trigger),
@@ -1461,13 +1461,17 @@ function finalizeRun(threadId, root) {
  */
 function judgeCliCandidate(explicitCliId, primaryCliId) {
   const available = scanCli({ quick: true });
-  if (explicitCliId) {
+  if (explicitCliId && explicitCliId !== primaryCliId) {
     const hit = available.find((c) => c.id === explicitCliId && c.installed);
     if (hit) return hit.id;
   }
   for (const id of DEFAULT_ORDER) {
     if (id === primaryCliId) continue;
     const hit = available.find((c) => c.id === id && c.installed);
+    if (hit) return hit.id;
+  }
+  if (explicitCliId) {
+    const hit = available.find((c) => c.id === explicitCliId && c.installed);
     if (hit) return hit.id;
   }
   return pickCliId(primaryCliId);
@@ -1610,7 +1614,6 @@ async function runJudge(threadId, options = {}) {
   if (!bin) return { ok: false, error: "judge cli not installed" };
 
   const lastUser = threads.lastUserContent(raw);
-  const lastAssistant = [...(raw.messages || [])].reverse().find((m) => m.role === "assistant");
   const diffText = visibleDiffFiles(raw.diff)
     .map((f) => `${f.status} ${f.path}`)
     .join("\n");
@@ -1619,7 +1622,6 @@ async function runJudge(threadId, options = {}) {
   try {
     contextFile = buildJudgeContextFile(root, threadId, {
       userPrompt: lastUser,
-      primaryOutput: lastAssistant?.content || "",
       diff: diffText,
     });
   } catch (err) {
@@ -1793,7 +1795,10 @@ async function runSubagentTask(root, options = {}) {
   const agentId = String(options.agent || "").trim() || "general";
   const cfg = subagentConfigFor(agentId);
   const config = readPanelConfig();
-  const cliId = judgeCliCandidate(cfg.cliId, null);
+  const avoidCliId =
+    options.avoidCliId ||
+    (agentId === "reviewer" ? config.agent?.cliId || null : null);
+  const cliId = judgeCliCandidate(cfg.cliId, avoidCliId);
   if (!cliId) return { ok: false, error: "no cli available for subagent" };
   const entry = CLI_CATALOG.find((c) => c.id === cliId);
   const bin = resolveBin(entry);

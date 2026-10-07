@@ -31,6 +31,12 @@ Smoke-grade traps to keep Task / Judge / Gate V honest. Not a full benchmark.
 - **Ideal:** `TWINS:` search lists the second site; fixed or explicitly listed.
 - **Detect:** GROUND-TRUTH lists both paths; score 2 only if both addressed or listed.
 
+### s4 — Lua lexical local scope
+
+- **Trap:** `playerDropped` calls `syncDatatableNeeds()` before a later `local function syncDatatableNeeds`, producing a runtime global-nil failure despite valid syntax.
+- **Ideal:** smallest lexical fix: callee before caller, or explicit `local name` + later assignment only for a real cycle; independent reviewer verifies the current diff.
+- **Detect:** deterministic Lua scope check rejects caller-before-later-local and the reviewer artifact must be strict VERIFIED.
+
 ## Adding a scenario
 
 Create `eval/scenarios/sN-<slug>/` with:

@@ -9,7 +9,7 @@ For implementation requests read `.fxmind/modes/task.md`; new resource → `.fxm
 
 Use relevant preloaded memories or fxmind_query; confirm with current source. Missing coverage → fxmind_search in the affected directory, or permitted native search. Use MCP for gates and available domain operations. Missing MCP blocks gated edits, not read-only diagnosis.
 
-Quick/full controls effort, not quality. Trivial means a known tiny one-file change with no new behavior; UI and risky tasks use A/B. Gates: start → A → B → implement + diff review → V with actual evidence → C. Keep sessionId; claim task files for parallel edits. Never write gate/session JSON.
+Quick/full controls effort, not quality. Trivial means a known tiny one-file change with no new behavior; UI and risky tasks use A/B. Gates: start → A → B → implement + diff review → independent review when required → V with actual evidence → C. Lua, multi-file and normal fix/mechanic/create tasks require `fxmind_independent_review`; only strict VERIFIED passes and any later edit makes it stale. Keep sessionId; claim task files for parallel edits. Never write gate/session JSON.
 
 Read `.fxmind/modes/task-verify.md` before UI edits and before V. UI requires browser interactions, visual inspection and an existing screenshot/trace. Build alone cannot verify UI. Failed/blocked checks leave V incomplete, and edits after V require re-verification.
 

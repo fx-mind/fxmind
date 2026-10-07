@@ -114,6 +114,7 @@ describe("mcp tool groups", () => {
     const core = names(mcp.listTools(root, { FXMIND_MCP_TOOLS: "core" }));
     assert.ok(!core.includes("fxmind_panel_wait"));
     assert.ok(core.includes("fxmind_record_gate"));
+    assert.ok(core.includes("fxmind_independent_review"));
   });
 
   it("formats query results as Markdown and other results as compact JSON", () => {

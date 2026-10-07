@@ -100,6 +100,7 @@ function isGatesFile(filePath) {
   return (
     rel === ".fxmind/state/fxmind-gates.json" ||
     rel.startsWith(".fxmind/state/sessions/") ||
+    rel.startsWith(".fxmind/state/reviews/") ||
     rel === ".fxmind/state/sessions.json" ||
     rel === ".fxmind-gates.json" ||
     rel.endsWith("/fxmind-gates.json")

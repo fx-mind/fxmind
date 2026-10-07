@@ -250,12 +250,30 @@ function startSession(targetRoot, extra = {}) {
     const sessionId = safeSessionId(extra.sessionId) || crypto.randomUUID();
     const existing = readSession(targetRoot, sessionId);
     if (existing && existing.taskActive) {
+      let changed = false;
       if (extra.ui && !existing.ui) {
         existing.ui = true;
         delete existing.gates.V;
         delete existing.gates.C;
-        writeSession(targetRoot, existing);
+        changed = true;
       }
+      if (extra.kind && extra.kind !== existing.kind) {
+        existing.kind = extra.kind;
+        changed = true;
+      }
+      if (extra.playbook && extra.playbook !== existing.playbook) {
+        existing.playbook = extra.playbook;
+        changed = true;
+      }
+      if (extra.note && String(extra.note) !== existing.note) {
+        existing.note = String(extra.note);
+        changed = true;
+      }
+      if (extra.conversationId && !existing.conversationId) {
+        existing.conversationId = String(extra.conversationId);
+        changed = true;
+      }
+      if (changed) writeSession(targetRoot, existing);
       mirrorLegacyGates(targetRoot, existing);
       return publicSession(existing);
     }

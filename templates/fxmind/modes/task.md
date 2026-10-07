@@ -61,6 +61,8 @@ Scratch belongs in OS temp or a session-owned path. Clean up only files this tas
 
 Review the entire task diff for requirement coverage, invariants, boundary failures and unnecessary complexity. For each new constant/helper/file ask what concrete readability/reuse/domain benefit it provides; simplify unjustified additions. FiveM also checks every principle ID in `.fxmind/policy/fivem-principles.md` against the diff and cites them in the V `review`.
 
+After local checks pass, run `fxmind_independent_review` whenever the task is Lua, multi-file, or kind `fix`/`mechanic`/`create`. Treat `VERIFIED WITH CAVEATS` and `REFUTED` as failures: fix findings, rerun affected checks, then request a fresh review. The reviewer is read-only, must not receive the executor rationale, and its file fingerprint becomes stale after any edit.
+
 Run `.fxmind/modes/task-verify.md`. Record V with structured evidence. Failed or blocked verification keeps V incomplete; don't call C or claim completion. Fix observed defects within the authorized task, then repeat affected checks. Run Judge when the verification mode requires it; fix actionable findings and re-verify.
 
 Gate C requires passing, current V evidence. Save reusable, verified knowledge only; otherwise note "mudança pontual". For a `config` task done without a playbook, or one that deviated from its playbook, offer `/fxmind teach <name>` once (the diff you just verified is the source). Validate changed memories. Record reusable user corrections when already authorized; otherwise offer to save them once. Remove temporary instrumentation before final verification.

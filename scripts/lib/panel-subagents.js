@@ -29,6 +29,10 @@ const SUBAGENT_META = {
     label: "Scout",
     description: "Documentação e fontes externas (fora do repo).",
   },
+  reviewer: {
+    label: "Reviewer",
+    description: "Revisão independente read-only antes do Gate V.",
+  },
 };
 
 function readJson(filePath, fallback = null) {

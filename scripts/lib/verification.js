@@ -4,6 +4,8 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { execFileSync } = require("child_process");
+const luaScope = require("./lua-scope-check");
+const independentReview = require("./independent-review");
 
 function repoPath(root, value) {
   if (typeof value !== "string" || !value.trim()) throw new Error("Verification requires file paths.");
@@ -69,6 +71,13 @@ function verify(root, evidence, session) {
       !text(check.target) || !text(check.expected) || !text(check.observed))) {
     throw new Error("Each verification check needs kind, target, expected, observed and status (passed/failed/blocked).");
   }
+  const luaCheck = luaScope.checkFiles(root, files);
+  if (!luaCheck.ok) {
+    const detail = luaCheck.issues.slice(0, 5).map((issue) => `${issue.file}:${issue.line} ${issue.symbol} (${issue.rule})`).join("; ");
+    throw new Error(`Lua lexical-scope verification failed: ${detail}`);
+  }
+
+  const independent = independentReview.assertVerifiedFresh(root, session, files);
   const uiRequired = Boolean(session.ui || evidence.browser?.required || files.some(uiFile));
   let browser = evidence.browser;
   if (uiRequired) {
@@ -94,7 +103,14 @@ function verify(root, evidence, session) {
   return {
     complete,
     // This validates the contract, not the truth of agent-authored observations.
-    evidence: { files, review: evidence.review, checks, ...(uiRequired ? { browser } : {}) },
+    evidence: {
+      files,
+      review: evidence.review,
+      checks,
+      automated: { luaScope: { status: "passed", files: luaCheck.filesChecked } },
+      ...(independent ? { independentReview: independent } : {}),
+      ...(uiRequired ? { browser } : {}),
+    },
     snapshot: snapshot(root, files),
     scoped: claimed.length > 0,
   };

@@ -229,10 +229,15 @@ function mergeOpenCodeSubagentConfig(targetRoot) {
         : {};
     const next = { ...prev, mode: "subagent" };
     if (
-      name !== "scout" &&
+      ["explore", "reader"].includes(name) &&
       (!next.model || UNAVAILABLE_SUBAGENT_MODELS.has(String(next.model)))
     ) {
       next.model = DEFAULT_SUBAGENT_MODEL;
+    } else if (
+      ["general", "reviewer"].includes(name) &&
+      UNAVAILABLE_SUBAGENT_MODELS.has(String(next.model))
+    ) {
+      delete next.model;
     }
     if (name === "explore") {
       next.permission = {

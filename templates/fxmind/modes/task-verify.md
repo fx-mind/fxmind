@@ -24,6 +24,12 @@ Do not substitute curl, source review, DOM assertions alone or a build for visua
 
 FiveM NUI: browser preview checks web behavior; CEF-specific claims require the NUI open in-game, actual visual evidence and console/DOM evidence when available. Clean up temporary wire/probe before final validation. If only browser preview was possible, record the missing in-game verification as a blocked runtime check.
 
+## Independent review gate
+
+Before Gate V on Lua changes, multi-file changes, and normal `fix` / `mechanic` / `create` tasks, run MCP `fxmind_independent_review`. It launches a fresh read-only reviewer with the original goal and actual current diff/files, not the executor's rationale. Only strict `VERDICT: VERIFIED` is accepted. `VERIFIED WITH CAVEATS`, `REFUTED`, a missing review, or code changed after review keeps V blocked. Trivial tiny tasks may be exempt.
+
+Lua files also receive a deterministic lexical-scope check at Gate V. A caller that reaches a later `local function`, or an obvious wider-scope call to a narrower local helper, blocks V even if syntax/tests otherwise pass.
+
 ## MCP evidence contract
 
 Call `fxmind_record_gate` with `gate: "V"`, sessionId and evidence:
