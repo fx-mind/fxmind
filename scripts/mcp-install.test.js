@@ -73,6 +73,11 @@ describe("mcp server path", () => {
     }
   });
 
+  it("marks OpenCode MCP with its provider identity", () => {
+    const launch = mcp.resolveOpenCodeMcpLaunch();
+    assert.equal(launch.environment.FXMIND_AGENT_ID, "opencode");
+  });
+
   it("keeps the portable APPDATA form from a dev checkout", { skip: process.platform !== "win32" }, () => {
     assert.deepEqual(mcp.buildFxmindMcpEntry().args, ["${env:APPDATA}/npm/node_modules/fxmind/scripts/mcp-server.js"]);
   });
@@ -84,6 +89,8 @@ describe("claude mcp entry", () => {
     assert.deepEqual(entry.args, ["${APPDATA}/npm/node_modules/fxmind/scripts/mcp-server.js"]);
     assert.equal(entry.env.FXMIND_TARGET, undefined);
     assert.equal(mcp.buildFxmindMcpEntry("cursor").env.FXMIND_TARGET, "${workspaceFolder}");
+    assert.equal(mcp.buildFxmindMcpEntry("cursor").env.FXMIND_AGENT_ID, "cursor");
+    assert.equal(entry.env.FXMIND_AGENT_ID, "claude");
     assert.match(mcp.buildFxmindMcpEntry("cursor").args[0], /\$\{env:APPDATA\}/);
   });
 

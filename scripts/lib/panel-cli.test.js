@@ -218,6 +218,25 @@ describe("panel-cli", () => {
       assert.match(body, /src\/bar\.js/);
     });
 
+    it("chooses a strong reviewer model from the same provider catalog", () => {
+      assert.equal(
+        panelCli.pickReviewerModel("codex", ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-6-astra"]),
+        "gpt-6-astra",
+      );
+      assert.equal(
+        panelCli.pickReviewerModel("codex", ["gpt-6.1-sol", "gpt-6-astra"]),
+        "gpt-6.1-sol",
+      );
+      assert.equal(
+        panelCli.pickReviewerModel("cursor-agent", ["auto", "gpt-5.6", "grok-4.7"]),
+        "grok-4.7",
+      );
+      assert.equal(
+        panelCli.pickReviewerModel("claude", ["opus", "sonnet"]),
+        "sonnet",
+      );
+    });
+
     it("falls back to a generic persona for a custom subagent id with no template file", () => {
       const body = panelCli.buildSubagentBody("custom-role", null, { prompt: "Do X" });
       assert.match(body, /You are the "custom-role" subagent/);

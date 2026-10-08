@@ -24,11 +24,13 @@ Do not substitute curl, source review, DOM assertions alone or a build for visua
 
 FiveM NUI: browser preview checks web behavior; CEF-specific claims require the NUI open in-game, actual visual evidence and console/DOM evidence when available. Clean up temporary wire/probe before final validation. If only browser preview was possible, record the missing in-game verification as a blocked runtime check.
 
-## Independent review gate
+## Gate V independent validation
 
-Before Gate V on Lua changes, multi-file changes, and normal `fix` / `mechanic` / `create` tasks, run MCP `fxmind_independent_review`. It launches a fresh read-only reviewer with the original goal and actual current diff/files, not the executor's rationale. Only strict `VERDICT: VERIFIED` is accepted. `VERIFIED WITH CAVEATS`, `REFUTED`, a missing review, or code changed after review keeps V blocked. Trivial tiny tasks may be exempt.
+`fxmind_record_gate { gate: "V", ... }` automatically launches a fresh read-only reviewer **for every task**. There is no separate review step the executor has to remember. The reviewer prefers a strong model from the same provider as the coding agent (for example the best available Codex reasoning model, Cursor model, or Claude Sonnet-class model), in a new session with no executor rationale. It receives the original goal, current files/diff, structured observations, binding policy, installed skill routers and relevant domain quality/style/security references.
 
-Lua files also receive a deterministic lexical-scope check at Gate V. A caller that reaches a later `local function`, or an obvious wider-scope call to a narrower local helper, blocks V even if syntax/tests otherwise pass.
+Only strict `VERDICT: VERIFIED` lets V proceed. `VERIFIED WITH CAVEATS` / `REFUTED` return their findings to the coding agent with `fix_findings_and_retry_gate_v`; the executor fixes them without asking the user, reruns affected checks and calls V again. Any edit or task-context change makes a prior review stale. Reviewer unavailability is a blocker, never an implicit pass.
+
+Lua files also receive a deterministic lexical-scope check before the LLM review. A caller that reaches a later `local function`, or an obvious wider-scope call to a narrower local helper, returns a repair finding immediately even if syntax/tests otherwise pass.
 
 ## MCP evidence contract
 

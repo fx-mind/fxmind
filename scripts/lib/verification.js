@@ -57,14 +57,22 @@ function text(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function verificationFiles(root, evidence, session) {
+  if (!evidence || !Array.isArray(evidence.files) || !evidence.files.length) {
+    throw new Error("Gate V requires evidence.files[] before automatic review.");
+  }
+  const claimed = session.claimedPaths || [];
+  return [...new Set([...evidence.files, ...(claimed.length ? claimed : changedFiles(root))]
+    .map((file) => repoPath(root, file)))].sort();
+}
+
 function verify(root, evidence, session) {
   if (!evidence || !Array.isArray(evidence.files) || !evidence.files.length ||
       !text(evidence.review) || !Array.isArray(evidence.checks) || !evidence.checks.length) {
     throw new Error("Gate V requires evidence: files[], review, checks[{kind, target, expected, observed, status}]. UI changes also require browser evidence; read task-verify.md.");
   }
   const claimed = session.claimedPaths || [];
-  const files = [...new Set([...evidence.files, ...(claimed.length ? claimed : changedFiles(root))]
-    .map((file) => repoPath(root, file)))].sort();
+  const files = verificationFiles(root, evidence, session);
   const checks = evidence.checks;
   if (checks.some((check) => !check || !["test", "build", "runtime", "manual"].includes(check.kind) ||
       !["passed", "failed", "blocked"].includes(check.status) ||
@@ -126,4 +134,4 @@ function assertFresh(root, gate) {
   }
 }
 
-module.exports = { verify, assertFresh, uiFile };
+module.exports = { verify, assertFresh, uiFile, verificationFiles };

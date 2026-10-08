@@ -75,6 +75,15 @@ function sanitizeCommitMessage(value) {
     .slice(0, 200);
 }
 
+function canonicalPath(value) {
+  const resolved = path.resolve(String(value || ""));
+  try {
+    return fs.realpathSync.native(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
 function runGit(args, cwd) {
   try {
     return {
@@ -110,8 +119,9 @@ function repoRoot(projectRoot) {
 
   const result = runGit(["rev-parse", "--show-toplevel"], root);
   if (!result.ok) return { ok: false, error: "not a git repository" };
-  const actual = path.resolve(String(result.stdout || "").trim());
-  if (!actual || actual.toLowerCase() !== root.toLowerCase()) {
+  const actual = canonicalPath(String(result.stdout || "").trim());
+  const canonicalRoot = canonicalPath(root);
+  if (!actual || actual.toLowerCase() !== canonicalRoot.toLowerCase()) {
     return { ok: false, error: "project root is not the git repository root" };
   }
   return { ok: true, root };
@@ -137,8 +147,8 @@ function existingWorktree(worktreePath, branch, baseBranch) {
   if (!result.ok) {
     return { ok: false, error: "worktree path already exists and is not a git worktree" };
   }
-  const actual = path.resolve(String(result.stdout || "").trim());
-  if (actual.toLowerCase() !== path.resolve(worktreePath).toLowerCase()) {
+  const actual = canonicalPath(String(result.stdout || "").trim());
+  if (actual.toLowerCase() !== canonicalPath(worktreePath).toLowerCase()) {
     return { ok: false, error: "existing worktree path resolves outside the task directory" };
   }
   return {

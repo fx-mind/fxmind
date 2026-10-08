@@ -28,6 +28,8 @@ const panelHost = require("./lib/panel-host");
 const { searchSource } = require("./lib/source-search");
 const { formatQueryResult } = require("./lib/memory-retrieval");
 const independentReview = require("./lib/independent-review");
+const verification = require("./lib/verification");
+const luaScope = require("./lib/lua-scope-check");
 
 const PROTOCOL_VERSION = "2024-11-05";
 const SERVER_INFO = { name: "fxmind", version: require("../package.json").version };
@@ -56,6 +58,43 @@ function targetRoot() {
     process.env.CLAUDE_PROJECT_DIR ||
     process.cwd()
   );
+}
+
+function callerCliId() {
+  const agent = String(process.env.FXMIND_AGENT_ID || "").trim().toLowerCase();
+  return {
+    cursor: "cursor-agent",
+    "cursor-agent": "cursor-agent",
+    claude: "claude",
+    codex: "codex",
+    opencode: "opencode",
+  }[agent] || null;
+}
+
+async function runGateVReviewer(root, session, files, evidence) {
+  if (process.env.NODE_ENV === "test" && process.env.FXMIND_TEST_REVIEWER_RESULT) {
+    const verdict = String(process.env.FXMIND_TEST_REVIEWER_RESULT).toLowerCase();
+    const line =
+      verdict === "verified" ? "VERDICT: VERIFIED" :
+      verdict === "caveats" ? "VERDICT: VERIFIED WITH CAVEATS" :
+      "VERDICT: REFUTED";
+    return {
+      ok: true,
+      agent: "reviewer",
+      cliId: callerCliId() || "test-provider",
+      model: "test-reviewer",
+      effort: "high",
+      output: "Synthetic independent review for MCP contract test.\n" + line,
+    };
+  }
+
+  const panelCli = require("./lib/panel-cli");
+  return panelCli.runSubagentTask(root, {
+    agent: "reviewer",
+    prompt: independentReview.buildPrompt(root, session, files, evidence || {}),
+    paths: files,
+    preferredCliId: callerCliId() || undefined,
+  });
 }
 
 const TOOL_DEFS = [
@@ -204,7 +243,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_record_gate",
     description:
-      "Persist a gate in A→B→V→C order. V requires structured evidence; failed/blocked checks keep V incomplete. UI changes require browser observations plus an existing screenshot/trace. C rejects stale verification after code changes.",
+      "Persist a gate in A→B→V→C order. Gate V automatically launches a fresh read-only reviewer, using a strong model from the same provider when available plus relevant project/pack skills. If review finds defects, V stays incomplete and returns findings the coding agent must fix and retry without asking the user. UI changes still require browser evidence. C rejects stale verification after code changes.",
     inputSchema: {
       type: "object",
       properties: {
@@ -560,14 +599,14 @@ const TOOL_DEFS = [
   {
     name: "fxmind_independent_review",
     description:
-      "Run a fresh read-only reviewer on the current Task diff, persist a server-created review artifact bound to the exact file fingerprint, and return its verdict. Required before Gate V for Lua, multi-file and normal fix/mechanic/create tasks.",
+      "Manual/debug entry point for the same fresh read-only reviewer that Gate V now runs automatically. Persists a server-created review artifact bound to the exact file fingerprint. Normal task flow should call Gate V directly.",
     inputSchema: {
       type: "object",
       properties: {
         sessionId: SESSION_ID_PROP.sessionId,
         executorCliId: {
           type: "string",
-          description: "Optional executor CLI id so FxMind can prefer a different provider for the reviewer.",
+          description: "Optional executor CLI id so FxMind can prefer the same provider for the reviewer while selecting a stronger review model.",
         },
         files: {
           type: "array",
@@ -665,7 +704,7 @@ function playbookTool(root, args = {}) {
   return { ok: false, error: `Unknown action: ${action}` };
 }
 
-function dispatchTool(name, args) {
+async function dispatchTool(name, args) {
   const root = targetRoot();
   switch (name) {
     case "fxmind_list_memories":
@@ -724,7 +763,76 @@ function dispatchTool(name, args) {
       return tools.gateStatus(root, sessionExtra(args));
 
     case "fxmind_record_gate": {
-      const data = tools.recordGate(root, String(args.gate).toUpperCase(), true, {
+      const gate = String(args.gate).toUpperCase();
+      if (gate === "V") {
+        const session = tools.gateStatus(root, sessionExtra(args));
+        if (session?.error === "multiple_active_sessions") return session;
+        if (!session?.taskActive || !session.sessionId) {
+          return { ok: false, error: "no_active_session", message: "Gate V requires an active FxMind task." };
+        }
+
+        let files;
+        try {
+          files = verification.verificationFiles(root, args.evidence, session);
+        } catch (error) {
+          return { ok: false, error: "gate_v_evidence_invalid", message: String(error.message || error) };
+        }
+
+        const deterministic = luaScope.checkFiles(root, files);
+        if (!deterministic.ok) {
+          return {
+            ok: false,
+            error: "gate_v_deterministic_failed",
+            gate: "V",
+            complete: false,
+            findings: deterministic.issues,
+            action: "fix_findings_and_retry_gate_v",
+            userReply: "Do not ask the user. Fix these deterministic findings, rerun affected checks, then call Gate V again.",
+          };
+        }
+
+        const reviewRun = await runGateVReviewer(root, session, files, args.evidence || {});
+        if (!reviewRun?.ok) {
+          return {
+            ok: false,
+            error: "gate_v_reviewer_unavailable",
+            gate: "V",
+            complete: false,
+            message: reviewRun?.error || "Independent reviewer failed to run.",
+            action: "retry_gate_v_reviewer",
+            userReply: "Do not mark the task complete. Resolve reviewer availability and retry Gate V.",
+          };
+        }
+
+        const record = independentReview.recordReview(root, {
+          sessionId: session.sessionId,
+          session,
+          files,
+          reviewer: {
+            agent: "reviewer",
+            cliId: reviewRun.cliId || null,
+            model: reviewRun.model || null,
+            effort: reviewRun.effort || null,
+          },
+          output: reviewRun.output || "",
+        });
+        if (record.verdict !== "verified") {
+          return {
+            ok: false,
+            error: "gate_v_review_failed",
+            gate: "V",
+            complete: false,
+            verdict: record.verdict,
+            reviewId: record.reviewId,
+            reviewer: record.reviewer,
+            findings: reviewRun.output || "",
+            action: "fix_findings_and_retry_gate_v",
+            userReply: "Do not ask the user. Apply the independent review findings surgically, rerun affected checks, then call Gate V again. Maximum 3 repair/review cycles before reporting blocked.",
+          };
+        }
+      }
+
+      const data = tools.recordGate(root, gate, true, {
         note: args.note || "",
         evidence: args.evidence,
         ...sessionExtra(args),
@@ -855,16 +963,21 @@ function dispatchTool(name, args) {
       const panelCli = require("./lib/panel-cli");
       return Promise.resolve(panelCli.runSubagentTask(root, {
         agent: "reviewer",
-        prompt: independentReview.buildPrompt(session, files),
+        prompt: independentReview.buildPrompt(root, session, files, {}),
         paths: files,
-        avoidCliId: args.executorCliId || undefined,
+        preferredCliId: args.executorCliId || callerCliId() || undefined,
       })).then((result) => {
         if (!result?.ok) return result;
         const record = independentReview.recordReview(root, {
           sessionId: session.sessionId,
           session,
           files,
-          reviewer: { agent: "reviewer", cliId: result.cliId || null },
+          reviewer: {
+            agent: "reviewer",
+            cliId: result.cliId || null,
+            model: result.model || null,
+            effort: result.effort || null,
+          },
           output: result.output || "",
         });
         return {

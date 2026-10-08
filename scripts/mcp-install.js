@@ -104,6 +104,7 @@ function buildFxmindMcpEntry(agentId) {
     type: "stdio",
     env: {
       FXMIND_TARGET: "${workspaceFolder}",
+      ...(agentId ? { FXMIND_AGENT_ID: agentId } : {}),
     },
   };
 
@@ -377,6 +378,7 @@ function resolveOpenCodeMcpLaunch() {
     return {
       type: "local",
       command: ["node", script],
+      environment: { FXMIND_AGENT_ID: "opencode" },
       enabled: true,
     };
   }
@@ -384,6 +386,7 @@ function resolveOpenCodeMcpLaunch() {
   return {
     type: "local",
     command: [entry.command, ...(entry.args || [])],
+    environment: { FXMIND_AGENT_ID: "opencode" },
     enabled: true,
   };
 }

@@ -8,7 +8,7 @@ Keep intent, architecture, task gates and final synthesis with the primary agent
 - Unresolved discovery: explore with the specific missing question, already-known facts and bounded scope.
 - Bounded implementation: general with exact task files, local conventions, Done and verification expectations.
 - External documentation: scout with the exact API question.
-- Independent verification: use `fxmind_independent_review` rather than asking the executor to self-approve. The reviewer gets the original goal/current diff, not the executor rationale.
+- Independent verification is automatic inside Gate V. Do not delegate it manually during normal task flow; call V with real evidence, then repair any returned findings and retry V.
 
 Use repository-relative paths. Reuse parent sessionId; subagents never start tasks, record gates or run Judge. Do not delegate the same read/search to multiple agents.
 

@@ -10,7 +10,7 @@ it("MCP transports evidence and rejects false completion through the public tool
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "fxmcp-verify-"));
   fs.writeFileSync(path.join(root, "server.js"), "module.exports = 'save';");
   const child = spawn(process.execPath, [path.join(__dirname, "mcp-server.js")], {
-    cwd: root, env: { ...process.env, FXMIND_TARGET: root, FXMIND_SESSION_ID: "" },
+    cwd: root, env: { ...process.env, NODE_ENV: "test", FXMIND_TARGET: root, FXMIND_SESSION_ID: "", FXMIND_AGENT_ID: "codex", FXMIND_TEST_REVIEWER_RESULT: "verified" },
     stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
   });
   const lines = readline.createInterface({ input: child.stdout });

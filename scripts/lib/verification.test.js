@@ -163,7 +163,7 @@ describe("verification gates", () => {
     recordGate(root, "B", true, { sessionId: session.sessionId });
     assert.throws(
       () => record(session.sessionId, evidence(["server.lua"])),
-      /requires a fresh independent review/,
+      /automatic independent reviewer/,
     );
 
     independentReview.recordReview(root, {
@@ -192,7 +192,7 @@ describe("verification gates", () => {
     recordGate(root, "B", true, { sessionId: session.sessionId });
     assert.throws(
       () => record(session.sessionId, evidence(["server.lua"])),
-      /Independent review is stale/,
+      /Gate V review is stale/,
     );
   });
 

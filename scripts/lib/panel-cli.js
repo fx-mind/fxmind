@@ -417,6 +417,15 @@ function fetchRawModels(cliId, bin) {
   }
   if (cliId === "codex") return CODEX_FALLBACK_MODELS;
   if (cliId === "cursor-agent") {
+    try {
+      const lines = runList(["--list-models"]);
+      const models = lines
+        .map((line) => line.match(/^([A-Za-z0-9][A-Za-z0-9._-]*)/)?.[1] || "")
+        .filter((id) => id && !/^(?:available|models?)$/i.test(id));
+      if (models.length) return [...new Set(models)];
+    } catch {
+      // Account/auth may be unavailable to discovery; use conservative known aliases.
+    }
     return [
       "auto",
       "composer-2.5",
@@ -1477,6 +1486,56 @@ function judgeCliCandidate(explicitCliId, primaryCliId) {
   return pickCliId(primaryCliId);
 }
 
+const REVIEWER_MODEL_PRIORITY = {
+  codex: ["gpt-6.1-sol", "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
+  "cursor-agent": ["grok-4.7", "gpt-5.6", "claude-opus-4-6", "composer-2.5", "auto"],
+  claude: ["sonnet", "claude-sonnet-4-6", "opus", "claude-opus-4-6"],
+};
+
+function reviewerCliCandidate(primaryCliId, fallbackCliId = null) {
+  const available = scanCli({ quick: true });
+  if (primaryCliId) {
+    const same = available.find((c) => c.id === primaryCliId && c.installed);
+    if (same) return same.id;
+  }
+  if (fallbackCliId) {
+    const configured = available.find((c) => c.id === fallbackCliId && c.installed);
+    if (configured) return configured.id;
+  }
+  return pickCliId(null);
+}
+
+function pickReviewerModel(cliId, modelIds, configuredModel = null) {
+  const ids = [...new Set((modelIds || []).map((id) => String(id || "").trim()).filter(Boolean))];
+  if (configuredModel && (!ids.length || ids.includes(configuredModel))) return configuredModel;
+  const priorities = REVIEWER_MODEL_PRIORITY[cliId] || [];
+  for (const preferred of priorities) {
+    const exact = ids.find((id) => id.toLowerCase() === preferred.toLowerCase());
+    if (exact) return exact;
+  }
+  if (cliId === "opencode") {
+    const smart = ids.find((id) => /(?:gpt-6|gpt-5\.6|claude-(?:opus|sonnet)|grok-4)/i.test(id));
+    if (smart) return smart;
+  }
+  return ids[0] || configuredModel || null;
+}
+
+async function reviewerExecution(cliId, cfg = {}) {
+  let models = [];
+  try {
+    const listed = await Promise.resolve(listCliModels(cliId, { all: true }));
+    models = (listed?.models || []).filter((model) => model.enabled !== false).map((model) => model.id);
+  } catch {
+    models = [];
+  }
+  const model = pickReviewerModel(cliId, models, cfg.model || null);
+  let effort = "default";
+  if (cliId === "codex") effort = "xhigh";
+  else if (cliId === "claude") effort = "high";
+  const resolved = resolveExecution(cliId, model, effort);
+  return { ...resolved, variant: cfg.variant || resolved.variant, modelSource: model ? "smart-reviewer" : "provider-default" };
+}
+
 /**
  * Generic "-p"/"exec"/"run" invocation shared by any secondary (non-primary)
  * CLI call on a thread's repo — used by both the judge run and the
@@ -1494,17 +1553,26 @@ function buildJudgeArgs(cliId, { root, body, accessArgs, execOpts }) {
     return { args, stdinPrompt: null };
   }
   if (cliId === "codex") {
-    return { args: ["exec", "--cd", root, "--json", ...accessArgs, "-"], stdinPrompt: trimmed };
+    const args = ["exec", "--cd", root, "--json", ...accessArgs];
+    if (execOpts.model) args.push("-m", execOpts.model);
+    if (execOpts.effort && execOpts.effort !== "default") {
+      args.push("-c", `model_reasoning_effort=${JSON.stringify(execOpts.effort)}`);
+    }
+    args.push("-");
+    return { args, stdinPrompt: trimmed };
   }
   // Prompt through stdin, never argv: on Windows these CLIs are `.cmd` shims
   // run via `cmd.exe /c`, which truncates any argument at its first newline.
   if (cliId === "claude") {
     let args = ["-p"];
     if (execOpts.model) args = ["--model", execOpts.model, ...args];
+    if (execOpts.claudeEffort) args = ["--effort", execOpts.claudeEffort, ...args];
     return { args, stdinPrompt: trimmed };
   }
   if (cliId === "cursor-agent") {
-    return { args: ["-p", ...accessArgs, "--workspace", root], stdinPrompt: trimmed };
+    const args = ["-p", ...accessArgs, "--workspace", root];
+    if (execOpts.model) args.push("--model", execOpts.model);
+    return { args, stdinPrompt: trimmed };
   }
   return { args: ["-p"], stdinPrompt: trimmed };
 }
@@ -1795,10 +1863,11 @@ async function runSubagentTask(root, options = {}) {
   const agentId = String(options.agent || "").trim() || "general";
   const cfg = subagentConfigFor(agentId);
   const config = readPanelConfig();
-  const avoidCliId =
-    options.avoidCliId ||
-    (agentId === "reviewer" ? config.agent?.cliId || null : null);
-  const cliId = judgeCliCandidate(cfg.cliId, avoidCliId);
+  const preferredCliId = options.preferredCliId || null;
+  const cliId =
+    agentId === "reviewer"
+      ? reviewerCliCandidate(preferredCliId || config.agent?.cliId || null, cfg.cliId)
+      : judgeCliCandidate(cfg.cliId, null);
   if (!cliId) return { ok: false, error: "no cli available for subagent" };
   const entry = CLI_CATALOG.find((c) => c.id === cliId);
   const bin = resolveBin(entry);
@@ -1808,8 +1877,10 @@ async function runSubagentTask(root, options = {}) {
   const forceReadOnly = Boolean(persona?.denyEdit || persona?.denyBash);
   const accessMode = forceReadOnly ? "ask" : normalizeAccessMode(config.agent?.accessMode);
   const accessArgs = cliAccessArgs(cliId, accessMode);
-  const resolved = resolveExecution(cliId, cfg.model, null);
-  const execOpts = { ...resolved, variant: cfg.variant || resolved.variant };
+  const execOpts =
+    agentId === "reviewer"
+      ? await reviewerExecution(cliId, cfg)
+      : { ...resolveExecution(cliId, cfg.model, null), variant: cfg.variant || null };
   const body = buildSubagentBody(agentId, persona, { prompt: options.prompt, paths: options.paths });
   const { args, stdinPrompt } = buildJudgeArgs(cliId, { root, body, accessArgs, execOpts });
 
@@ -1873,6 +1944,8 @@ async function runSubagentTask(root, options = {}) {
         ok: true,
         agent: agentId,
         cliId,
+        model: execOpts.model || null,
+        effort: execOpts.effort || "default",
         output: finalText || "(subagent returned no text)",
       });
     });
@@ -2496,6 +2569,9 @@ module.exports = {
   getJudgeSettings,
   runJudge,
   runSubagentTask,
+  reviewerCliCandidate,
+  pickReviewerModel,
+  reviewerExecution,
   readSubagentPersona,
   subagentConfigFor,
   buildSubagentBody,

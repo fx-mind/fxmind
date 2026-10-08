@@ -66,6 +66,34 @@ describe("independent review artifact", () => {
     }
   });
 
+  it("loads relevant installed skills into the Gate V review rubric", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fx-review-skills-"));
+    try {
+      fs.mkdirSync(path.join(root, ".fxmind", "policy"), { recursive: true });
+      fs.mkdirSync(path.join(root, ".fxmind", "skills", "fivem-development"), { recursive: true });
+      fs.mkdirSync(path.join(root, ".fxmind", "skills", "vrp-framework"), { recursive: true });
+      fs.writeFileSync(path.join(root, ".fxmind", "policy", "fivem-principles.md"), "C5 Lexical locals binding");
+      fs.writeFileSync(path.join(root, ".fxmind", "skills", "fivem-development", "SKILL.md"), "FiveM skill router");
+      fs.writeFileSync(path.join(root, ".fxmind", "skills", "fivem-development", "quality-gates.md"), "Quality gates C1-C8");
+      fs.writeFileSync(path.join(root, ".fxmind", "skills", "fivem-development", "style.md"), "callee before caller");
+      fs.writeFileSync(path.join(root, ".fxmind", "skills", "vrp-framework", "SKILL.md"), "vRP framework rules");
+      const prompt = review.buildPrompt(
+        root,
+        { taskActive: true, sessionId: "s", kind: "fix", note: "fix vrp save" },
+        ["vrp/modules/base.lua"],
+        { checks: [{ kind: "runtime", target: "disconnect", status: "passed", observed: "no error" }] },
+      );
+      assert.match(prompt, /C5 Lexical locals binding/);
+      assert.match(prompt, /Quality gates C1-C8/);
+      assert.match(prompt, /callee before caller/);
+      assert.match(prompt, /vRP framework rules/);
+      assert.match(prompt, /Executor observations \(claims; verify independently\)/);
+      assert.doesNotMatch(prompt, /executor's explanation.*correct/i);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("does not accept caveats as a passing review", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "fx-review-"));
     try {
