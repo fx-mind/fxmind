@@ -186,6 +186,7 @@ const TOOL_DEFS = [
         directory: { type: "string", description: "Directory inside the project, preferably the affected area. Default: project root." },
         query: { type: "string", minLength: 1, maxLength: 200 },
         limit: { type: "integer", minimum: 1, maximum: 50 },
+        ext: { type: "string", description: "Only files with this extension, e.g. lua. Skips generated bundles and data files." },
       },
       required: ["query"],
     },

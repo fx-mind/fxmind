@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
 
-const IGNORED_DIRS = [".git", ".fxmind", "node_modules", "dist", "build", "vendor", "coverage"];
+const IGNORED_DIRS = [".git", ".fxmind", ".lua-definitions", ".vscode", "node_modules", "dist", "build", "vendor", "coverage"];
 // Minified bundles and source maps are single huge lines that bury real hits.
 const IGNORED_GLOBS = ["*.map", "*.min.js", "*.min.css"];
 const GIT_GREP_TIMEOUT_MS = 15_000;
@@ -19,12 +19,13 @@ const GIT_GREP_TIMEOUT_MS = 15_000;
  * first files needed to fill the limit.
  * Returns null when the folder is not inside a Git work tree.
  */
-function gitGrep(project, folder, query, maxResults) {
+function gitGrep(project, folder, query, maxResults, ext) {
   const excludes = [
     ...IGNORED_DIRS.map((dir) => `:(exclude,glob)**/${dir}/**`),
     ...IGNORED_GLOBS.map((glob) => `:(exclude,glob)**/${glob}`),
   ];
-  const args = ["grep", "-c", "-I", "-i", "-F", "--untracked", "--no-color", "-e", query, "--", ".", ...excludes];
+  const only = ext ? [`:(glob)**/*.${ext}`] : ["."];
+  const args = ["grep", "-c", "-I", "-i", "-F", "--untracked", "--no-color", "-e", query, "--", ...only, ...excludes];
   let stdout;
   try {
     stdout = execFileSync("git", args, {
@@ -71,7 +72,7 @@ function gitGrep(project, folder, query, maxResults) {
 }
 
 /** Bounded literal source search when the memory graph has no coverage. */
-function searchSource(root, { directory = ".", query, limit = 20 } = {}) {
+function searchSource(root, { directory = ".", query, limit = 20, ext } = {}) {
   if (typeof query !== "string" || !query.trim() || query.length > 200) {
     throw new Error("query must be a non-empty literal string of at most 200 characters.");
   }
@@ -83,7 +84,8 @@ function searchSource(root, { directory = ".", query, limit = 20 } = {}) {
   }
   if (!fs.statSync(folder).isDirectory()) throw new Error("Search directory must be a directory.");
   const maxResults = Number.isFinite(Number(limit)) ? Math.max(1, Math.min(50, Math.floor(Number(limit)))) : 20;
-  const viaGit = gitGrep(project, folder, query, maxResults);
+  const extension = typeof ext === "string" && /^[a-z0-9]{1,8}$/i.test(ext.replace(/^\./, "")) ? ext.replace(/^\./, "") : undefined;
+  const viaGit = gitGrep(project, folder, query, maxResults, extension);
   if (viaGit) return viaGit;
   const ignored = new Set(IGNORED_DIRS);
   let candidates;
@@ -116,6 +118,7 @@ function searchSource(root, { directory = ".", query, limit = 20 } = {}) {
   for (const candidate of candidates) {
     if (scanned >= 1000 || bytes >= 8 * 1024 * 1024 || matches.length >= maxResults) { truncated = true; break; }
     if (seen.has(candidate) || candidate.split(/[\\/]/).some((part) => ignored.has(part))) continue;
+    if (extension && !candidate.toLowerCase().endsWith(`.${extension.toLowerCase()}`)) continue;
     seen.add(candidate);
     const absolute = path.resolve(folder, candidate);
     if (!fs.existsSync(absolute)) continue;
