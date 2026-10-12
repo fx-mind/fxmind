@@ -173,6 +173,64 @@ function classifySql(sql) {
   return { destructive, kind };
 }
 
+/**
+ * Read-only mode (FXMIND_MCP_READONLY): only one plain read query passes.
+ * Comments and string literals are stripped before the keyword scan so
+ * "SELECT 'drop'" is fine but "WITH x AS (…) UPDATE …" or "SELECT … INTO
+ * OUTFILE" is not. MySQL executable comments (slash-star-bang) are refused.
+ */
+const READONLY_FORBIDDEN_RE =
+  /\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|RENAME|GRANT|REVOKE|LOCK|UNLOCK|CALL|DO|HANDLER|LOAD|SET|INTO|OUTFILE|DUMPFILE|LOAD_FILE|SLEEP|BENCHMARK|GET_LOCK|RELEASE_LOCK|SHUTDOWN|KILL|FLUSH|RESET|PURGE|PREPARE|EXECUTE|DEALLOCATE|INSTALL|UNINSTALL)\b/i;
+
+function stripSqlLiterals(sql) {
+  let out = "";
+  for (let i = 0; i < sql.length; i += 1) {
+    const ch = sql[i];
+    const next = sql[i + 1];
+    if ((ch === "-" && next === "-") || ch === "#") {
+      while (i < sql.length && sql[i] !== "\n") i += 1;
+      out += " ";
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      if (sql[i + 2] === "!") return null;
+      const end = sql.indexOf("*/", i + 2);
+      i = end < 0 ? sql.length : end + 1;
+      out += " ";
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`") {
+      const quote = ch;
+      i += 1;
+      while (i < sql.length) {
+        if (sql[i] === "\\" && quote !== "`") { i += 2; continue; }
+        if (sql[i] === quote) {
+          if (sql[i + 1] === quote) { i += 2; continue; }
+          break;
+        }
+        i += 1;
+      }
+      out += quote === "`" ? " ident " : " '' ";
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+/** Returns null when the statement is a single read query, else the reason. */
+function readOnlyViolation(sql) {
+  const code = stripSqlLiterals(String(sql || ""));
+  if (code === null) return "executable comments (/*! */) are not allowed in read-only mode";
+  const body = code.trim().replace(/;\s*$/, "");
+  if (!body) return "empty query";
+  if (body.includes(";")) return "single statements only";
+  if (!/^(SELECT|SHOW|DESCRIBE|DESC|EXPLAIN|WITH)\b/i.test(body)) return "read-only mode: only SELECT/SHOW/DESCRIBE/EXPLAIN";
+  const hit = body.match(READONLY_FORBIDDEN_RE);
+  if (hit) return `read-only mode: "${hit[1].toUpperCase()}" is not allowed`;
+  return null;
+}
+
 function assertSafeIdentifier(name, label = "name") {
   const text = String(name || "").trim();
   if (!/^[a-zA-Z0-9_$.]+$/.test(text) || text.includes("..")) {
@@ -255,8 +313,13 @@ async function executeSql(query, options = {}) {
     }
   }
 
+  if (options.readOnly) {
+    const violation = readOnlyViolation(sql);
+    if (violation) return { ok: false, readOnly: true, error: violation };
+  }
+
   const { destructive, kind } = classifySql(sql);
-  if (destructive && options.approvedByUser !== true) {
+  if (destructive && options.approvedByUser !== true && !options.readOnly) {
     return {
       ok: false,
       needsApproval: true,
@@ -273,7 +336,16 @@ async function executeSql(query, options = {}) {
 
   try {
     return await withConnection(options, async (conn) => {
-      const [rows, fields] = await conn.query(sql);
+      // Defense in depth: the server itself refuses writes inside a
+      // READ ONLY transaction, even if the keyword scan missed something.
+      if (options.readOnly) await conn.query("START TRANSACTION READ ONLY");
+      let rows;
+      let fields;
+      try {
+        [rows, fields] = await conn.query(sql);
+      } finally {
+        if (options.readOnly) await conn.query("ROLLBACK").catch(() => {});
+      }
       if (Array.isArray(rows)) {
         return {
           kind,
@@ -438,6 +510,7 @@ module.exports = {
   readMysqlConnectionStringFromCfg,
   mysqlConfig,
   classifySql,
+  readOnlyViolation,
   status,
   executeSql,
   getSchemaInfo,

@@ -90,6 +90,7 @@ fxmind -h                  # all options
 - **Retrieval** (`fxmind_query`, panel preload, Claude hook) ranks memories with PT↔EN domain synonyms, drops filler words, matches whole terms and weighs each term by rarity, so a word every memory shares ("player") never decides the ranking. Over-budget memories load only the matching sections; graph neighbours are listed, not loaded.
 - **Claude Code preload** — `fxmind -y --claude` registers `fxmind context --hook` as a `UserPromptSubmit` hook in `.claude/settings.json`: relevant memories are injected before the agent answers (nothing when none match). `FXMIND_PRELOAD=0` disables it, `FXMIND_PRELOAD_BUDGET` sets the budget (default 1200). Try it with `fxmind context "garagem nao abre"`.
 - **MCP tool groups** — FiveM tools are listed only with the `fivem` pack, DB query tools only when a MySQL connection is configured. Override with `FXMIND_MCP_TOOLS=all` or a list (`fivem,db,panel`) in the MCP env.
+- **Read-only mode** — `FXMIND_MCP_READONLY=1` exposes only tools that never write (memory, source search, DB reads, server status). `fxmind_db_query` then accepts a single `SELECT`/`SHOW`/`DESCRIBE`/`EXPLAIN` and runs it inside a `READ ONLY` transaction. Used by the PortSpace FiveHub staff chat, which reaches this server through the Portspace Agent. For extra safety point `FXMIND_MYSQL_URL` at a MySQL user with only `SELECT`.
 
 ## Task kinds and playbooks
 

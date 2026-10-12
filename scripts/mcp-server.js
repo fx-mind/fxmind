@@ -916,8 +916,9 @@ async function dispatchTool(name, args) {
 
     case "fxmind_db_query":
       return fxmindMysql.executeSql(args.query || "", {
-        approvedByUser: Boolean(args.approvedByUser),
+        approvedByUser: isReadonly() ? false : Boolean(args.approvedByUser),
         limit: args.limit,
+        readOnly: isReadonly(),
       });
 
     case "fxmind_db_schema":
@@ -1062,9 +1063,36 @@ function enabledToolGroups(root, env = process.env) {
   return groups;
 }
 
+/**
+ * FXMIND_MCP_READONLY=1: query-only mode for hosts that put the MCP in front
+ * of people who must not change anything (e.g. the PortSpace FiveHub staff
+ * chat, which reaches this server through the Portspace Agent). Only tools
+ * that never write are listed or callable, and fxmind_db_query accepts a
+ * single read statement run inside a READ ONLY transaction.
+ */
+const READONLY_TOOLS = new Set([
+  "fxmind_list_memories",
+  "fxmind_query",
+  "fxmind_search",
+  "fxmind_check_update",
+  "fxmind_fivem_status",
+  "fxmind_db_status",
+  "fxmind_db_query",
+  "fxmind_db_schema",
+  "fxmind_db_sample",
+  "fxmind_db_explore",
+  "fxmind_db_analyze",
+]);
+
+function isReadonly(env = process.env) {
+  return /^(1|true|yes|on)$/i.test(String(env.FXMIND_MCP_READONLY || "").trim());
+}
+
 function listTools(root = targetRoot(), env = process.env) {
   const groups = enabledToolGroups(root, env);
+  const readonly = isReadonly(env);
   return TOOL_DEFS.filter((tool) => {
+    if (readonly && !READONLY_TOOLS.has(tool.name)) return false;
     const group = toolGroupOf(tool.name);
     return !group || groups.has(group);
   });
@@ -1110,6 +1138,17 @@ function handleMessage(msg) {
   if (method === "tools/call") {
     const toolName = msg.params?.name;
     const args = msg.params?.arguments || {};
+    if (isReadonly() && !READONLY_TOOLS.has(String(toolName || ""))) {
+      send({
+        jsonrpc: "2.0",
+        id,
+        result: {
+          content: [{ type: "text", text: `${toolName} is disabled in read-only mode (FXMIND_MCP_READONLY).` }],
+          isError: true,
+        },
+      });
+      return;
+    }
     const isPanelTool = String(toolName || "").startsWith("fxmind_panel_");
     const trackedThreadId = isPanelTool ? null : activeHostThreadId;
     Promise.resolve()
