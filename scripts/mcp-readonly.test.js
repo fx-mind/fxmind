@@ -57,3 +57,26 @@ it("read-only server refuses a write tool even when called directly", async () =
     child.kill();
   }
 });
+
+it("fxmind_read_file reads project source, stays inside the root and masks secrets", () => {
+  const { readSource } = require("./lib/read-source");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "fxread-"));
+  fs.mkdirSync(path.join(root, "resources", "admin"), { recursive: true });
+  fs.writeFileSync(path.join(root, "resources", "admin", "server.lua"),
+    ['RegisterCommand("god", function() end)', 'Config.webhook = "https://discord.com/api/webhooks/123/abcdef"', 'local password = "hunter2hunter"'].join("\n"));
+  fs.writeFileSync(path.join(root, "server.cfg"), 'set mysql_connection_string "server=x;password=y"');
+  fs.writeFileSync(path.join(root, ".env"), "TOKEN=abc");
+
+  const ok = readSource(root, { path: "resources/admin/server.lua" });
+  assert.equal(ok.ok, true);
+  assert.match(ok.text, /1: RegisterCommand\("god"/);
+  assert.ok(!ok.text.includes("abcdef") && !ok.text.includes("hunter2hunter"), "secrets must be masked");
+
+  assert.equal(readSource(root, { path: "server.cfg" }).ok, false);
+  assert.equal(readSource(root, { path: ".env" }).ok, false);
+  assert.equal(readSource(root, { path: "../outside.lua" }).ok, false);
+  assert.equal(readSource(root, { path: "resources/admin/server.lua", startLine: 2, endLine: 2 }).startLine, 2);
+
+  const names = listTools(root, { FXMIND_MCP_READONLY: "1", FXMIND_MCP_TOOLS: "all" }).map((tool) => tool.name);
+  assert.ok(names.includes("fxmind_read_file"));
+});

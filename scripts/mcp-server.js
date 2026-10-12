@@ -26,6 +26,7 @@ const fxmindMysql = require("./fxmind-mysql");
 const { checkForUpdate } = require("./lib/update-check");
 const panelHost = require("./lib/panel-host");
 const { searchSource } = require("./lib/source-search");
+const { readSource } = require("./lib/read-source");
 const { formatQueryResult } = require("./lib/memory-retrieval");
 const independentReview = require("./lib/independent-review");
 const verification = require("./lib/verification");
@@ -187,6 +188,19 @@ const TOOL_DEFS = [
         limit: { type: "integer", minimum: 1, maximum: 50 },
       },
       required: ["query"],
+    },
+  },
+  {
+    name: "fxmind_read_file",
+    description: "Read-only excerpt of one project source/text file (numbered lines, at most 250 per call). Use after fxmind_search to read the code around a hit. Config/credential files (.cfg, .env, keys) are refused and inline secrets are masked.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "File path relative to the project root, as returned by fxmind_search." },
+        startLine: { type: "integer", minimum: 1 },
+        endLine: { type: "integer", minimum: 1 },
+      },
+      required: ["path"],
     },
   },
   {
@@ -759,6 +773,9 @@ async function dispatchTool(name, args) {
     case "fxmind_search":
       return searchSource(root, args);
 
+    case "fxmind_read_file":
+      return readSource(root, args);
+
     case "fxmind_gate_status":
       return tools.gateStatus(root, sessionExtra(args));
 
@@ -1074,6 +1091,7 @@ const READONLY_TOOLS = new Set([
   "fxmind_list_memories",
   "fxmind_query",
   "fxmind_search",
+  "fxmind_read_file",
   "fxmind_check_update",
   "fxmind_fivem_status",
   "fxmind_db_status",
