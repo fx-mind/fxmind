@@ -92,6 +92,70 @@ fxmind -h                  # all options
 - **MCP tool groups** — FiveM tools are listed only with the `fivem` pack, DB query tools only when a MySQL connection is configured. Override with `FXMIND_MCP_TOOLS=all` or a list (`fivem,db,panel`) in the MCP env.
 - **Read-only mode** — `FXMIND_MCP_READONLY=1` exposes only tools that never write (memory, source search, DB reads, server status). `fxmind_db_query` then accepts a single `SELECT`/`SHOW`/`DESCRIBE`/`EXPLAIN` and runs it inside a `READ ONLY` transaction. Used by the PortSpace FiveHub staff chat, which reaches this server through the Portspace Agent. For extra safety point `FXMIND_MYSQL_URL` at a MySQL user with only `SELECT`.
 
+## S3 image storage (MCP)
+
+The existing `fxmind-mcp` server includes these image tools. The package now requires **Node >=20.9** for the maintained S3 SDK and Sharp releases:
+
+| Tool | Purpose |
+|------|---------|
+| `fxmind_storage_status` | Inspect configuration without a network request or returning credentials |
+| `fxmind_image_resize` | Save a resized/compressed image to a new local file; never overwrite the source or an existing output |
+| `fxmind_storage_upload_image` | Optimize in memory, then upload to an S3-compatible bucket |
+
+Create `.fxmind/storage.json` in the **target project** (the installer adds it to `.gitignore`):
+
+```json
+{
+  "endpoint": "https://s3.example.com",
+  "region": "us-east-1",
+  "bucket": "project-assets",
+  "forcePathStyle": true,
+  "prefix": "images",
+  "publicBaseUrl": "https://cdn.example.com",
+  "maxWidth": 2048,
+  "maxHeight": 2048,
+  "maxBytes": 5242880
+}
+```
+
+For AWS S3, omit `endpoint` and use `forcePathStyle: false`. Custom endpoints default to path-style addressing; set it to false if the provider requires virtual-host addressing. `publicBaseUrl` is optional and must point at the bucket's public root (including any bucket path). Without it, uploads return `publicUrl: null` plus the object key/S3 URI; the tool never makes a bucket public or changes ACLs.
+
+Keep credentials in a **`.env` file at the target project root** (`FXMIND_TARGET`, not the fxmind package's installation directory). Copy the shipped `.env.example` or use:
+
+```dotenv
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+# AWS_SESSION_TOKEN=temporary-session-token
+FXMIND_S3_ENDPOINT=https://s3.example.com
+FXMIND_S3_REGION=us-east-1
+FXMIND_S3_BUCKET=project-assets
+FXMIND_S3_PUBLIC_URL=https://cdn.example.com
+```
+
+The storage tools read `.env` on each call, including quoted values and comments, without changing the MCP process environment. Credentials never appear in status/results. The installer ignores `.env`; only `.env.example` belongs in Git. Existing process environment values take precedence over `.env`, which takes precedence over `.fxmind/storage.json`. Both `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are required when supplying explicit credentials; `AWS_SESSION_TOKEN` is optional. Without an explicit pair, the AWS SDK's standard process/profile/IAM chain remains available.
+
+Non-secret configuration can also use `FXMIND_S3_PREFIX` and `FXMIND_S3_FORCE_PATH_STYLE` (`true`/`false`) in `.env`. `AWS_REGION`/`AWS_DEFAULT_REGION` are region fallbacks. `.env` edits apply on the next call; restart the MCP only when changing its process environment.
+
+Resize locally to an **exact** resolution, cropping to cover the target:
+
+```json
+{"path":"assets/original.png","outputPath":"assets/banner.png","width":1920,"height":1080,"fit":"cover","format":"png","maxBytes":1048576}
+```
+
+Upload with the same processing in one call (no temporary output file):
+
+```json
+{"path":"assets/original.png","key":"banners/home.png","width":1920,"height":1080,"fit":"cover","format":"png","maxBytes":1048576}
+```
+
+The result includes actual `width`, `height`, `bytes`, `contentType`, original dimensions/size and the uploaded `key` (here `images/banners/home.png`). Omit `key` for a unique name. Existing objects are refused with `If-None-Match: *`; use `overwrite: true` only for intentional replacement. Providers must honor conditional PutObject requests; failures are never retried without the condition.
+
+Defaults: fit **inside** 2048x2048 without enlargement, lossless PNG, at most **5 MiB**. Project `maxWidth`/`maxHeight` set the default bounding box; explicit dimensions override it. `cover` crops, `contain` pads transparently (white for JPEG), and `fill` stretches to an exact size; each requires both dimensions and may enlarge small inputs. With `inside`, dimensions preserve aspect ratio and can differ from the request. JPEG/WebP quality is reduced down to 40 if needed, without changing dimensions; PNG stays lossless. If the byte limit still cannot be met, the operation fails **before writing/uploading**. Upload `maxBytes` may lower, but cannot exceed, the project limit.
+
+Inputs: local raster images, at most 50 MiB / 40 megapixels; animated/multipage images and SVG/PDF are rejected. Outputs: WebP, PNG or JPEG, at most 8192 pixels per axis / 40 megapixels. Orientation is applied and metadata stripped; originals are preserved. The upload tool appears automatically when a bucket is configured, or with `FXMIND_MCP_TOOLS=storage`/`all`. Status and local resize are always available. `FXMIND_MCP_READONLY=1` hides and blocks both write tools, including direct calls.
+
+Implementation follows [Sharp resize semantics](https://sharp.pixelplumbing.com/api-resize/) and [S3 PutObject](https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/client/s3/command/PutObjectCommand/).
+
 ## Task kinds and playbooks
 
 Memories describe a topic; **playbooks** (`.fxmind/playbooks/<id>.md`, committed) are the procedure for a request you repeat — e.g. *cadastrar skin de arma*: which file, which anchor, what to insert, how to verify.
@@ -196,10 +260,15 @@ Generated / session-only (gitignored, rebuilt locally): `.fxmind/graph/` — `kn
 ## Task mode & Gates
 
 Gate V now requires structured `evidence` (`files`, `review`, `checks`) through
-`fxmind_record_gate`; a note-only call no longer completes verification. UI changes
-also require browser interactions, visual/console observations and an existing
-screenshot/trace file. Declare `ui: true` at task start for backend-driven UI changes.
-Failed or blocked checks keep V incomplete; C rejects code changed since V. Lua files also pass a deterministic lexical-scope check. Normal `fix`/`mechanic`/`create` tasks, Lua changes and multi-file changes require `fxmind_independent_review`: a fresh read-only reviewer sees the original goal and actual source/diff (not the executor's rationale), and Gate V accepts only a strict `VERIFIED` artifact bound to the current file fingerprints.
+`fxmind_record_gate`; a note-only call no longer completes verification. Prioritize
+lint/syntax, typecheck, code quality and focused tests. Check kinds include `lint`
+and `typecheck`. Record `evidence.ui: { changed, reason }` from the actual diff.
+Only actual rendered-content/layout/style/interaction changes require browser
+interactions, visual/console observations and a screenshot/trace. Unchanged UI
+context, backend-only work, comments/tooling and non-visual refactors do not require
+opening the interface. The reviewer validates this assessment against the diff;
+changing it after review invalidates the review. `ui: true` at task start is a planning hint.
+Failed or blocked checks keep V incomplete; C rejects code changed since V. Lua files also pass a deterministic lexical-scope check. Gate V automatically runs a fresh read-only reviewer against the original goal and actual source/diff; do not launch a separate review first. Gate V accepts only a strict `VERIFIED` artifact bound to the current file fingerprints and UI assessment.
 See `templates/fxmind/modes/task-verify.md` for the contract.
 
 Quick mode reduces overhead without bypassing quality checks. `fxmind_search`
@@ -416,6 +485,25 @@ Allowlisted RCON: `ensure`, `start`, `stop`, `restart`, `refresh`, `status`, `re
 ### MySQL (oxmysql cfg)
 
 Connection is read from `mysql_connection_string` in `dev/dev.cfg` / `server.cfg` (or `FXMIND_MYSQL_URL`).
+
+Development remains the default. For production, put the connection string in the **target project's `.env`** (already ignored by Git):
+
+```dotenv
+FXMIND_MYSQL_PRODUCTION_URL="mysql://agent_readonly:password@db.example.com:3306/production"
+```
+
+URL-encode special characters in username/password (e.g. `@` becomes `%40`). The oxmysql `server=...;uid=...;password=...;database=...` format is also accepted. Use a database account with read permissions. All six DB tools accept `environment: "dev" | "production"`; omitting it preserves the current dev connection. Production uses only its explicit `.env`/process setting, never falls back to dev, and always runs inside a **READ ONLY transaction**. SQL writes are blocked even with `approvedByUser: true` or CLI `--yes`. Status/results identify the environment and omit the password. No persistent environment switch is made.
+
+```json
+{"environment":"production","query":"SELECT * FROM users LIMIT 10"}
+```
+
+```bash
+fxmind db status --environment production
+fxmind db query "SELECT * FROM users LIMIT 10" --environment production
+```
+
+The example JSON is for `fxmind_db_query`; `fxmind_db_status`/`explore` need only `environment`, while `schema`/`sample`/`analyze` also accept their usual `table_name`. The DB group is available when either dev or production is configured. `.env` is reread on each call, scoped to the target project; existing process variables take precedence. `FXMIND_MYSQL_URL` and `MYSQL_CONNECTION_STRING` can also be set in `.env` for dev.
 
 | MCP | CLI | Role |
 |-----|-----|------|

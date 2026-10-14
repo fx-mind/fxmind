@@ -83,7 +83,7 @@ Use relevant preloaded memories, then current source. Missing coverage → `fxmi
 
 ### Task modes (composer)
 
-- **Rápido** — injects `PANEL_MODE: quick`: less narration and redundant lookup; quality and browser verification remain required. Only genuinely tiny changes qualify for trivial auto A+B.
+- **Rápido** — injects `PANEL_MODE: quick`: less narration and redundant lookup; lint/code quality remain primary, and browser verification is required only for actual visual/interaction changes. Only genuinely tiny changes qualify for trivial auto A+B.
 - **Completo** — `PANEL_MODE: full`: full fxmind pipeline; OpenCode may parallelize Gate B via subagents.
 
 ## 4.1 Task execution and review

@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
+const { uiFile, uiImpact } = require("./ui-impact");
 
 function stateDir(root) {
   return path.join(path.resolve(root), ".fxmind", "state", "reviews");
@@ -113,12 +114,13 @@ function safeRead(root, rel, maxChars) {
   };
 }
 
-function installedSkillRouters(root) {
+function installedSkillRouters(root, isUi) {
   const base = path.join(root, ".fxmind", "skills");
   if (!fs.existsSync(base) || !fs.statSync(base).isDirectory()) return [];
   const out = [];
   for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
+    if (!isUi && /(?:^|-)(?:ui|nui|frontend|react)(?:-|$)/i.test(entry.name)) continue;
     const rel = path.join(".fxmind", "skills", entry.name, "SKILL.md");
     const hit = safeRead(root, rel, 1200);
     if (hit) out.push(hit);
@@ -126,13 +128,9 @@ function installedSkillRouters(root) {
   return out;
 }
 
-function reviewGuidance(root, files) {
+function reviewGuidance(root, files, isUi = (files || []).some(uiFile)) {
   const normalized = (files || []).map((file) => String(file).replace(/\\/g, "/").toLowerCase());
   const isLua = normalized.some((file) => /\.lua$/.test(file));
-  const isUi = normalized.some((file) =>
-    /\.(?:tsx|jsx|vue|svelte|html|css|scss|sass|less|js|ts)$/.test(file) &&
-    /(?:ui|nui|web|html|react|components|pages)/.test(file),
-  );
   const isVrp = normalized.some((file) => /(?:^|\/)vrp(?:\/|$)|modules\/|tunnel|proxy/.test(file));
   const candidates = [];
 
@@ -140,7 +138,7 @@ function reviewGuidance(root, files) {
   if (policy) candidates.push(policy);
   const index = safeRead(root, ".fxmind/skills/_index.md", 1200);
   if (index) candidates.push(index);
-  candidates.push(...installedSkillRouters(root));
+  candidates.push(...installedSkillRouters(root, isUi));
   const fivemSkill = safeRead(root, ".fxmind/skills/fivem-development/SKILL.md", 2200);
   if (fivemSkill) candidates.push(fivemSkill);
   const gates = safeRead(root, ".fxmind/skills/fivem-development/quality-gates.md", 3200);
@@ -189,7 +187,8 @@ function buildPrompt(root, session, files, evidence = {}) {
   const goal = session && session.gates && session.gates.A && session.gates.A.note
     ? session.gates.A.note
     : (session && session.note ? session.note : "(goal not recorded)");
-  const guidance = reviewGuidance(root, files);
+  const ui = uiImpact(root, files, evidence, session);
+  const guidance = reviewGuidance(root, files, ui.changed);
   const lines = [
     "Review this candidate change independently. You did not implement it.",
     "This review IS Gate V: treat it as the final adversarial validation before completion.",
@@ -198,6 +197,10 @@ function buildPrompt(root, session, files, evidence = {}) {
     "",
     "Original goal / Gate A: " + goal,
     "Task kind: " + ((session && session.kind) || "unknown"),
+    "UI impact assessment: " + JSON.stringify(ui),
+    "Prioritize lint/syntax, typecheck where applicable, code quality, correctness and focused regression tests for the actual changed code. Use the project's existing commands; do not introduce tooling just to satisfy this review.",
+    "Check the UI impact assessment against the actual diff. Browser/visual verification is required ONLY for actual changes to rendered content, layout, styles or user interactions (including backend changes that alter those outcomes).",
+    "Do not open an interface or demand screenshots for unchanged UI context or backend/tests/config/tooling/comments/formatting/refactors that preserve rendered output and user interactions. A frontend path, installed UI skill or old planning flag alone does not prove UI impact. If the assessment is false but the diff changes UI behavior, report the concrete mismatch; do not accept an unjustified exemption.",
     "Files under review:",
   ];
   for (const file of files || []) lines.push("- " + file);
@@ -260,6 +263,7 @@ function recordReview(root, options) {
     snapshot: snap,
     fingerprint: fingerprint(snap),
     contextFingerprint: contextFingerprint(options?.session || {}),
+    uiFingerprint: fingerprint(uiImpact(root, normalized, options?.evidence || {}, options?.session || {})),
     output: String((options && options.output) || "").slice(0, 16000),
   };
   fs.mkdirSync(stateDir(root), { recursive: true });
@@ -277,7 +281,7 @@ function readReview(root, sessionId) {
   }
 }
 
-function assertVerifiedFresh(root, session, files) {
+function assertVerifiedFresh(root, session, files, evidence = {}) {
   if (!requiresIndependentReview(session, files)) return null;
   const record = readReview(root, session.sessionId);
   if (!record) {
@@ -299,6 +303,9 @@ function assertVerifiedFresh(root, session, files) {
   }
   if (!record.contextFingerprint || record.contextFingerprint !== contextFingerprint(session)) {
     throw new Error("Gate V review is stale: task goal/kind/playbook changed after review. Run Gate V again.");
+  }
+  if (record.uiFingerprint !== fingerprint(uiImpact(root, normalized, evidence, session))) {
+    throw new Error("Gate V review is stale: UI impact assessment changed after review. Run Gate V again.");
   }
   return {
     reviewId: record.reviewId,

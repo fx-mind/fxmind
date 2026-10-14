@@ -7,6 +7,13 @@
 
 const fs = require("fs");
 const path = require("path");
+const { readProjectEnv } = require("./lib/project-env");
+
+function connectionEnvironment(options = {}) {
+  const environment = options.environment ?? "dev";
+  if (!["dev", "production"].includes(environment)) throw new Error("environment must be dev or production.");
+  return environment;
+}
 
 const CFG_CANDIDATES = [
   "dev/dev.cfg",
@@ -52,14 +59,21 @@ function readMysqlConnectionStringFromCfg(filePath) {
   return match[1] ?? match[2] ?? match[3] ?? null;
 }
 
-function resolveConnectionString(root) {
-  if (process.env.FXMIND_MYSQL_URL) {
-    return { raw: process.env.FXMIND_MYSQL_URL, source: "env:FXMIND_MYSQL_URL" };
+function resolveConnectionString(root, environment) {
+  const env = readProjectEnv(root);
+  const source = (name) => `${process.env[name] ? "env" : ".env"}:${name}`;
+  // Production is explicit and never falls back to development cfg/JSON.
+  if (environment === "production") {
+    const name = "FXMIND_MYSQL_PRODUCTION_URL";
+    return { raw: env[name] || null, source: env[name] ? source(name) : null };
   }
-  if (process.env.MYSQL_CONNECTION_STRING) {
+  if (env.FXMIND_MYSQL_URL) {
+    return { raw: env.FXMIND_MYSQL_URL, source: source("FXMIND_MYSQL_URL") };
+  }
+  if (env.MYSQL_CONNECTION_STRING) {
     return {
-      raw: process.env.MYSQL_CONNECTION_STRING,
-      source: "env:MYSQL_CONNECTION_STRING",
+      raw: env.MYSQL_CONNECTION_STRING,
+      source: source("MYSQL_CONNECTION_STRING"),
     };
   }
   for (const rel of CFG_CANDIDATES) {
@@ -134,27 +148,36 @@ function publicMysqlConfig(cfg, meta = {}) {
     passwordSet: Boolean(cfg?.password),
     source: meta.source || null,
     root: meta.root || null,
+    environment: meta.environment || "dev",
+    readOnly: meta.environment === "production" || meta.readOnly === true,
   };
 }
 
 function mysqlConfig(overrides = {}) {
   const root = projectRoot(overrides);
-  const resolved = resolveConnectionString(root);
-  if (overrides.connectionString) {
+  const environment = connectionEnvironment(overrides);
+  const meta = { root, environment, readOnly: environment === "production" || overrides.readOnly === true };
+  const resolved = resolveConnectionString(root, environment);
+  if (overrides.connectionString && environment === "dev") {
     const cfg = parseConnectionString(overrides.connectionString);
     return {
       cfg,
-      root,
+      ...meta,
       source: "override",
       raw: overrides.connectionString,
     };
   }
   if (!resolved.raw) {
-    return { cfg: null, root, source: null, raw: null };
+    return { cfg: null, ...meta, source: null, raw: null };
+  }
+  const cfg = parseConnectionString(resolved.raw);
+  if (environment === "production" && (!cfg?.host || !cfg.database || !Number.isInteger(cfg.port) || cfg.port < 1 || cfg.port > 65535 ||
+      !(/^mysql:\/\//i.test(resolved.raw.trim()) || /(?:^|;)\s*(server|host|hostname|ip)\s*=\s*[^;\s]+/i.test(resolved.raw)))) {
+    throw new Error("Invalid production MySQL configuration: an explicit host, database and valid port are required.");
   }
   return {
-    cfg: parseConnectionString(resolved.raw),
-    root,
+    cfg,
+    ...meta,
     source: resolved.source,
     raw: resolved.raw,
   };
@@ -256,13 +279,16 @@ function splitDbTable(tableName, defaultDb) {
 }
 
 async function withConnection(overrides, fn) {
-  const { cfg, root, source } = mysqlConfig(overrides);
+  const { cfg, root, source, environment, readOnly } = mysqlConfig(overrides);
+  const meta = { root, source, environment, readOnly };
   if (!cfg) {
     return {
       ok: false,
       error:
-        "MySQL connection not found — set mysql_connection_string in dev/dev.cfg (or server.cfg), or FXMIND_MYSQL_URL / .fxmind/mysql.json",
-      config: publicMysqlConfig(null, { root, source }),
+        environment === "production"
+          ? "Production MySQL connection not found — set FXMIND_MYSQL_PRODUCTION_URL in the project .env. No development fallback."
+          : "MySQL connection not found — set mysql_connection_string in dev/dev.cfg (or server.cfg), or FXMIND_MYSQL_URL / .fxmind/mysql.json",
+      config: publicMysqlConfig(null, meta),
     };
   }
   const driver = getMysql2();
@@ -276,25 +302,31 @@ async function withConnection(overrides, fn) {
     multipleStatements: false,
     connectTimeout: Number(process.env.FXMIND_MYSQL_TIMEOUT_MS || 8000),
   });
+  let transactionStarted = false;
   try {
+    if (readOnly) {
+      await conn.query("START TRANSACTION READ ONLY");
+      transactionStarted = true;
+    }
     const result = await fn(conn, cfg);
     return {
       ok: true,
       ...result,
-      config: publicMysqlConfig(cfg, { root, source }),
+      config: publicMysqlConfig(cfg, meta),
     };
   } finally {
+    if (transactionStarted) await conn.query("ROLLBACK").catch(() => {});
     await conn.end().catch(() => {});
   }
 }
 
 function status(overrides = {}) {
-  const { cfg, root, source } = mysqlConfig(overrides);
-  return {
-    ok: true,
-    configured: Boolean(cfg),
-    config: publicMysqlConfig(cfg, { root, source }),
-  };
+  try {
+    const { cfg, ...meta } = mysqlConfig(overrides);
+    return { ok: true, configured: Boolean(cfg), config: publicMysqlConfig(cfg, meta) };
+  } catch {
+    return { ok: false, configured: false, error: "Invalid MySQL configuration. Check environment (dev/production) and the project .env connection URL." };
+  }
 }
 
 /**
@@ -302,6 +334,10 @@ function status(overrides = {}) {
  * Destructive ops need approvedByUser: true (after human approval).
  */
 async function executeSql(query, options = {}) {
+  let environment;
+  try { environment = connectionEnvironment(options); }
+  catch (error) { return { ok: false, error: error.message }; }
+  options = { ...options, readOnly: environment === "production" || options.readOnly === true };
   const sql = String(query || "").trim();
   if (!sql) {
     return { ok: false, error: "empty query" };
@@ -327,25 +363,13 @@ async function executeSql(query, options = {}) {
       error:
         "destructive SQL blocked (DELETE/DROP/TRUNCATE/…). Ask the user for approval, then retry with approvedByUser: true.",
       preview: sql.length > 500 ? `${sql.slice(0, 500)}…` : sql,
-      config: publicMysqlConfig(mysqlConfig(options).cfg, {
-        root: mysqlConfig(options).root,
-        source: mysqlConfig(options).source,
-      }),
+      config: status(options).config,
     };
   }
 
   try {
     return await withConnection(options, async (conn) => {
-      // Defense in depth: the server itself refuses writes inside a
-      // READ ONLY transaction, even if the keyword scan missed something.
-      if (options.readOnly) await conn.query("START TRANSACTION READ ONLY");
-      let rows;
-      let fields;
-      try {
-        [rows, fields] = await conn.query(sql);
-      } finally {
-        if (options.readOnly) await conn.query("ROLLBACK").catch(() => {});
-      }
+      const [rows, fields] = await conn.query(sql);
       if (Array.isArray(rows)) {
         return {
           kind,
@@ -370,10 +394,7 @@ async function executeSql(query, options = {}) {
       ok: false,
       error: error.message,
       kind,
-      config: publicMysqlConfig(mysqlConfig(options).cfg, {
-        root: mysqlConfig(options).root,
-        source: mysqlConfig(options).source,
-      }),
+      config: status(options).config,
     };
   }
 }

@@ -398,13 +398,20 @@ Env: FXMIND_RCON_HOST (127.0.0.1) FXMIND_RCON_PORT (30120)
 }
 
 async function runDbCli(argv = []) {
-  const options = { help: false, json: false, yes: false };
+  const options = { help: false, json: false, yes: false, environment: "dev" };
   const rest = [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "-h" || arg === "--help") options.help = true;
     else if (arg === "--json") options.json = true;
     else if (arg === "--yes" || arg === "-y") options.yes = true;
+    else if (arg === "--environment") {
+      if (!argv[i + 1] || !["dev", "production"].includes(argv[i + 1])) {
+        console.error("--environment requires dev or production");
+        return 1;
+      }
+      options.environment = argv[++i];
+    }
     else rest.push(arg);
   }
 
@@ -421,17 +428,19 @@ fxmind db — MySQL via mysql_connection_string (dev/dev.cfg / oxmysql).
   fxmind db query "DELETE ..." --yes   # destructive needs --yes
 
   --json   raw JSON
+  --environment dev|production  Default: dev. Production uses FXMIND_MYSQL_PRODUCTION_URL in .env; always read-only.
 `);
     return rest.length === 0 && !options.help ? 1 : 0;
   }
 
   const sub = rest[0];
   try {
+    const connection = { environment: options.environment };
     let result;
-    if (sub === "status") result = fxmindMysql.status();
-    else if (sub === "explore") result = await fxmindMysql.exploreDatabase();
+    if (sub === "status") result = fxmindMysql.status(connection);
+    else if (sub === "explore") result = await fxmindMysql.exploreDatabase(connection);
     else if (sub === "schema") {
-      result = await fxmindMysql.getSchemaInfo({ table_name: rest[1] });
+      result = await fxmindMysql.getSchemaInfo({ ...connection, table_name: rest[1] });
     } else if (sub === "sample") {
       let limit = 5;
       for (let i = 2; i < rest.length; i += 1) {
@@ -440,12 +449,12 @@ fxmind db — MySQL via mysql_connection_string (dev/dev.cfg / oxmysql).
           i += 1;
         }
       }
-      result = await fxmindMysql.getTableSample({ table_name: rest[1], limit });
+      result = await fxmindMysql.getTableSample({ ...connection, table_name: rest[1], limit });
     } else if (sub === "analyze") {
-      result = await fxmindMysql.analyzeTable({ table_name: rest[1] });
+      result = await fxmindMysql.analyzeTable({ ...connection, table_name: rest[1] });
     } else if (sub === "query") {
       const query = rest.slice(1).join(" ").replace(/^["']|["']$/g, "");
-      result = await fxmindMysql.executeSql(query, { approvedByUser: options.yes });
+      result = await fxmindMysql.executeSql(query, { ...connection, approvedByUser: options.yes });
     } else {
       console.error(`Unknown db subcommand: ${sub}`);
       return 1;
@@ -457,7 +466,7 @@ fxmind db — MySQL via mysql_connection_string (dev/dev.cfg / oxmysql).
     }
     if (sub === "status") {
       console.log(
-        `${fivemAnsi("32", "✓")} db ${result.configured ? "configured" : "missing"} · ${result.config?.source || "—"} · ${result.config?.database || "?"}@${result.config?.host || "?"}`,
+        `${fivemAnsi("32", "✓")} db ${result.config?.environment || "dev"} ${result.configured ? "configured" : "missing"} · ${result.config?.source || "—"} · ${result.config?.database || "?"}@${result.config?.host || "?"}`,
       );
       return 0;
     }

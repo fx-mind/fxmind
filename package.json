@@ -7,14 +7,18 @@
     "fxmind-mcp": "./scripts/mcp-server.js"
   },
   "files": [
+    ".env.example",
     "scripts",
     "templates",
     "packs",
     "web/dist"
   ],
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1151.0",
     "@inquirer/prompts": "^7.5.1",
-    "mysql2": "^3.23.0"
+    "dotenv": "18.0.7",
+    "mysql2": "^3.23.0",
+    "sharp": "0.35.5"
   },
   "keywords": [
     "fivem",
@@ -35,7 +39,7 @@
     "url": "git+https://github.com/fx-mind/fxmind.git"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.9.0"
   },
   "scripts": {
     "test": "node --test scripts/*.test.js scripts/lib/*.test.js scripts/install/*.test.js",

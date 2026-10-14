@@ -32,7 +32,7 @@ Every task has a **kind**; it decides how context loads. State `KIND: <kind>` in
 
 ## Start and context (A → B)
 
-1. `fxmind_start_task` with a compact goal note and `ui: true` for visual/interaction changes (including backend changes that alter UI behavior). Keep the returned sessionId and pass it to gate/claim calls. Reuse FXMIND_SESSION_ID from panel context when supplied.
+1. `fxmind_start_task` with a compact goal note and `ui: true` only when visual/interaction changes are expected. This is a planning hint: at Gate V, reassess the actual diff with `evidence.ui.changed` and a reason. Unchanged interface outcomes do not require opening a browser. Keep the returned sessionId and pass it to gate/claim calls. Reuse FXMIND_SESSION_ID from panel context when supplied.
 2. Gate A: record scope, Done, checks, INTENT/invariants when applicable in `fxmind_record_gate` note. From Gate A on, user-facing replies stay short and direct — lead with the outcome, no long explanations or gate ceremony. Trivial tasks auto-complete A/B but still need verification.
 3. Gate B: use relevant preloaded memories; otherwise query once (~1200–1500 tokens). Memories guide discovery; current source confirms them. Read implementation, callers and nearby conventions before editing.
 4. If hits are missing/stale, use one bounded path/symbol search in the likely folder and read the results. Widen only when evidence requires it; no repeated repository dumps. If this provider denies native search, use an available permitted tool/subagent; don't evade its permissions.
@@ -53,7 +53,7 @@ Use MCP for gates, memory/graph and available domain operations. Missing MCP blo
 - Reuse successful checks while the relevant code is unchanged. Batch independent reads/checks; delegate only separable work with a clear result and useful time savings. Avoid delegation for tiny tasks.
 - No unrelated changes or new dependencies for convenience. Respect existing authorization for commits/push/deploy; ask only for actions outside it.
 
-FiveM local verification: call `fxmind_fivem_status` before commands. If available, run ensure/restart and console tail yourself. For NUI inspect DOM/state with wire → dump → unwire and visually inspect the actual runtime; desktop browser alone does not prove CEF rendering. Missing runtime is a verification blocker, not a passing check. Install missing dev integration once when within scope and report any required server restart. Never target production implicitly.
+FiveM local verification: call `fxmind_fivem_status` before commands. If available, run ensure/restart and console tail yourself when runtime behavior changed. Only for actual NUI visual/interaction changes, inspect DOM/state with wire → dump → unwire and visually inspect the actual runtime; desktop browser alone does not prove CEF rendering. Missing runtime blocks only checks that require it; do not open NUI for unchanged interface outcomes. Install missing dev integration once when within scope and report any required server restart. Never target production implicitly.
 
 Scratch belongs in OS temp or a session-owned path. Clean up only files this task created; never delete a shared tmp directory used by other sessions.
 
@@ -61,7 +61,7 @@ Scratch belongs in OS temp or a session-owned path. Clean up only files this tas
 
 Review the entire task diff for requirement coverage, invariants, boundary failures and unnecessary complexity. For each new constant/helper/file ask what concrete readability/reuse/domain benefit it provides; simplify unjustified additions. FiveM also checks every principle ID in `.fxmind/policy/fivem-principles.md` against the diff and cites them in the V `review`.
 
-Run `.fxmind/modes/task-verify.md`, then record V with structured evidence. **Gate V itself launches the independent reviewer automatically for every task.** Do not call a separate review step first. The reviewer runs in a fresh read-only session, prefers a strong model from the same provider as the executor, receives the original goal/current source/evidence plus relevant installed skill rubrics, and never receives the executor rationale.
+Run `.fxmind/modes/task-verify.md`, prioritizing lint/syntax, typecheck, code quality and focused regression checks. Record final UI impact (`evidence.ui.changed` + reason); use browser evidence only for actual visual/interaction changes. **Gate V itself launches the independent reviewer automatically for every task.** Do not call a separate review step first. The reviewer runs in a fresh read-only session, prefers a strong model from the same provider as the executor, receives the original goal/current source/evidence plus relevant installed skill rubrics, and never receives the executor rationale.
 
 If Gate V returns `gate_v_deterministic_failed` or `gate_v_review_failed`, do not ask the user and do not claim completion. Apply the findings surgically, rerun only affected checks, then call Gate V again; each edit invalidates the prior review. Treat `VERIFIED WITH CAVEATS` and `REFUTED` as failures. Maximum three repair/review cycles before reporting the concrete blocker. Failed or blocked verification keeps V incomplete; don't call C. Run Judge only for the additional risk cases described in task-verify; it does not replace Gate V.
 

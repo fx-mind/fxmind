@@ -8,9 +8,13 @@ Review the task diff against Done and applicable pack rules. Confirm invariants 
 
 For a defect, search the affected area for the same failure pattern (TWINS); fix in-scope equivalents or identify remaining sites. FiveM NUI CEF background bugs also inspect the whole resource's shell, popup/modal, styles and Vite output names using the relevant style reference.
 
-Run the cheapest checks that establish Done plus surrounding health: focused tests, lint/typecheck/build as appropriate. Tests must detect the original failure or assert observable behavior, not mirror the implementation. Reuse results only while the tested code is unchanged.
+Prioritize **lint/syntax, typecheck where applicable and code quality** on the actual changed code. Run the project's existing checks, then focused regression tests and build/runtime checks only where they establish Done. If no linter is configured, record the applicable syntax/static check; do not install tooling or invent a passing lint result. Tests must detect the original failure or assert observable behavior, not mirror the implementation. Reuse results only while the tested code is unchanged.
 
-## UI: browser verification is required
+## UI: browser verification only for real interface changes
+
+Assess the final diff and record `ui: { changed: boolean, reason: "specific diff-based explanation" }` in V evidence. Browser verification is required only when the change actually alters rendered content, layout/styles or user interactions, including backend changes that alter those outcomes. Merely touching a frontend path, reviewing an unchanged UI file, having `ui_page` in a manifest, an installed UI skill, or an old task planning flag does not require opening an interface.
+
+When rendered output and user interactions are preserved, backend-only code, tooling/config/tests, comments/formatting and behavior-preserving refactors use `ui.changed: false` with a reason. Complete lint/static checks and code review without opening a browser. The independent reviewer must validate this assessment against the diff; a claim of no UI impact cannot exempt actual visual/interaction changes.
 
 For visual or interaction changes, use the available browser tool or installed browser automation to:
 
@@ -40,7 +44,14 @@ Call `fxmind_record_gate` with `gate: "V"`, sessionId and evidence:
 {
   "files": ["src/server.js"],
   "review": "Compared callers and invariants; removed the one-use forwarding helper.",
+  "ui": { "changed": false, "reason": "Only server validation changed; rendered output and interactions are unchanged." },
   "checks": [{
+    "kind": "lint",
+    "target": "node --check src/server.js",
+    "expected": "Valid JavaScript syntax",
+    "observed": "Exit 0, no syntax errors",
+    "status": "passed"
+  }, {
     "kind": "test",
     "target": "node --test test/server.test.js",
     "expected": "Invalid input is rejected and valid input still succeeds",
@@ -50,13 +61,13 @@ Call `fxmind_record_gate` with `gate: "V"`, sessionId and evidence:
 }
 ```
 
-Use actual task paths/commands/results, not the example values. Check kinds: test/build/runtime/manual. Every check records target, expected, observed and status (passed/failed/blocked). Review is required outside FiveM too.
+Use actual task paths/commands/results, not the example values. Check kinds: lint/typecheck/test/build/runtime/manual. Every check records target, expected, observed and status (passed/failed/blocked). Review is required outside FiveM too. Record the actual lint/syntax and quality findings first.
 
-For UI add `browser`:
+Only when `ui.changed: true`, add `browser`:
 - passed: status, url, interactions[] (actions and observed outcomes), visual, console, artifact (existing non-empty screenshot/trace file).
 - failed/blocked: status and reason. Include the observations in checks where relevant.
 
-Declare `ui: true` at task start for UI behavior even when editing backend files. UI source extensions also trigger browser requirements automatically. All task files must be listed; Git-discovered changed files are included for unclaimed sessions, claimed paths for scoped parallel sessions.
+The task-start `ui: true` flag is a planning hint; final `evidence.ui` reflects actual changes and can correct that hint. Without an explicit assessment, changed UI source files, declared UI behavior or `browser.required` retain the conservative browser requirement. Unchanged UI files listed only as context do not trigger it in Git projects. All task files must be listed; Git-discovered changed files are included for unclaimed sessions, claimed paths for scoped parallel sessions.
 
 The server checks gate order, evidence structure, artifact existence and code fingerprints. Failed/blocked observations persist with V incomplete. Code changes after V require fresh verification before C. These checks cannot authenticate agent-written observations; Judge must inspect the actual evidence.
 

@@ -91,6 +91,8 @@ const DEPRECATED_ROOT_FILES = [
 ];
 
 const PROJECT_GITIGNORE_LINES = [
+  ".env",
+  ".fxmind/storage.json",
   ".fxmind/graph/",
   ".fxmind/state/",
   ".fxmind/knowledge-graph.json",

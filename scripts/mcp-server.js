@@ -10,6 +10,7 @@
  *   fxmind_fivem_nui_wire / fxmind_fivem_nui_dump / fxmind_fivem_nui_unwire
  *   fxmind_db_status / fxmind_db_query / fxmind_db_schema / fxmind_db_sample
  *   fxmind_db_explore / fxmind_db_analyze
+ *   fxmind_storage_status / fxmind_storage_upload_image / fxmind_image_resize
  *   fxmind_panel_wait / fxmind_panel_pending / fxmind_panel_reply / fxmind_panel_fail
  *   fxmind_subagent_run
  *
@@ -23,6 +24,8 @@ const tools = require("./fxmind-tools");
 const fivemRcon = require("./fivem-rcon");
 const fivemNuiDump = require("./fivem-nui-dump");
 const fxmindMysql = require("./fxmind-mysql");
+const storage = require("./fxmind-storage");
+const { resizeImage } = require("./lib/image-tools");
 const { checkForUpdate } = require("./lib/update-check");
 const panelHost = require("./lib/panel-host");
 const { searchSource } = require("./lib/source-search");
@@ -98,7 +101,53 @@ async function runGateVReviewer(root, session, files, evidence) {
   });
 }
 
+const DB_ENVIRONMENT = {
+  environment: {
+    type: "string", enum: ["dev", "production"], default: "dev",
+    description: "dev (default): existing cfg/FXMIND_MYSQL_URL. production: FXMIND_MYSQL_PRODUCTION_URL in the target project's .env; always read-only, no fallback to dev.",
+  },
+};
+
+const IMAGE_PROPERTIES = {
+  path: { type: "string", description: "Local source image; absolute or relative to the project. Max input 50 MiB / 40 megapixels; single-frame raster only." },
+  width: { type: "integer", minimum: 1, maximum: 8192, description: "Target width. Omit both dimensions for a 2048x2048 bounding box (storage defaults may override)." },
+  height: { type: "integer", minimum: 1, maximum: 8192, description: "Target height. With just one dimension, keep the aspect ratio." },
+  fit: { type: "string", enum: ["inside", "cover", "contain", "fill"], default: "inside", description: "inside: fit without enlargement, dimensions may differ. For exact width x height use cover (crop), contain (pad) or fill (stretch); both dimensions required." },
+  format: { type: "string", enum: ["png", "webp", "jpeg"], default: "png" },
+  quality: { type: "integer", minimum: 1, maximum: 100, default: 80, description: "Initial JPEG/WebP quality, reduced toward 40 if necessary to meet maxBytes. PNG is lossless." },
+  maxBytes: { type: "integer", minimum: 1, maximum: 52428800, description: "Maximum encoded bytes (default 5 MiB). Upload cannot exceed the configured storage limit. Fails before writing/uploading if compression cannot fit; dimensions are preserved." },
+};
+
 const TOOL_DEFS = [
+  {
+    name: "fxmind_storage_status",
+    description: "Inspect S3-compatible storage configuration from the project .env, .fxmind/storage.json and FXMIND_S3_* process env. No network request; credentials are never returned or verified. Put AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY in the target project's .env.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: "fxmind_image_resize",
+    description: "Resize/compress a local image into a NEW local file. Source is preserved; existing output is refused. Defaults: PNG, fit inside 2048x2048, 5 MiB maximum. Use cover/contain/fill with width+height for an exact resolution. Does not upload.",
+    inputSchema: {
+      type: "object", properties: {
+        ...IMAGE_PROPERTIES,
+        outputPath: { type: "string", description: "New local file path; extension must match format (.webp, .png, .jpg/.jpeg). Parent directories are created." },
+      }, required: ["path", "outputPath"], additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  {
+    name: "fxmind_storage_upload_image",
+    description: "Resize/compress a local image IN MEMORY and upload to the configured S3-compatible bucket. Default bounding box 2048x2048, PNG, at most 5 MiB (project config may override); originals are preserved. Exact resolutions use width+height and cover/contain/fill. Returns key, bytes, actual dimensions and publicUrl only if configured; never changes bucket permissions. Existing keys are refused unless overwrite=true.",
+    inputSchema: {
+      type: "object", properties: {
+        ...IMAGE_PROPERTIES,
+        key: { type: "string", description: "Optional object name relative to the configured prefix, e.g. banners/home.png. Extension must match format; appended if absent. Default: source name + UUID." },
+        overwrite: { type: "boolean", default: false, description: "Allow replacement of an existing object only when intended. Default uses If-None-Match:*; incompatible providers fail safely." },
+      }, required: ["path"], additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+  },
   {
     name: "fxmind_list_memories",
     description:
@@ -212,7 +261,7 @@ const TOOL_DEFS = [
       type: "object",
       properties: {
         note: { type: "string", description: "Optional goal/scope note." },
-        ui: { type: "boolean", description: "True when the task affects user-visible UI or interactions, including backend-driven UI. Requires browser evidence at Gate V." },
+        ui: { type: "boolean", description: "Planning hint: true only for expected visual/interaction changes. At Gate V, assess the actual diff with evidence.ui.changed and reason; an unchanged interface does not need a browser." },
         trivial: {
           type: "boolean",
           description:
@@ -258,7 +307,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_record_gate",
     description:
-      "Persist a gate in A→B→V→C order. Gate V automatically launches a fresh read-only reviewer, using a strong model from the same provider when available plus relevant project/pack skills. If review finds defects, V stays incomplete and returns findings the coding agent must fix and retry without asking the user. UI changes still require browser evidence. C rejects stale verification after code changes.",
+      "Persist a gate in A→B→V→C order. Gate V prioritizes lint/typecheck, code quality and focused tests, then automatically launches a fresh read-only reviewer. Only actual visual/interaction changes require browser evidence; set evidence.ui.changed with a diff-based reason. Fix review findings and retry without asking the user. C rejects stale verification after code changes.",
     inputSchema: {
       type: "object",
       properties: {
@@ -280,12 +329,18 @@ const TOOL_DEFS = [
               items: {
                 type: "object",
                 properties: {
-                  kind: { type: "string", enum: ["test", "build", "runtime", "manual"] },
+                  kind: { type: "string", enum: ["lint", "typecheck", "test", "build", "runtime", "manual"] },
                   target: { type: "string" }, expected: { type: "string" }, observed: { type: "string" },
                   status: { type: "string", enum: ["passed", "failed", "blocked"] },
                 },
                 required: ["kind", "target", "expected", "observed", "status"],
               },
+            },
+            ui: {
+              type: "object",
+              description: "Actual visual/interaction impact of the final diff, checked by the independent reviewer. Use changed=false with a specific reason for backend-only work, untouched UI context or non-visual refactors, even if the initial task had ui=true.",
+              properties: { changed: { type: "boolean" }, reason: { type: "string", minLength: 1 } },
+              required: ["changed", "reason"],
             },
             browser: {
               type: "object",
@@ -496,16 +551,17 @@ const TOOL_DEFS = [
   {
     name: "fxmind_db_status",
     description:
-      "Check MySQL config from mysql_connection_string (dev/dev.cfg / server.cfg) or FXMIND_MYSQL_URL. Read-only; never returns the password.",
-    inputSchema: { type: "object", properties: {} },
+      "Check the selected MySQL environment (dev by default, production from project .env). No network request; never returns the password. Use environment=production to check production configuration.",
+    inputSchema: { type: "object", properties: { ...DB_ENVIRONMENT } },
   },
   {
     name: "fxmind_db_query",
     description:
-      "Execute one SQL statement against the project MySQL (oxmysql connection from cfg). SELECT/SHOW/DESCRIBE and INSERT/UPDATE are allowed. DELETE/DROP/TRUNCATE (and ALTER…DROP) require approvedByUser=true AFTER explicit user approval (AskQuestion).",
+      "Execute one SQL statement against the selected MySQL environment. production is ALWAYS read-only, even with approvedByUser=true. dev is the default: SELECT/SHOW/DESCRIBE and INSERT/UPDATE are allowed; DELETE/DROP/TRUNCATE require approvedByUser=true AFTER explicit user approval.",
     inputSchema: {
       type: "object",
       properties: {
+        ...DB_ENVIRONMENT,
         query: { type: "string", description: "Single SQL statement." },
         approvedByUser: {
           type: "boolean",
@@ -527,6 +583,7 @@ const TOOL_DEFS = [
     inputSchema: {
       type: "object",
       properties: {
+        ...DB_ENVIRONMENT,
         table_name: {
           type: "string",
           description: "Optional bare table or database.table.",
@@ -541,6 +598,7 @@ const TOOL_DEFS = [
     inputSchema: {
       type: "object",
       properties: {
+        ...DB_ENVIRONMENT,
         table_name: { type: "string" },
         limit: { type: "number" },
       },
@@ -551,7 +609,7 @@ const TOOL_DEFS = [
     name: "fxmind_db_explore",
     description:
       "List tables in the configured database with approx row counts / engines. Like explore_database.",
-    inputSchema: { type: "object", properties: {} },
+    inputSchema: { type: "object", properties: { ...DB_ENVIRONMENT } },
   },
   {
     name: "fxmind_db_analyze",
@@ -560,6 +618,7 @@ const TOOL_DEFS = [
     inputSchema: {
       type: "object",
       properties: {
+        ...DB_ENVIRONMENT,
         table_name: { type: "string" },
       },
       required: ["table_name"],
@@ -721,7 +780,17 @@ function playbookTool(root, args = {}) {
 
 async function dispatchTool(name, args) {
   const root = targetRoot();
+  const dbOptions = { root, environment: args.environment, readOnly: isReadonly() };
   switch (name) {
+    case "fxmind_storage_status":
+      return storage.status(root);
+
+    case "fxmind_image_resize":
+      return resizeImage(root, args);
+
+    case "fxmind_storage_upload_image":
+      return storage.uploadImage(root, args);
+
     case "fxmind_list_memories":
       return { ok: true, memories: tools.listMemories(root) };
 
@@ -826,6 +895,7 @@ async function dispatchTool(name, args) {
           sessionId: session.sessionId,
           session,
           files,
+          evidence: args.evidence || {},
           reviewer: {
             agent: "reviewer",
             cliId: reviewRun.cliId || null,
@@ -930,29 +1000,31 @@ async function dispatchTool(name, args) {
       });
 
     case "fxmind_db_status":
-      return fxmindMysql.status();
+      return fxmindMysql.status(dbOptions);
 
     case "fxmind_db_query":
       return fxmindMysql.executeSql(args.query || "", {
+        ...dbOptions,
         approvedByUser: isReadonly() ? false : Boolean(args.approvedByUser),
         limit: args.limit,
         readOnly: isReadonly(),
       });
 
     case "fxmind_db_schema":
-      return fxmindMysql.getSchemaInfo({ table_name: args.table_name });
+      return fxmindMysql.getSchemaInfo({ ...dbOptions, table_name: args.table_name });
 
     case "fxmind_db_sample":
       return fxmindMysql.getTableSample({
+        ...dbOptions,
         table_name: args.table_name,
         limit: args.limit,
       });
 
     case "fxmind_db_explore":
-      return fxmindMysql.exploreDatabase();
+      return fxmindMysql.exploreDatabase(dbOptions);
 
     case "fxmind_db_analyze":
-      return fxmindMysql.analyzeTable({ table_name: args.table_name });
+      return fxmindMysql.analyzeTable({ ...dbOptions, table_name: args.table_name });
 
     case "fxmind_panel_wait":
       return panelHost.wait(args.timeoutMs);
@@ -1041,9 +1113,10 @@ function formatToolResult(toolName, result) {
 /**
  * Optional tool groups. Core tools are always listed; groups that cannot work
  * in this project are hidden so their schemas do not cost context every turn.
- * FXMIND_MCP_TOOLS=all|fivem,db,panel overrides the detection.
+ * FXMIND_MCP_TOOLS=all|fivem,db,panel,storage overrides the detection.
  */
 const TOOL_GROUPS = {
+  storage: (name) => name === "fxmind_storage_upload_image",
   fivem: (name) => name.startsWith("fxmind_fivem_"),
   db: (name) => name.startsWith("fxmind_db_") && name !== "fxmind_db_status",
   panel: (name) => name.startsWith("fxmind_panel_") || name === "fxmind_subagent_run",
@@ -1072,9 +1145,10 @@ function enabledToolGroups(root, env = process.env) {
     return new Set(Object.keys(TOOL_GROUPS).filter((group) => wanted.has(group)));
   }
   const groups = new Set(["panel"]);
+  if (storage.status(root, env).configured) groups.add("storage");
   if (hasFivemPack(root)) groups.add("fivem");
   try {
-    if (fxmindMysql.status({ root }).configured) groups.add("db");
+    if (fxmindMysql.status({ root }).configured || fxmindMysql.status({ root, environment: "production" }).configured) groups.add("db");
   } catch {
     // Unparseable connection string: fxmind_db_status still reports it.
   }
@@ -1089,6 +1163,7 @@ function enabledToolGroups(root, env = process.env) {
  * single read statement run inside a READ ONLY transaction.
  */
 const READONLY_TOOLS = new Set([
+  "fxmind_storage_status",
   "fxmind_list_memories",
   "fxmind_query",
   "fxmind_search",

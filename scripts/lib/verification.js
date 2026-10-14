@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const { execFileSync } = require("child_process");
 const luaScope = require("./lua-scope-check");
 const independentReview = require("./independent-review");
+const { uiFile, uiImpact } = require("./ui-impact");
 
 function repoPath(root, value) {
   if (typeof value !== "string" || !value.trim()) throw new Error("Verification requires file paths.");
@@ -47,12 +48,6 @@ function snapshot(root, files) {
   }));
 }
 
-function uiFile(file) {
-  return !/(?:\.test|\.spec)\.[^/]+$/.test(file) &&
-    (/\.(?:tsx|jsx|vue|svelte|html|css|scss|sass|less)$/.test(file) ||
-      /(?:^|\/)(?:ui|nui|components|pages)\/.*\.(?:js|ts)$/.test(file));
-}
-
 function text(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -74,7 +69,7 @@ function verify(root, evidence, session) {
   const claimed = session.claimedPaths || [];
   const files = verificationFiles(root, evidence, session);
   const checks = evidence.checks;
-  if (checks.some((check) => !check || !["test", "build", "runtime", "manual"].includes(check.kind) ||
+  if (checks.some((check) => !check || !["lint", "typecheck", "test", "build", "runtime", "manual"].includes(check.kind) ||
       !["passed", "failed", "blocked"].includes(check.status) ||
       !text(check.target) || !text(check.expected) || !text(check.observed))) {
     throw new Error("Each verification check needs kind, target, expected, observed and status (passed/failed/blocked).");
@@ -85,8 +80,9 @@ function verify(root, evidence, session) {
     throw new Error(`Lua lexical-scope verification failed: ${detail}`);
   }
 
-  const independent = independentReview.assertVerifiedFresh(root, session, files);
-  const uiRequired = Boolean(session.ui || evidence.browser?.required || files.some(uiFile));
+  const ui = uiImpact(root, files, evidence, session);
+  const independent = independentReview.assertVerifiedFresh(root, session, files, evidence);
+  const uiRequired = ui.changed;
   let browser = evidence.browser;
   if (uiRequired) {
     if (!browser || !["passed", "failed", "blocked"].includes(browser.status)) {
@@ -115,6 +111,7 @@ function verify(root, evidence, session) {
       files,
       review: evidence.review,
       checks,
+      ui,
       automated: { luaScope: { status: "passed", files: luaCheck.filesChecked } },
       ...(independent ? { independentReview: independent } : {}),
       ...(uiRequired ? { browser } : {}),

@@ -28,6 +28,70 @@ describe("verification gates", () => {
     return session.sessionId;
   }
   function record(sessionId, data) { return recordGate(root, "V", true, { sessionId, evidence: data }); }
+  function commitFixture() {
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    execFileSync("git", ["add", "."], { cwd: root });
+    execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.com", "commit", "-qm", "fixture"], { cwd: root });
+  }
+
+  it("does not require opening an unchanged UI file included as verification context", () => {
+    fs.writeFileSync(path.join(root, "App.tsx"), "export const App = () => <button>Save</button>;");
+    commitFixture();
+    const sessionId = start();
+    fs.writeFileSync(path.join(root, "server.js"), "module.exports = 2;\n");
+    assert.equal(record(sessionId, evidence(["server.js", "App.tsx"])).gates.V.complete, true);
+  });
+
+  it("accepts a justified non-visual UI refactor with lint and typecheck instead of a browser", () => {
+    fs.writeFileSync(path.join(root, "App.tsx"), "export const App = () => <button>Save</button>;");
+    commitFixture();
+    const sessionId = start();
+    fs.appendFileSync(path.join(root, "App.tsx"), "\n// Clarify the existing component without changing rendering.\n");
+    const data = evidence(["App.tsx"]);
+    data.ui = { changed: false, reason: "Only a comment changed; markup, styles and interactions are identical." };
+    data.checks = [
+      { kind: "lint", target: "npm run lint -- App.tsx", expected: "no lint errors", observed: "exit 0, no findings", status: "passed" },
+      { kind: "typecheck", target: "npm run typecheck", expected: "no type errors", observed: "exit 0", status: "passed" },
+    ];
+    const result = record(sessionId, data);
+    assert.equal(result.gates.V.complete, true);
+    assert.equal(result.gates.V.evidence.ui.changed, false);
+  });
+
+  it("allows correcting a stale UI planning flag when the final change does not affect the interface", () => {
+    const sessionId = start({ ui: true });
+    const data = evidence();
+    data.ui = { changed: false, reason: "Only server logging changed; UI output and behavior are preserved." };
+    assert.equal(record(sessionId, data).gates.V.complete, true);
+  });
+
+  it("requires a reason for a UI impact assessment and never passes failed lint", () => {
+    const sessionId = start();
+    const data = evidence();
+    data.ui = { changed: false, reason: " " };
+    assert.throws(() => record(sessionId, data), /UI impact requires/);
+    data.ui.reason = "Only server-side validation changed.";
+    data.checks[0].kind = "lint";
+    data.checks[0].status = "failed";
+    assert.equal(record(sessionId, data).gates.V.complete, false);
+  });
+
+  it("requires browser evidence for explicitly confirmed backend-driven UI changes", () => {
+    const data = evidence();
+    data.ui = { changed: true, reason: "Server response now changes the displayed validation error." };
+    assert.throws(() => record(start(), data), /UI changes require browser/);
+  });
+
+  it("detects staged changes and deleted UI source when no assessment was supplied", () => {
+    fs.writeFileSync(path.join(root, "App.tsx"), "export const App = () => <button>Save</button>;");
+    commitFixture();
+    const sessionId = start();
+    fs.writeFileSync(path.join(root, "App.tsx"), "export const App = () => <button>Delete</button>;");
+    execFileSync("git", ["add", "App.tsx"], { cwd: root });
+    assert.throws(() => record(sessionId, evidence(["App.tsx"])), /UI changes require browser/);
+    fs.rmSync(path.join(root, "App.tsx"));
+    assert.throws(() => record(sessionId, evidence(["App.tsx"])), /UI changes require browser/);
+  });
 
   it("rejects a note-only V and C before verification", () => {
     const sessionId = start();
