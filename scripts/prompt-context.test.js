@@ -47,7 +47,7 @@ describe("prompt-context", () => {
     const run = spawnSync(process.execPath, [path.join(__dirname, "install.js"), "context", "--hook"], {
       input: JSON.stringify({ prompt: "a garagem nao abre", cwd: root, hook_event_name: "UserPromptSubmit" }),
       encoding: "utf8",
-      env: { ...process.env, FXMIND_NO_UPDATE_CHECK: "1" },
+      env: { ...process.env, FXMIND_NO_UPDATE_CHECK: "1", FXMIND_JEV_ENABLED: "false" },
     });
     assert.equal(run.status, 0, run.stderr);
     const out = JSON.parse(run.stdout);
@@ -60,7 +60,7 @@ describe("prompt-context", () => {
     const run = spawnSync(process.execPath, [path.join(__dirname, "install.js"), "context", "--hook"], {
       input: JSON.stringify({ prompt: "explique o que e um monad", cwd: root }),
       encoding: "utf8",
-      env: { ...process.env, FXMIND_NO_UPDATE_CHECK: "1" },
+      env: { ...process.env, FXMIND_NO_UPDATE_CHECK: "1", FXMIND_JEV_ENABLED: "false" },
     });
     assert.equal(run.status, 0);
     assert.equal(run.stdout, "");

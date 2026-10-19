@@ -855,6 +855,19 @@ function queryGraph(targetRoot, question, options = {}) {
   return result;
 }
 
+/**
+ * Asynchronous, opt-in semantic ordering. Local retrieval always runs first
+ * and remains the fallback if Jev is disabled, unavailable or uncertain.
+ */
+async function queryGraphAsync(targetRoot, question, options = {}) {
+  const local = queryGraph(targetRoot, question, options);
+  if (!local.ok || !Array.isArray(local.memories) || local.memories.length < 2) return local;
+  const { prioritizeMemories } = require("./lib/jev");
+  const reordered = await prioritizeMemories(question, local.memories, options.jevOptions || {});
+  if (reordered === local.memories) return local;
+  return { ...local, memories: reordered, jevReranked: true };
+}
+
 function gatesPath(targetRoot) {
   return writeLocal(targetRoot, "gates");
 }
@@ -1044,6 +1057,7 @@ module.exports = {
   driftCheck,
   buildGraph,
   queryGraph,
+  queryGraphAsync,
   loadGraphData,
   isGraphStale,
   ensureGraphFresh,

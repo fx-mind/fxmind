@@ -95,8 +95,11 @@ describe("hooks sessionStart wiring", () => {
     const commands = specs.map((s) => normalizeHookSpec(s).command);
     assert.ok(commands.includes("node .cursor/hooks/update-notifier.js"));
     assert.ok(commands.includes("node .cursor/hooks/graph-freshness.js"));
-    assert.equal(normalizeHookSpec(specs[0]).timeout, 8);
-    assert.equal(normalizeHookSpec(specs[1]).timeout, 12);
+    assert.ok(commands.includes("node .cursor/hooks/memory-first.js sessionStart"));
+    const notifier = specs.find((s) => s.command === "node .cursor/hooks/update-notifier.js");
+    const freshness = specs.find((s) => s.command === "node .cursor/hooks/graph-freshness.js");
+    assert.equal(normalizeHookSpec(notifier).timeout, 8);
+    assert.equal(normalizeHookSpec(freshness).timeout, 12);
   });
 
   it("installHooks writes sessionStart into hooks.json", () => {

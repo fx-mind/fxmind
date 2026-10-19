@@ -49,13 +49,13 @@ function preloadBudget(env = process.env) {
 function buildPromptContext(root, prompt, options = {}) {
   if (!root || shouldSkipPrompt(prompt)) return "";
   const playbooks = require("./lib/playbooks");
-  const plan = playbooks.planTask(root, prompt, { playbooks: options.playbooks });
+  const plan = options.plan || playbooks.planTask(root, prompt, { playbooks: options.playbooks });
   if (plan.playbook) return plan.playbookText;
 
   const tools = require("./fxmind-tools");
   const { formatQueryResult } = require("./lib/memory-retrieval");
   const profile = plan.profile;
-  const result = tools.queryGraph(root, prompt, {
+  const result = options.queryResult || tools.queryGraph(root, prompt, {
     budget: options.budget || profile?.budget || DEFAULT_BUDGET,
     priority: profile?.priority,
     dfs: Boolean(profile?.dfs),
@@ -70,6 +70,22 @@ function buildPromptContext(root, prompt, options = {}) {
     "",
     formatQueryResult(result),
   ].join("\n");
+}
+
+/** Network-backed classification is optional; the sync API stays stable. */
+async function buildPromptContextAsync(root, prompt, options = {}) {
+  if (!root || shouldSkipPrompt(prompt)) return "";
+  const playbooks = require("./lib/playbooks");
+  const plan = await playbooks.planTaskAsync(root, prompt, { playbooks: options.playbooks });
+  if (plan.playbook) return buildPromptContext(root, prompt, { ...options, plan });
+  const tools = require("./fxmind-tools");
+  const queryResult = await tools.queryGraphAsync(root, prompt, {
+    budget: options.budget || plan.profile?.budget || DEFAULT_BUDGET,
+    priority: plan.profile?.priority,
+    dfs: Boolean(plan.profile?.dfs),
+    rebuild: false,
+  });
+  return buildPromptContext(root, prompt, { ...options, plan, queryResult });
 }
 
 function readStdin(timeoutMs = 1500) {
@@ -96,7 +112,7 @@ async function runHook(env = process.env) {
   }
   try {
     const root = findProjectRoot(payload.cwd || env.CLAUDE_PROJECT_DIR || process.cwd());
-    const context = buildPromptContext(root, payload.prompt, { budget: preloadBudget(env) });
+    const context = await buildPromptContextAsync(root, payload.prompt, { budget: preloadBudget(env) });
     if (context) {
       process.stdout.write(
         JSON.stringify({
@@ -122,7 +138,7 @@ async function runPromptContextCli(argv = []) {
     console.error("No .fxmind/memory found from the current directory.");
     return 1;
   }
-  const context = buildPromptContext(root, question, { budget: preloadBudget() });
+  const context = await buildPromptContextAsync(root, question, { budget: preloadBudget() });
   console.log(context || "fxmind: no relevant memories for this prompt.");
   return 0;
 }
@@ -161,6 +177,7 @@ module.exports = {
   findProjectRoot,
   shouldSkipPrompt,
   buildPromptContext,
+  buildPromptContextAsync,
   runPromptContextCli,
   installClaudePromptHook,
 };

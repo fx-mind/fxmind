@@ -751,12 +751,12 @@ function reportHostMcp(threadId, toolName, args, status) {
     .catch(() => {});
 }
 
-function playbookTool(root, args = {}) {
+async function playbookTool(root, args = {}) {
   const playbooks = require("./lib/playbooks");
   const action = args.action || "list";
   if (action === "list") return { ok: true, playbooks: playbooks.loadPlaybooks(root).map(playbooks.summarize) };
   if (action === "match") {
-    const plan = playbooks.planTask(root, args.query || "");
+    const plan = await playbooks.planTaskAsync(root, args.query || "");
     return {
       ok: true,
       kind: plan.kind,
@@ -805,7 +805,7 @@ async function dispatchTool(name, args) {
     }
 
     case "fxmind_query":
-      return tools.queryGraph(root, args.question || "", {
+      return tools.queryGraphAsync(root, args.question || "", {
         dfs: Boolean(args.dfs),
         budget: Number(args.budget) || 1500,
       });

@@ -6,7 +6,7 @@ const { spawn, execFileSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { writeContextTemp, buildJudgeContextFile, normalizeTaskMode } = require("./panel-context");
+const { writeContextTempAsync, buildJudgeContextFile, normalizeTaskMode } = require("./panel-context");
 const { readPanelConfig, writePanelConfig, keyPrefix } = require("./panel-api");
 const threads = require("./panel-threads");
 const demandQueue = require("./panel-demand-queue");
@@ -2029,7 +2029,7 @@ async function runThreadDirect(threadId, options = {}) {
   let contextFile;
   try {
     const taskMode = normalizeTaskMode(config.agent?.taskMode);
-    contextFile = writeContextTemp(root, prompt, threadId, {
+    contextFile = await writeContextTempAsync(root, prompt, threadId, {
       imagePaths,
       taskMode,
       mode: raw.mode,

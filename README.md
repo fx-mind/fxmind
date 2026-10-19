@@ -8,6 +8,8 @@
 
 The first pack is **FiveM** (vRP, QBCore, Qbox, ESX, NUI). More domains can be added under `packs/`.
 
+**Optional Jev integration:** semantic task classification and optional memory ordering, disabled by default. See [docs/jev-optional.md](docs/jev-optional.md) for private API key configuration and testing.
+
 ---
 
 ## Quick start

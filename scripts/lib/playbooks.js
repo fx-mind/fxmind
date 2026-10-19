@@ -400,11 +400,11 @@ function renderPlaybook(root, playbook, resolved) {
  * `playbook` is set only when it matched and every anchor resolved.
  */
 function planTask(root, prompt, options = {}) {
-  const classification = classifyKind(prompt);
+  const classification = options.classification || classifyKind(prompt);
   const plan = {
     kind: classification.kind,
     confidence: classification.confidence,
-    source: classification.kind ? "heuristic" : "none",
+    source: classification.source || (classification.kind ? "heuristic" : "none"),
     profile: classification.kind ? KIND_PROFILES[classification.kind] : null,
     playbook: null,
     playbookText: "",
@@ -429,10 +429,24 @@ function planTask(root, prompt, options = {}) {
   return plan;
 }
 
+/** Optional async decision path. The synchronous path always remains unchanged. */
+async function planTaskAsync(root, prompt, options = {}) {
+  const baseline = planTask(root, prompt, options);
+  // A valid existing playbook is authoritative and costs zero external calls.
+  if (baseline.playbook || baseline.confidence === "high") return baseline;
+  const { refineTaskKind } = require("./jev");
+  const original = classifyKind(prompt);
+  const classification = await refineTaskKind(prompt, original, options.jevOptions || {});
+  if (classification === original) return baseline;
+  return planTask(root, prompt, { ...options, classification });
+}
+
 /** One line telling the agent the detected kind and how to load context. */
 function kindLine(plan) {
   if (!plan.kind) return "";
-  const how = plan.source === "playbook" ? "matched a playbook" : `${plan.confidence} confidence heuristic — confirm or correct it at Gate A`;
+  const how = plan.source === "playbook" ? "matched a playbook" : plan.source === "jev"
+    ? "Jev-assisted classification — confirm or correct it at Gate A"
+    : `${plan.confidence} confidence heuristic — confirm or correct it at Gate A`;
   return `Task kind: ${plan.kind} (${how}). ${KIND_GUIDE[plan.kind]}`;
 }
 
@@ -501,6 +515,7 @@ module.exports = {
   matchPlaybook,
   renderPlaybook,
   planTask,
+  planTaskAsync,
   kindLine,
   staleLine,
   checkPlaybook,

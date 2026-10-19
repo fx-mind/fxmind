@@ -33,6 +33,7 @@ const GIT_HOOK_MARKER = "# --- fxmind pre-commit ---";
 
 const HOOK_SCRIPTS = [
   "gate-guard.js",
+  "memory-first.js",
   "drift-watcher.js",
   "learn-prompt.js",
   "update-notifier.js",
@@ -43,10 +44,16 @@ const HOOK_SCRIPTS = [
 const HOOK_LIB_FILES = ["memory-drift.js", "update-check.js", "cleanup-tmp.js", "stop-followup.js", "layout.js", "fs-lock.js", "task-sessions.js", "verification.js"];
 
 const FXMIND_COMMANDS = {
-  preToolUse: { command: "node .cursor/hooks/gate-guard.js", timeout: 15 },
+  preToolUse: [
+    { command: "node .cursor/hooks/gate-guard.js", timeout: 15 },
+    { command: "node .cursor/hooks/memory-first.js preToolUse", timeout: 5, matcher: "^(Grep|Glob|Shell)$" },
+  ],
+  beforeSubmitPrompt: { command: "node .cursor/hooks/memory-first.js beforeSubmitPrompt", timeout: 5 },
+  afterMCPExecution: { command: "node .cursor/hooks/memory-first.js afterMCPExecution", timeout: 5 },
   postToolUse: { command: "node .cursor/hooks/drift-watcher.js", timeout: 15 },
   stop: { command: "node .cursor/hooks/learn-prompt.js", timeout: 15, loop_limit: 1 },
   sessionStart: [
+    { command: "node .cursor/hooks/memory-first.js sessionStart", timeout: 5 },
     { command: "node .cursor/hooks/update-notifier.js", timeout: 8 },
     { command: "node .cursor/hooks/graph-freshness.js", timeout: 12 },
   ],
@@ -62,6 +69,7 @@ function normalizeHookSpec(spec) {
   }
   const out = { command: spec.command, timeout: spec.timeout ?? 15 };
   if (spec.loop_limit != null) out.loop_limit = spec.loop_limit;
+  if (spec.matcher != null) out.matcher = spec.matcher;
   return out;
 }
 
@@ -293,7 +301,7 @@ function installHooks(targetRoot, options = {}) {
 
   for (const [event, spec] of Object.entries(FXMIND_COMMANDS)) {
     for (const normalized of normalizeHookSpecs(spec).map(normalizeHookSpec)) {
-      const { command, timeout, loop_limit: loopLimit } = normalized;
+      const { command, timeout, loop_limit: loopLimit, matcher } = normalized;
       if (!Array.isArray(existing.hooks[event])) {
         existing.hooks[event] = [];
       }
@@ -302,6 +310,7 @@ function installHooks(targetRoot, options = {}) {
       );
       const entry = { command, timeout };
       if (loopLimit != null) entry.loop_limit = loopLimit;
+      if (matcher) entry.matcher = matcher;
       existing.hooks[event].push(entry);
     }
   }

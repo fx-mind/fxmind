@@ -11,7 +11,7 @@ const FXMIND_TOOLS_MANDATE = [
   "## Ferramentas FxMind",
   "",
   "Use preloaded relevant memories first; otherwise fxmind_query once. Confirm them against current source.",
-  "For missing paths/symbols use fxmind_search with a bounded directory, or permitted native search. Do not repeat blind queries.",
+  "For missing paths/symbols use fxmind_search with a bounded directory before native search. Native Grep is fallback/verification, not first discovery. Do not repeat blind queries.",
   "Use MCP for gates, memory/graph, corrections and available FiveM/DB operations. Missing MCP blocks gated edits; read-only investigation may continue.",
   "Task kind (config | fix | mechanic | create): confirm it at Gate A and pass kind (and playbook, when a Playbook section is present) to fxmind_start_task. A Playbook section replaces discovery — follow its files/anchors and skip fxmind_query.",
   "Implementation: read .fxmind/modes/task.md. UI: read task-verify.md before editing to prepare browser validation.",
@@ -133,7 +133,7 @@ function buildContextFile(root, userPrompt, options = {}) {
   if (question) {
     lines.push("", "## Latest user request", question);
     // Query mode only answers questions; task/plan get the kind + playbook treatment.
-    const plan = operationMode === "query" ? null : playbooks.planTask(root, question);
+    const plan = operationMode === "query" ? null : options.plan || playbooks.planTask(root, question);
     if (plan?.playbook) {
       lines.push("", plan.playbookText);
       return lines.join("\n");
@@ -141,7 +141,7 @@ function buildContextFile(root, userPrompt, options = {}) {
     if (plan) {
       lines.push("", ...[playbooks.kindLine(plan), playbooks.staleLine(plan)].filter(Boolean));
     }
-    const query = tools.queryGraph(root, question, {
+    const query = options.queryResult || tools.queryGraph(root, question, {
       budget: options.budget ? budget : plan?.profile?.budget || budget,
       priority: plan?.profile?.priority,
       dfs: Boolean(plan?.profile?.dfs),
@@ -173,6 +173,21 @@ function buildContextFile(root, userPrompt, options = {}) {
   }
 
   return lines.join("\n");
+}
+
+/** Async path for the optional Jev classification. Sync builder remains available. */
+async function buildContextFileAsync(root, userPrompt, options = {}) {
+  const mode = normalizeOperationMode(options.mode);
+  if (mode === "query" || !String(userPrompt || "").trim()) return buildContextFile(root, userPrompt, options);
+  const plan = await playbooks.planTaskAsync(root, userPrompt);
+  if (plan.playbook) return buildContextFile(root, userPrompt, { ...options, plan });
+  const queryResult = await tools.queryGraphAsync(root, String(userPrompt).trim(), {
+    budget: options.budget || plan.profile?.budget || 1200,
+    priority: plan.profile?.priority,
+    dfs: Boolean(plan.profile?.dfs),
+    rebuild: false,
+  });
+  return buildContextFile(root, userPrompt, { ...options, plan, queryResult });
 }
 
 const JUDGE_MODE_BLOCK = [
@@ -218,8 +233,7 @@ function buildJudgeContextFile(root, threadId, options = {}) {
   return file;
 }
 
-function writeContextTemp(root, userPrompt, threadId, options = {}) {
-  const body = buildContextFile(root, userPrompt, options);
+function writeContextBody(body, threadId, options = {}) {
   const imagePaths = Array.isArray(options.imagePaths) ? options.imagePaths : [];
   const lines = [body];
   if (imagePaths.length) {
@@ -233,10 +247,20 @@ function writeContextTemp(root, userPrompt, threadId, options = {}) {
   return file;
 }
 
+function writeContextTemp(root, userPrompt, threadId, options = {}) {
+  return writeContextBody(buildContextFile(root, userPrompt, options), threadId, options);
+}
+
+async function writeContextTempAsync(root, userPrompt, threadId, options = {}) {
+  return writeContextBody(await buildContextFileAsync(root, userPrompt, options), threadId, options);
+}
+
 module.exports = {
   buildContextFile,
+  buildContextFileAsync,
   buildJudgeContextFile,
   writeContextTemp,
+  writeContextTempAsync,
   readIndex,
   normalizeTaskMode,
   normalizeOperationMode,
