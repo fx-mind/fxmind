@@ -139,6 +139,34 @@ describe("Cursor FxMind strict memory gate", () => {
     assert.equal(response.prompt.continue, true);
     assert.equal(response.tool.permission, "deny");
   });
+  it("allows only FxMind memory MCP on malformed Cursor preToolUse JSON", () => {
+    const malformed = [
+      '{"tool_name":"MCP:fxmind_query","tool_input":{"question":"x"}',
+      '{"tool_name":"MCP:fxmind_read_file","tool_input":{"path":".fxmind/memory/item.md"}',
+      '{"tool_name":"MCP:fxmind_search","tool_input":{"query":"flyer"}',
+    ];
+    for (const input of malformed) {
+      const run = spawnSync(global.process.execPath, [script, "preToolUse"], {
+        cwd: dir, input, encoding: "utf8", timeout: 4000,
+      });
+      assert.equal(run.status, 0, run.stderr);
+      assert.equal(JSON.parse(run.stdout).permission, "allow", input);
+    }
+    for (const name of ["Grep", "Read", "MCP:fxmind_start_task", "MCP:other_tool"]) {
+      const run = spawnSync(global.process.execPath, [script, "preToolUse"], {
+        cwd: dir, input: '{"tool_name":"' + name + '","tool_input":{"x":1}',
+        encoding: "utf8", timeout: 4000,
+      });
+      assert.equal(run.status, 0, run.stderr);
+      assert.equal(JSON.parse(run.stdout).permission, "deny", name);
+    }
+    // False tool_name text inside user-provided tool_input MUST NOT unlock.
+    const spoofed = '{"tool_name":"Grep","tool_input":{"pattern":"\\\"tool_name\\\":\\\"MCP:fxmind_query\\\""}';
+    const r = spawnSync(global.process.execPath, [script, "preToolUse"], {
+      cwd: dir, input: spoofed, encoding: "utf8", timeout: 4000,
+    });
+    assert.equal(JSON.parse(r.stdout).permission, "deny");
+  });
   it("handles invalid Cursor stdin without stopping prompt delivery or allowing tools", () => {
     for (const [kind,expected] of [["beforeSubmitPrompt","continue"], ["preToolUse","permission"]]) {
       const p = spawnSync(global.process.execPath, [script, kind], {
@@ -218,6 +246,22 @@ describe("Cursor FxMind strict memory gate", () => {
     const next = fs.readFileSync(hooksPath, "utf8");
     installHooks(dir, { gitHook: false });
     assert.equal(fs.readFileSync(hooksPath, "utf8"), next);
+  });
+  it("installer bundles all gate-guard transitive dependencies and runs it", () => {
+    installHooks(dir, { gitHook: false });
+    for (const module of ["lua-scope-check.js","independent-review.js","ui-impact.js"]) {
+      assert.ok(fs.existsSync(path.join(dir, ".cursor", "hooks", "lib", module)), module);
+    }
+    const config = JSON.parse(fs.readFileSync(path.join(dir, ".cursor", "hooks.json"), "utf8"));
+    const gate = config.hooks.preToolUse.find(item => item.command.includes("gate-guard.js"));
+    assert.ok(gate?.command);
+    const result = spawnSync(gate.command, {
+      shell: true, cwd: os.tmpdir(), encoding: "utf8",
+      input: JSON.stringify({ hook_event_name: "preToolUse", tool_name: "MCP:fxmind_query", tool_input: { question: "test" } }),
+      timeout: 6000,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stderr, /MODULE_NOT_FOUND|Cannot find module/);
   });
   it("uninstall removes absolute installed hooks without erasing unrelated hooks", () => {
     installHooks(dir, { gitHook: false });

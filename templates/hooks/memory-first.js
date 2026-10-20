@@ -137,6 +137,28 @@ function run(event, input = {}, env = process.env) {
       return {};
   }
 }
+function recoverMalformedInput(event, raw) {
+  // Cursor can occasionally pipe malformed JSON to a hook. Even in that case
+  // the first indexed memory read MUST be reachable, or failClosed deadlocks.
+  // Inspect only top-level tool_name preceding tool_input, NEVER search nested
+  // tool arguments (they can be user-controlled and are not authoritative).
+  if (event === "beforeSubmitPrompt") return { continue: true };
+  if (event === "sessionStart") return { additional_context: FAILURE };
+  if (event === "afterMCPExecution") return {};
+  if (event === "preToolUse" || event === "beforeMCPExecution") {
+    const header = String(raw || "").split(/"tool_input"\s*:/)[0];
+    const tool = /"tool_name"\s*:\s*"([^"\\]{1,128})"/.exec(header);
+    const server = /"mcp_server_name"\s*:\s*"([^"\\]{1,128})"/.exec(header);
+    if (tool && isFxMindTool(tool[1]) && event === "preToolUse") {
+      return { permission: "allow" };
+    }
+    if (tool && server && server[1].toLowerCase() === "fxmind" &&
+        isFxMindMcpRead(tool[1]) && event === "beforeMCPExecution") {
+      return { permission: "allow" };
+    }
+  }
+  return deny();
+}
 function reportError(event, err) {
   // Diagnostic contains no prompts, tool inputs, credentials, or MCP results.
   const code = String(err?.code || err?.name || "unknown").slice(0, 50);
@@ -155,23 +177,22 @@ function readStdin() {
 if (require.main === module) {
   (async () => {
     const raw = await readStdin();
-    const input = JSON.parse(raw || "{}");
-    const event = String(input.hook_event_name || process.argv[2] || "");
-    process.stdout.write(JSON.stringify(run(event, input)));
+    const event = String(process.argv[2] || "");
+    let input;
+    try {
+      input = JSON.parse(raw.replace(/^\uFEFF/, "").replace(/\0/g, "").trim() || "{}");
+    } catch (err) {
+      reportError(event, err);
+      process.stdout.write(JSON.stringify(recoverMalformedInput(event, raw)));
+      return;
+    }
+    process.stdout.write(JSON.stringify(run(String(input.hook_event_name || event), input)));
   })().catch((err) => {
     const event = String(process.argv[2] || "");
     reportError(event, err);
-    // A broken prompt hook must not stop the agent from attempting FXMIND.
-    // Tools remain denied until the successful MCP result is persisted.
-    if (event === "beforeSubmitPrompt") {
-      process.stdout.write(JSON.stringify({ continue: true }));
-    } else if (event === "sessionStart") {
-      process.stdout.write(JSON.stringify({ additional_context: FAILURE }));
-    } else if (event === "afterMCPExecution") {
-      process.stdout.write("{}");
-    } else {
-      process.stdout.write(JSON.stringify(deny()));
-    }
+    // Recover only prompt delivery here. Tools must fail closed unless an
+    // authenticated FxMind tool name was recovered from the raw input above.
+    process.stdout.write(JSON.stringify(recoverMalformedInput(event, "")));
   });
 }
 module.exports = { run, projectRoot, load, save, memoryReadSucceeded, isFxMindTool };
