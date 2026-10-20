@@ -57,9 +57,16 @@ function save(root, consulted) {
   const file = statePath(root);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const temporary = file + "." + process.pid + ".tmp";
+  const data = JSON.stringify({ version: 3, consulted: !!consulted, at: Date.now() });
   try {
-    fs.writeFileSync(temporary, JSON.stringify({ version: 3, consulted: !!consulted, at: Date.now() }), "utf8");
-    fs.renameSync(temporary, file);
+    fs.writeFileSync(temporary, data, "utf8");
+    try {
+      fs.renameSync(temporary, file);
+    } catch (renameError) {
+      // Windows/antivirus or simultaneous Cursor events can briefly lock the
+      // destination. A direct write is the bounded fallback for that race.
+      fs.writeFileSync(file, data, "utf8");
+    }
   } finally { try { fs.unlinkSync(temporary); } catch {} }
 }
 function nameOf(input) {
@@ -103,15 +110,18 @@ function run(event, input = {}, env = process.env) {
   const root = projectRoot(input, env);
   switch (event) {
     case "sessionStart":
-      if (root) save(root, false);
+      // Never prevent the assistant from starting; tool hooks still fail closed.
+      if (root) try { save(root, false); } catch (err) { reportError("sessionStart", err); }
       return { additional_context: FAILURE };
     case "beforeSubmitPrompt":
-      // Always reset even when IDs are omitted: no previous turn's lookup counts.
-      if (!root) return { continue: false, user_message: FAILURE };
-      save(root, false);
+      // Sending the prompt must ALWAYS be allowed; otherwise the agent cannot
+      // even call FXMIND. A failed reset leaves the tool gate locked.
+      if (root) try { save(root, false); } catch (err) { reportError("beforeSubmitPrompt", err); }
       return { continue: true };
     case "afterMCPExecution":
-      if (root && memoryReadSucceeded(input)) save(root, true);
+      if (root && memoryReadSucceeded(input)) {
+        try { save(root, true); } catch (err) { reportError("afterMCPExecution", err); }
+      }
       return {};
     case "preToolUse":
       if (isFxMindTool(nameOf(input))) return { permission: "allow" };
@@ -126,6 +136,11 @@ function run(event, input = {}, env = process.env) {
     default:
       return {};
   }
+}
+function reportError(event, err) {
+  // Diagnostic contains no prompts, tool inputs, credentials, or MCP results.
+  const code = String(err?.code || err?.name || "unknown").slice(0, 50);
+  try { process.stderr.write("[fxmind-hook] " + event + " state error: " + code + "\\n"); } catch {}
 }
 function readStdin() {
   return new Promise((resolve) => {
@@ -144,12 +159,19 @@ if (require.main === module) {
     const event = String(input.hook_event_name || process.argv[2] || "");
     process.stdout.write(JSON.stringify(run(event, input)));
   })().catch((err) => {
-    // Crashes, bad JSON and I/O errors must never authorize a tool.
-    process.stdout.write(JSON.stringify({
-      permission: "deny", continue: false, user_message: FAILURE,
-      agent_message: FAILURE,
-    }));
-    process.exitCode = 2;
+    const event = String(process.argv[2] || "");
+    reportError(event, err);
+    // A broken prompt hook must not stop the agent from attempting FXMIND.
+    // Tools remain denied until the successful MCP result is persisted.
+    if (event === "beforeSubmitPrompt") {
+      process.stdout.write(JSON.stringify({ continue: true }));
+    } else if (event === "sessionStart") {
+      process.stdout.write(JSON.stringify({ additional_context: FAILURE }));
+    } else if (event === "afterMCPExecution") {
+      process.stdout.write("{}");
+    } else {
+      process.stdout.write(JSON.stringify(deny()));
+    }
   });
 }
 module.exports = { run, projectRoot, load, save, memoryReadSucceeded, isFxMindTool };

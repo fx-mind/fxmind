@@ -119,7 +119,36 @@ describe("Cursor FxMind strict memory gate", () => {
     fs.rmSync(path.join(dir, ".fxmind"), { recursive: true });
     assert.equal(denied("Grep").permission, "deny");
     assert.equal(event("beforeReadFile", { file_path: "core.lua" }).permission, "deny");
-    assert.equal(event("beforeSubmitPrompt").continue, false);
+    // Prompt delivery must stay available so the agent can request FXMIND.
+    assert.equal(event("beforeSubmitPrompt").continue, true);
+  });
+  it("never blocks prompt submission when the state directory is unavailable", () => {
+    // Simulate Windows access-denied / file-lock on state persistence.
+    const scriptText = [
+      "const fs=require('node:fs');",
+      "const hook=require(" + JSON.stringify(script) + ");",
+      "const orig=fs.mkdirSync;",
+      "fs.mkdirSync=function(p,...a){if(String(p).includes('cursor-memory-first')){const e=new Error('locked');e.code='EACCES';throw e;}return orig.call(this,p,...a);};",
+      "const prompt=hook.run('beforeSubmitPrompt',{prompt:'start'},{FXMIND_TARGET:''});",
+      "const tool=hook.run('preToolUse',{tool_name:'Grep'},{FXMIND_TARGET:''});",
+      "console.log(JSON.stringify({prompt,tool}));",
+    ].join("\n");
+    const p = spawnSync(global.process.execPath, ["-e", scriptText], { cwd: dir, encoding: "utf8", timeout: 4000 });
+    assert.equal(p.status, 0, p.stderr);
+    const response = JSON.parse(p.stdout);
+    assert.equal(response.prompt.continue, true);
+    assert.equal(response.tool.permission, "deny");
+  });
+  it("handles invalid Cursor stdin without stopping prompt delivery or allowing tools", () => {
+    for (const [kind,expected] of [["beforeSubmitPrompt","continue"], ["preToolUse","permission"]]) {
+      const p = spawnSync(global.process.execPath, [script, kind], {
+        cwd: dir, input: "{malformed", encoding: "utf8", timeout: 4000,
+      });
+      assert.equal(p.status, 0, p.stderr);
+      const result = JSON.parse(p.stdout);
+      if (expected === "continue") assert.equal(result.continue, true);
+      else assert.equal(result.permission, "deny");
+    }
   });
   it("stores only booleans/version/timestamps, never user input or secrets", () => {
     event("beforeSubmitPrompt", { prompt: "TOPSECRET-user-prompt" });
