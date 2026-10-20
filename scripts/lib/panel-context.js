@@ -6,11 +6,29 @@ const fs = require("fs");
 const path = require("path");
 const tools = require("../fxmind-tools");
 const playbooks = require("./playbooks");
+const toolRouter = require("./tool-router");
+
+const DISCOVERY_TOOLS = [
+  "fxmind_playbook", "fxmind_query", "fxmind_search", "fxmind_read_file",
+  "fxmind_gate_status", "fxmind_list_memories", "fxmind_validate_memories",
+  "fxmind_check_update", "fxmind_drift_check",
+];
+
+function toolRouteHint(result) {
+  if (!result?.tool) return "";
+  return [
+    "## Next FxMind MCP tool (suggestion, not execution)",
+    `Recommended: ${result.tool} (source: ${result.source}, confidence: ${result.confidence}).`,
+    "Call it only if needed; validate its arguments and follow all existing task gates and permissions.",
+    "A preloaded memory or a verified playbook takes priority over repeated discovery.",
+  ].join("\n");
+}
 
 const FXMIND_TOOLS_MANDATE = [
   "## Ferramentas FxMind",
   "",
   "Use preloaded relevant memories first; otherwise fxmind_query once. Confirm them against current source.",
+  "If the next discovery tool is ambiguous, use fxmind_route_tool once (advisory only), unless a suggested next tool is already preloaded. Its result never authorizes execution, bypasses gates, or replaces permissions.",
   "For missing paths/symbols use fxmind_search with a bounded directory before native search. Native Grep is fallback/verification, not first discovery. Do not repeat blind queries.",
   "Use MCP for gates, memory/graph, corrections and available FiveM/DB operations. Missing MCP blocks gated edits; read-only investigation may continue.",
   "Task kind (config | fix | mechanic | create): confirm it at Gate A and pass kind (and playbook, when a Playbook section is present) to fxmind_start_task. A Playbook section replaces discovery — follow its files/anchors and skip fxmind_query.",
@@ -125,6 +143,8 @@ function buildContextFile(root, userPrompt, options = {}) {
   }
 
   lines.push(modeBlock, "", FXMIND_TOOLS_MANDATE, "");
+  const toolHint = toolRouteHint(options.routeResult);
+  if (toolHint) lines.push("", toolHint, "");
 
   const memories = tools.listMemories(root);
   lines.push(`Memories on disk: ${memories.length}`);
@@ -178,16 +198,25 @@ function buildContextFile(root, userPrompt, options = {}) {
 /** Async path for the optional Jev classification. Sync builder remains available. */
 async function buildContextFileAsync(root, userPrompt, options = {}) {
   const mode = normalizeOperationMode(options.mode);
-  if (mode === "query" || !String(userPrompt || "").trim()) return buildContextFile(root, userPrompt, options);
-  const plan = await playbooks.planTaskAsync(root, userPrompt);
-  if (plan.playbook) return buildContextFile(root, userPrompt, { ...options, plan });
-  const queryResult = await tools.queryGraphAsync(root, String(userPrompt).trim(), {
-    budget: options.budget || plan.profile?.budget || 1200,
-    priority: plan.profile?.priority,
-    dfs: Boolean(plan.profile?.dfs),
+  const prompt = String(userPrompt || "").trim();
+  if (!prompt) return buildContextFile(root, userPrompt, options);
+  const plan = mode === "query" ? null : await playbooks.planTaskAsync(root, prompt);
+  if (plan?.playbook) return buildContextFile(root, userPrompt, { ...options, plan });
+  const queryResult = await tools.queryGraphAsync(root, prompt, {
+    budget: options.budget || plan?.profile?.budget || 1200,
+    priority: plan?.profile?.priority,
+    dfs: Boolean(plan?.profile?.dfs),
     rebuild: false,
   });
-  return buildContextFile(root, userPrompt, { ...options, plan, queryResult });
+  const routeResult = await toolRouter.routeTool(prompt, {
+    ...(options.toolRouterOptions || {}),
+    availableTools: options.availableTools || DISCOVERY_TOOLS,
+    context: {
+      memoriesPreloaded: Boolean(queryResult?.ok && queryResult.memories?.length),
+      ...(options.toolRouterOptions?.context || {}),
+    },
+  });
+  return buildContextFile(root, userPrompt, { ...options, plan, queryResult, routeResult });
 }
 
 const JUDGE_MODE_BLOCK = [

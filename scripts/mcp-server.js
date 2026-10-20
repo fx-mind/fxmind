@@ -30,6 +30,7 @@ const { checkForUpdate } = require("./lib/update-check");
 const panelHost = require("./lib/panel-host");
 const { searchSource } = require("./lib/source-search");
 const { readSource } = require("./lib/read-source");
+const { routeTool } = require("./lib/tool-router");
 const { formatQueryResult } = require("./lib/memory-retrieval");
 const independentReview = require("./lib/independent-review");
 const verification = require("./lib/verification");
@@ -119,6 +120,30 @@ const IMAGE_PROPERTIES = {
 };
 
 const TOOL_DEFS = [
+  {
+    name: "fxmind_route_tool",
+    description: "Recommend (never execute) the next read-only FxMind MCP discovery tool. Uses deterministic rules first, optional Jev for ambiguous choices only; respects exposed tools and read-only mode. Does NOT approve gates, mutate files, invoke a tool, or change permissions. Use once when unsure which FxMind tool is appropriate; avoid repetitive routing calls.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        request: { type: "string", minLength: 1, maxLength: 1500, description: "Task summary or question. The router sends only fixed, whitelisted intent signals to Jev; no raw text or project paths." },
+        context: {
+          type: "object",
+          properties: {
+            hasPlaybook: { type: "boolean", description: "A verified playbook is already loaded." },
+            memoriesPreloaded: { type: "boolean", description: "Relevant FxMind memories have already been preloaded." },
+            hasFileHit: { type: "boolean", description: "A path was obtained from a trusted prior file search." },
+            searchAttempted: { type: "boolean", description: "The current literal search has already been attempted." },
+            memoryQueryAttempted: { type: "boolean", description: "A memory query was already attempted." },
+          },
+          additionalProperties: false,
+        },
+      },
+      required: ["request"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
   {
     name: "fxmind_storage_status",
     description: "Inspect S3-compatible storage configuration from the project .env, .fxmind/storage.json and FXMIND_S3_* process env. No network request; credentials are never returned or verified. Put AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY in the target project's .env.",
@@ -782,6 +807,12 @@ async function dispatchTool(name, args) {
   const root = targetRoot();
   const dbOptions = { root, environment: args.environment, readOnly: isReadonly() };
   switch (name) {
+    case "fxmind_route_tool":
+      return routeTool(args.request || "", {
+        availableTools: listTools(root).map((tool) => tool.name),
+        context: args.context || {},
+      });
+
     case "fxmind_storage_status":
       return storage.status(root);
 
@@ -1163,6 +1194,7 @@ function enabledToolGroups(root, env = process.env) {
  * single read statement run inside a READ ONLY transaction.
  */
 const READONLY_TOOLS = new Set([
+  "fxmind_route_tool",
   "fxmind_storage_status",
   "fxmind_list_memories",
   "fxmind_query",

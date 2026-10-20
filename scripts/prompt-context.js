@@ -85,7 +85,24 @@ async function buildPromptContextAsync(root, prompt, options = {}) {
     dfs: Boolean(plan.profile?.dfs),
     rebuild: false,
   });
-  return buildPromptContext(root, prompt, { ...options, plan, queryResult });
+  const preload = buildPromptContext(root, prompt, { ...options, plan, queryResult });
+  const router = require("./lib/tool-router");
+  const config = router.configForTools(options.toolRouterOptions || {});
+  if (!config.enabled || !config.apiKey || !config.toolRoutingEnabled) return preload;
+  const route = await router.routeTool(prompt, {
+    ...(options.toolRouterOptions || {}),
+    availableTools: ["fxmind_query", "fxmind_search", "fxmind_read_file", "fxmind_gate_status", "fxmind_playbook"],
+    context: {
+      memoriesPreloaded: Boolean(queryResult?.ok && queryResult.memories?.length),
+    },
+  });
+  if (!route.tool) return preload;
+  const advisory = [
+    "# FxMind recommended next tool (advisory only)",
+    `MCP: ${route.tool} (source: ${route.source}).`,
+    "Do not repeat already preloaded memory queries. Respect existing gates and tool permissions.",
+  ].join("\n");
+  return [preload, advisory].filter(Boolean).join("\n\n");
 }
 
 function readStdin(timeoutMs = 1500) {
