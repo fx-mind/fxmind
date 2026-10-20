@@ -96,6 +96,36 @@ describe("Cursor FxMind strict memory gate", () => {
     event("beforeSubmitPrompt", { prompt: "next request" });
     assert.equal(denied("Grep").permission, "deny");
   });
+  it("does not truncate large real Cursor beforeReadFile payloads after MCP succeeds", () => {
+    const ids = { conversation_id: "cursor-chat-1", generation_id: "gen-a" };
+    event("beforeSubmitPrompt", { ...ids, prompt: "blackout" });
+    assert.equal(event("beforeReadFile", { ...ids, file_path: "core.lua" }).permission, "deny");
+    lookup(undefined, ids);
+    // Actual logged beforeReadFile input is >350,000 characters. Old hook
+    // stopped collecting at 100,000, producing SyntaxError then deny.
+    const attachments = [{ type: "context", data: "x".repeat(380000) }];
+    assert.equal(event("beforeReadFile", { ...ids, file_path: "core.lua", attachments }).permission, "allow");
+    assert.equal(event("preToolUse", { ...ids, tool_name: "Write", tool_input: { file_path: "core.lua" }, attachments }).permission, "allow");
+    assert.equal(event("beforeShellExecution", { ...ids, command: "luac -p core.lua", attachments }).permission, "allow");
+  });
+  it("isolates concurrent Cursor conversations and generations", () => {
+    const first = { conversation_id: "chat-a", generation_id: "run-1" };
+    const second = { conversation_id: "chat-b", generation_id: "run-2" };
+    const next = { conversation_id: "chat-a", generation_id: "run-3" };
+    event("beforeSubmitPrompt", first);
+    lookup(undefined, first);
+    assert.equal(event("preToolUse", { ...first, tool_name: "Write" }).permission, "allow");
+    event("beforeSubmitPrompt", second);
+    assert.equal(event("beforeReadFile", { ...second, file_path: "core.lua" }).permission, "deny");
+    assert.equal(event("preToolUse", { ...first, tool_name: "Write" }).permission, "allow");
+    lookup(undefined, second);
+    assert.equal(event("preToolUse", { ...second, tool_name: "Write" }).permission, "allow");
+    event("beforeSubmitPrompt", next);
+    assert.equal(event("preToolUse", { ...next, tool_name: "Write" }).permission, "deny");
+    assert.equal(event("preToolUse", { ...first, tool_name: "Write" }).permission, "allow");
+    event("beforeSubmitPrompt", first);
+    assert.equal(event("preToolUse", { ...first, tool_name: "Write" }).permission, "deny");
+  });
   it("works with Cursor hook events that have no conversation ID", () => {
     event("beforeSubmitPrompt", { prompt: "photo item" });
     assert.equal(event("preToolUse", { tool_name: "Grep", tool_input: { pattern: "outubrorosa" } }).permission, "deny");

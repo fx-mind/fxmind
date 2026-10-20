@@ -38,23 +38,33 @@ function projectRoot(input = {}, env = process.env) {
   }
   return null;
 }
-function statePath(root) {
-  const hash = crypto.createHash("sha256").update(root.toLowerCase()).digest("hex").slice(0, 24);
+function statePath(root, input = {}) {
+  // Real Cursor 3.26 events provide conversation_id and generation_id.
+  // A workspace-wide checkpoint lets another chat reset or reuse the wrong
+  // authorization, so isolate it by generation. Older clients remain on the
+  // workspace fallback and still fail closed until their own lookup.
+  const conversation = typeof input.conversation_id === "string"
+    ? input.conversation_id : (typeof input.session_id === "string" ? input.session_id : "");
+  const generation = typeof input.generation_id === "string" ? input.generation_id : "";
+  const scope = generation || conversation
+    ? JSON.stringify([root.toLowerCase(), conversation, generation])
+    : root.toLowerCase();
+  const hash = crypto.createHash("sha256").update(scope).digest("hex").slice(0, 24);
   return path.join(root, ".fxmind", "state", "cursor-memory-first", hash + ".json");
 }
-function load(root) {
+function load(root, input = {}) {
   if (!root) return null;
   try {
-    const s = JSON.parse(fs.readFileSync(statePath(root), "utf8"));
+    const s = JSON.parse(fs.readFileSync(statePath(root, input), "utf8"));
     // Do not trust stale state, future timestamps or missing data.
     if (!s || s.version !== 3 || s.consulted !== true || !Number.isFinite(s.at) ||
         s.at > Date.now() + 1000 || Date.now() - s.at > 15 * 60 * 1000) return null;
     return s;
   } catch { return null; }
 }
-function save(root, consulted) {
+function save(root, consulted, input = {}) {
   if (!root) throw new Error("Workspace FxMind nao identificado");
-  const file = statePath(root);
+  const file = statePath(root, input);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const temporary = file + "." + process.pid + ".tmp";
   const data = JSON.stringify({ version: 3, consulted: !!consulted, at: Date.now() });
@@ -111,28 +121,28 @@ function run(event, input = {}, env = process.env) {
   switch (event) {
     case "sessionStart":
       // Never prevent the assistant from starting; tool hooks still fail closed.
-      if (root) try { save(root, false); } catch (err) { reportError("sessionStart", err); }
+      if (root) try { save(root, false, input); } catch (err) { reportError("sessionStart", err); }
       return { additional_context: FAILURE };
     case "beforeSubmitPrompt":
       // Sending the prompt must ALWAYS be allowed; otherwise the agent cannot
       // even call FXMIND. A failed reset leaves the tool gate locked.
-      if (root) try { save(root, false); } catch (err) { reportError("beforeSubmitPrompt", err); }
+      if (root) try { save(root, false, input); } catch (err) { reportError("beforeSubmitPrompt", err); }
       return { continue: true };
     case "afterMCPExecution":
       if (root && memoryReadSucceeded(input)) {
-        try { save(root, true); } catch (err) { reportError("afterMCPExecution", err); }
+        try { save(root, true, input); } catch (err) { reportError("afterMCPExecution", err); }
       }
       return {};
     case "preToolUse":
       if (isFxMindTool(nameOf(input))) return { permission: "allow" };
-      return load(root) ? { permission: "allow" } : deny();
+      return load(root, input) ? { permission: "allow" } : deny();
     case "beforeMCPExecution":
       if (String(input.mcp_server_name || "").toLowerCase() === "fxmind" &&
           isFxMindMcpRead(nameOf(input))) return { permission: "allow" };
-      return load(root) ? { permission: "allow" } : deny();
+      return load(root, input) ? { permission: "allow" } : deny();
     case "beforeShellExecution":
     case "beforeReadFile":
-      return load(root) ? { permission: "allow" } : deny();
+      return load(root, input) ? { permission: "allow" } : deny();
     default:
       return {};
   }
@@ -165,13 +175,28 @@ function reportError(event, err) {
   try { process.stderr.write("[fxmind-hook] " + event + " state error: " + code + "\\n"); } catch {}
 }
 function readStdin() {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     if (process.stdin.isTTY) return resolve("");
-    let buffer = "";
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (chunk) => { if (buffer.length < 100000) buffer += chunk; });
-    process.stdin.on("end", () => resolve(buffer));
-    process.stdin.on("error", () => resolve(""));
+    // beforeReadFile includes attachments/context. In a real Cursor session
+    // this can exceed 350 KB. Truncating after 100 KB caused SyntaxError and
+    // blocked the agent even after a successful MCP lookup. Never truncate JSON.
+    const MAX_INPUT_BYTES = 32 * 1024 * 1024;
+    const chunks = [];
+    let size = 0;
+    let rejected = false;
+    process.stdin.on("data", (chunk) => {
+      if (rejected) return;
+      const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += data.length;
+      if (size > MAX_INPUT_BYTES) {
+        rejected = true;
+        reject(new Error("Cursor hook input exceeds 32 MB"));
+        return;
+      }
+      chunks.push(data);
+    });
+    process.stdin.on("end", () => { if (!rejected) resolve(Buffer.concat(chunks).toString("utf8")); });
+    process.stdin.on("error", reject);
   });
 }
 if (require.main === module) {
