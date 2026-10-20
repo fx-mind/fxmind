@@ -14,12 +14,14 @@ FXMIND_JEV_API_KEY=
 FXMIND_JEV_MIN_CONFIDENCE=0.75
 FXMIND_JEV_TIMEOUT_MS=2500
 FXMIND_JEV_MEMORY_ENABLED=false
+FXMIND_JEV_TOOL_ROUTING_ENABLED=false
 ```
 
 1. Cole a chave no `FXMIND_JEV_API_KEY=` no arquivo local, sem compartilhá-la no chat ou Git.
 2. Mude `FXMIND_JEV_ENABLED=true` para ativar a classificação híbrida.
 3. Opcionalmente mude `FXMIND_JEV_MEMORY_ENABLED=true` para habilitar a escolha semântica entre até três memórias pré-selecionadas pela busca local.
-4. Reinicie o processo do painel/MCP/CLI para garantir o uso dos valores atuais.
+4. Opcionalmente mude `FXMIND_JEV_TOOL_ROUTING_ENABLED=true` para ativar desempate de ferramentas MCP somente quando as regras locais forem ambíguas.
+5. Reinicie o processo do painel/MCP/CLI para garantir o uso dos valores atuais.
 
 Variáveis de ambiente de processo têm prioridade sobre `.env`. Também é aceito
 `TYPESAFE_API_KEY` como alternativa à chave `FXMIND_JEV_API_KEY`.
@@ -31,6 +33,7 @@ nem em cada repositório consumidor.
 - **Desligado ou sem chave:** zero chamadas externas; comportamento local original.
 - **Classificação:** apenas solicitações com heurística incerta e sem playbook válido são consultadas em `jev-latest`. Playbook validado e classificação local de alta confiança não geram chamadas.
 - **Memória:** ranking lexical local primeiro; se houver dois ou mais resultados, Jev opcionalmente escolhe qual tópico deve aparecer primeiro. Não envia o corpo da memória nem código-fonte. Mantém o orçamento local.
+- **Ferramentas:** `fxmind_route_tool` sugere a próxima ferramenta de descoberta em modo somente leitura, sem executá-la. O painel e o hook Claude recebem a sugestão automaticamente quando adequado. O Jev só desempata candidatos locais; recebe apenas sinais genéricos de intenção e identificadores/descrições fixas de ferramentas, nunca solicitações completas, caminhos, código ou segredos. Um playbook verificado prevalece. Gates e permissões existentes continuam obrigatórios.
 - **Baixa confiança, timeout, HTTP 4xx/5xx, conexão indisponível ou resposta inesperada:** devolve a decisão local, sem travar o agente.
 - **Gate V/C:** permanecem com verificação real, resultados observados e revisão independente, sem delegação de aprovação ao Jev.
 

@@ -21,6 +21,7 @@ function jevConfig(env = process.env, root = PACKAGE_ROOT) {
   try { values = readProjectEnv(root, env); } catch { values = env; }
   const enabled = /^(1|true|yes)$/i.test(String(values.FXMIND_JEV_ENABLED || ""));
   const memoryEnabled = /^(1|true|yes)$/i.test(String(values.FXMIND_JEV_MEMORY_ENABLED || ""));
+  const toolRoutingEnabled = /^(1|true|yes)$/i.test(String(values.FXMIND_JEV_TOOL_ROUTING_ENABLED || ""));
   const apiKey = String(values.FXMIND_JEV_API_KEY || values.TYPESAFE_API_KEY || "").trim();
   const parsedConfidence = Number(values.FXMIND_JEV_MIN_CONFIDENCE);
   const minConfidence = Number.isFinite(parsedConfidence) && parsedConfidence >= 0 && parsedConfidence <= 1
@@ -28,12 +29,12 @@ function jevConfig(env = process.env, root = PACKAGE_ROOT) {
   const parsedTimeout = Number(values.FXMIND_JEV_TIMEOUT_MS);
   const timeoutMs = Number.isFinite(parsedTimeout) && parsedTimeout >= 200 && parsedTimeout <= 10000
     ? parsedTimeout : 2500;
-  return { enabled, memoryEnabled, apiKey, minConfidence, timeoutMs, model: "jev-latest" };
+  return { enabled, memoryEnabled, toolRoutingEnabled, apiKey, minConfidence, timeoutMs, model: "jev-latest" };
 }
 
 function jevStatus(env = process.env, root = PACKAGE_ROOT) {
-  const { enabled, memoryEnabled, apiKey, minConfidence, timeoutMs, model } = jevConfig(env, root);
-  return { enabled, memoryEnabled, configured: Boolean(apiKey), active: enabled && Boolean(apiKey), minConfidence, timeoutMs, model };
+  const { enabled, memoryEnabled, toolRoutingEnabled, apiKey, minConfidence, timeoutMs, model } = jevConfig(env, root);
+  return { enabled, memoryEnabled, toolRoutingEnabled, configured: Boolean(apiKey), active: enabled && Boolean(apiKey), minConfidence, timeoutMs, model };
 }
 
 async function systemOne(state, questions, options = {}) {
