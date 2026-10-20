@@ -1,128 +1,155 @@
 #!/usr/bin/env node
 "use strict";
 /**
- * Memory-first routing for Cursor agent tools.
+ * Cursor/FxMind hard prerequisite:
+ * Until FxMind MCP successfully returns project memory, deny every unrelated
+ * tool, shell execution, file read and non-FxMind MCP operation.
  *
- * Cursor's per-tool and prompt hooks do NOT reliably provide session_id:
- * preToolUse, beforeShellExecution and afterMCPExecution documented payloads
- * have no session identifier. Use a workspace-scoped fallback, reset on each
- * prompt, rather than silently allowing all Grep calls.
+ * Never fail open because of missing conversation_id, exhausted retries,
+ * wrong CWD, absent state, missing MCP or a corrupted state file.
+ * Use one per-workspace checkpoint (Cursor's tool events have no stable session
+ * id). beforeSubmitPrompt always resets the checkpoint for the next turn.
  *
- * Redirect at most twice per prompt to avoid deadlocks when MCP is offline.
- * This is a discovery preference, not a security policy.
- * State contains counters only, never prompts, patterns, source or secrets.
+ * Project hooks are a workflow guard, NOT a security sandbox. Cursor clients
+ * that never execute project hooks cannot be intercepted by this script.
  */
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 
-const root = process.cwd();
-const memoryDir = path.join(root, ".fxmind", "memory");
-const stateDir = path.join(root, ".fxmind", "state", "cursor-memory-first");
-const SEARCH = /(?:^|[\s;&|("'])(?:rg|grep|git\s+grep|findstr|Select-String|ack|ag)(?=\s|$)/i;
-const LOOKUP = new Set(["fxmind_query", "fxmind_search", "fxmind_playbook", "fxmind_read_file"]);
-const MAX_REDIRECTS = 2;
+const READ_TOOLS = new Set(["fxmind_query", "fxmind_read_file", "fxmind_search", "fxmind_playbook"]);
+const FAILURE = "FXMIND OBRIGATORIO: consulta bem-sucedida de memoria pelo MCP fxmind pendente. Nao execute Grep, terminal, leitura, edicao, subagentes ou outras ferramentas. Chame fxmind_query agora. Se o MCP falhar, informe o bloqueio e pare; nao use fallback.";
 
-function active(env = process.env) {
-  return !["0", "false", "off"].includes(String(env.FXMIND_MEMORY_FIRST || "").toLowerCase())
-    && fs.existsSync(memoryDir);
+function projectRoot(input = {}, env = process.env) {
+  // The installed hook itself is an authoritative workspace locator, even if
+  // Cursor launches Node from C:\\Windows\\System32 or another directory.
+  const sources = [path.resolve(__dirname, "..", ".."), env.FXMIND_TARGET, process.cwd(), input.cwd, input.working_directory];
+  if (typeof input?.tool_input === "object") sources.push(input.tool_input.working_directory);
+  for (const raw of sources) {
+    if (!raw || typeof raw !== "string") continue;
+    let dir = path.resolve(raw);
+    while (true) {
+      if (fs.existsSync(path.join(dir, ".fxmind", "memory")) &&
+          fs.existsSync(path.join(dir, ".cursor", "hooks.json"))) return dir;
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return null;
 }
-function stateFile(input) {
-  const id = input?.conversation_id || input?.session_id || input?.composer_id
-    || input?.conversationId || input?.sessionId || process.env.CURSOR_SESSION_ID;
-  const scope = typeof id === "string" && id.length > 0 && id.length < 512
-    ? "session:" + id : "workspace:" + root.toLowerCase();
-  const hash = crypto.createHash("sha256").update(scope).digest("hex").slice(0, 24);
-  return path.join(stateDir, hash + ".json");
+function statePath(root) {
+  const hash = crypto.createHash("sha256").update(root.toLowerCase()).digest("hex").slice(0, 24);
+  return path.join(root, ".fxmind", "state", "cursor-memory-first", hash + ".json");
 }
-function readState(input) {
+function load(root) {
+  if (!root) return null;
   try {
-    const data = JSON.parse(fs.readFileSync(stateFile(input), "utf8"));
-    if (!data || !Number.isFinite(data.at) || Date.now() - data.at > 10 * 60 * 1000) return null;
-    return data;
+    const s = JSON.parse(fs.readFileSync(statePath(root), "utf8"));
+    // Do not trust stale state, future timestamps or missing data.
+    if (!s || s.version !== 3 || s.consulted !== true || !Number.isFinite(s.at) ||
+        s.at > Date.now() + 1000 || Date.now() - s.at > 15 * 60 * 1000) return null;
+    return s;
   } catch { return null; }
 }
-function writeState(input, data) {
-  const file = stateFile(input);
-  fs.mkdirSync(stateDir, { recursive: true });
-  const tmp = file + "." + process.pid + ".tmp";
+function save(root, consulted) {
+  if (!root) throw new Error("Workspace FxMind nao identificado");
+  const file = statePath(root);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const temporary = file + "." + process.pid + ".tmp";
   try {
-    fs.writeFileSync(tmp, JSON.stringify(data), "utf8");
-    fs.renameSync(tmp, file);
-  } finally {
-    try { fs.unlinkSync(tmp); } catch {}
-  }
+    fs.writeFileSync(temporary, JSON.stringify({ version: 3, consulted: !!consulted, at: Date.now() }), "utf8");
+    fs.renameSync(temporary, file);
+  } finally { try { fs.unlinkSync(temporary); } catch {} }
 }
-function toolName(input) {
-  return String(input?.tool_name || "").replace(/^MCP:/, "");
+function nameOf(input) {
+  return String(input?.tool_name || "");
 }
-function nativeSearch(event, input) {
-  if (event === "beforeShellExecution") return SEARCH.test(String(input?.command || ""));
-  if (event !== "preToolUse") return false;
-  const name = toolName(input);
-  if (name === "Grep" || name === "Glob") return true;
-  if (name !== "Shell") return false;
-  const value = input?.tool_input;
-  const command = typeof value === "string" ? value : String(value?.command || "");
-  return SEARCH.test(command);
+function isFxMindTool(name) {
+  // Only memory retrieval may run before FxMind context is loaded.
+  // Cursor preToolUse names MCP calls as MCP:<tool_name>.
+  return /^MCP:fxmind_(?:query|read_file|search|playbook)$/.test(name) ||
+    /^mcp__fxmind__fxmind_(?:query|read_file|search|playbook)$/.test(name);
 }
-function lookupSucceeded(input) {
-  const name = toolName(input);
-  const server = String(input?.mcp_server_name || "");
-  if (server !== "fxmind" || !LOOKUP.has(name)) return false;
-  const result = input?.result_json;
+function isFxMindMcpRead(name) {
+  return READ_TOOLS.has(name.replace(/^MCP:/, "").replace(/^mcp__fxmind__/, ""));
+}
+function memoryReadSucceeded(input) {
+  if (String(input?.mcp_server_name || "").toLowerCase() !== "fxmind") return false;
+  const name = nameOf(input).replace(/^MCP:/, "").replace(/^mcp__fxmind__/, "");
+  if (!READ_TOOLS.has(name)) return false;
+  let result = input.result_json;
   if (result == null) return false;
-  const payload = typeof result === "string" ? result : JSON.stringify(result);
-  // Both transport errors and structured FxMind errors must not count.
-  if (/"isError"\s*:\s*true|\btoolError\b|\berror\s*:\s*"?MCP\b/i.test(payload)) return false;
-  return true;
+  try { if (typeof result === "string") result = JSON.parse(result); } catch { return false; }
+  if (!result || typeof result !== "object" || result.isError === true ||
+      result.error != null || result.ok === false) return false;
+  const content = result.content;
+  // Require actual returned context, not merely a 200/empty result.
+  if (Array.isArray(content)) {
+    return content.some((item) => item && item.type === "text" &&
+      typeof item.text === "string" && item.text.trim().length > 0 &&
+      !/^(error|erro|falha)\s*:/i.test(item.text.trim()));
+  }
+  // Some MCP implementations wrap JSON in result_json.result.
+  if (result.result && Array.isArray(result.result.content)) {
+    return result.result.content.some((item) => typeof item?.text === "string" && item.text.trim().length > 0);
+  }
+  return false;
 }
-function run(event, input) {
-  if (!active()) return event === "beforeSubmitPrompt" ? { continue: true } : { permission: "allow" };
+function deny() {
+  return { permission: "deny", user_message: FAILURE, agent_message: FAILURE };
+}
+function run(event, input = {}, env = process.env) {
+  const root = projectRoot(input, env);
   switch (event) {
     case "sessionStart":
-      return { additional_context:
-        "FxMind is available. For repository questions or implementations, call fxmind_query BEFORE Grep/rg. Use fxmind_search for missing paths and symbols, then read current source to verify. Read .fxmind/modes/task.md when editing code. If MCP is unavailable, explicitly state that and use native search as fallback." };
+      if (root) save(root, false);
+      return { additional_context: FAILURE };
     case "beforeSubmitPrompt":
-      writeState(input, { at: Date.now(), consulted: false, redirects: 0 });
+      // Always reset even when IDs are omitted: no previous turn's lookup counts.
+      if (!root) return { continue: false, user_message: FAILURE };
+      save(root, false);
       return { continue: true };
     case "afterMCPExecution":
-      if (lookupSucceeded(input)) {
-        const state = readState(input) || { at: Date.now(), consulted: false, redirects: 0 };
-        writeState(input, { ...state, consulted: true });
-      }
+      if (root && memoryReadSucceeded(input)) save(root, true);
       return {};
     case "preToolUse":
-    case "beforeShellExecution": {
-      if (!nativeSearch(event, input)) return { permission: "allow" };
-      const state = readState(input) || { at: Date.now(), consulted: false, redirects: 0 };
-      if (state.consulted || state.redirects >= MAX_REDIRECTS) return { permission: "allow" };
-      writeState(input, { ...state, redirects: state.redirects + 1 });
-      return {
-        permission: "deny",
-        user_message: "FXMIND: consulta à memória necessária antes da busca por código.",
-        agent_message: "Consulte fxmind_query agora (MCP fxmind), antes de Grep/rg/Glob. Depois use fxmind_search para localizar caminhos e confirme com leitura direta dos arquivos. Se fxmind não aparecer entre as ferramentas disponíveis, explique a indisponibilidade e utilize busca nativa no fallback. Não repita Grep ignorando o MCP.",
-      };
-    }
+      if (isFxMindTool(nameOf(input))) return { permission: "allow" };
+      return load(root) ? { permission: "allow" } : deny();
+    case "beforeMCPExecution":
+      if (String(input.mcp_server_name || "").toLowerCase() === "fxmind" &&
+          isFxMindMcpRead(nameOf(input))) return { permission: "allow" };
+      return load(root) ? { permission: "allow" } : deny();
+    case "beforeShellExecution":
+    case "beforeReadFile":
+      return load(root) ? { permission: "allow" } : deny();
     default:
-      return { permission: "allow" };
+      return {};
   }
 }
 function readStdin() {
   return new Promise((resolve) => {
     if (process.stdin.isTTY) return resolve("");
-    let data = "";
+    let buffer = "";
     process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (chunk) => { if (data.length < 100000) data += chunk; });
-    process.stdin.on("end", () => resolve(data));
+    process.stdin.on("data", (chunk) => { if (buffer.length < 100000) buffer += chunk; });
+    process.stdin.on("end", () => resolve(buffer));
     process.stdin.on("error", () => resolve(""));
   });
 }
 if (require.main === module) {
   (async () => {
-    const input = JSON.parse((await readStdin()) || "{}");
+    const raw = await readStdin();
+    const input = JSON.parse(raw || "{}");
     const event = String(input.hook_event_name || process.argv[2] || "");
     process.stdout.write(JSON.stringify(run(event, input)));
-  })().catch(() => process.stdout.write(JSON.stringify({ permission: "allow", continue: true })));
+  })().catch((err) => {
+    // Crashes, bad JSON and I/O errors must never authorize a tool.
+    process.stdout.write(JSON.stringify({
+      permission: "deny", continue: false, user_message: FAILURE,
+      agent_message: FAILURE,
+    }));
+    process.exitCode = 2;
+  });
 }
-module.exports = { run, nativeSearch, lookupSucceeded, active, stateFile };
+module.exports = { run, projectRoot, load, save, memoryReadSucceeded, isFxMindTool };

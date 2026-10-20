@@ -33,6 +33,7 @@ const GIT_HOOK_MARKER = "# --- fxmind pre-commit ---";
 
 const HOOK_SCRIPTS = [
   "gate-guard.js",
+  "cwd-bootstrap.js",
   "memory-first.js",
   "drift-watcher.js",
   "learn-prompt.js",
@@ -46,9 +47,11 @@ const HOOK_LIB_FILES = ["memory-drift.js", "update-check.js", "cleanup-tmp.js", 
 const FXMIND_COMMANDS = {
   preToolUse: [
     { command: "node .cursor/hooks/gate-guard.js", timeout: 15 },
-    { command: "node .cursor/hooks/memory-first.js preToolUse", timeout: 5, matcher: "^(Grep|Glob|Shell)$" },
+    { command: "node .cursor/hooks/memory-first.js preToolUse", timeout: 5, failClosed: true },
   ],
-  beforeShellExecution: { command: "node .cursor/hooks/memory-first.js beforeShellExecution", timeout: 5 },
+  beforeShellExecution: { command: "node .cursor/hooks/memory-first.js beforeShellExecution", timeout: 5, failClosed: true },
+  beforeReadFile: { command: "node .cursor/hooks/memory-first.js beforeReadFile", timeout: 5, failClosed: true },
+  beforeMCPExecution: { command: "node .cursor/hooks/memory-first.js beforeMCPExecution", timeout: 5, failClosed: true },
   beforeSubmitPrompt: { command: "node .cursor/hooks/memory-first.js beforeSubmitPrompt", timeout: 5 },
   afterMCPExecution: { command: "node .cursor/hooks/memory-first.js afterMCPExecution", timeout: 5 },
   postToolUse: { command: "node .cursor/hooks/drift-watcher.js", timeout: 15 },
@@ -71,7 +74,33 @@ function normalizeHookSpec(spec) {
   const out = { command: spec.command, timeout: spec.timeout ?? 15 };
   if (spec.loop_limit != null) out.loop_limit = spec.loop_limit;
   if (spec.matcher != null) out.matcher = spec.matcher;
+  if (spec.failClosed != null) out.failClosed = spec.failClosed;
   return out;
+}
+
+// Cursor may run hooks from System32/extension-host, not projectRoot.
+// Use absolute script paths and a preloaded bootstrap which restores cwd.
+// The filename match is used to migrate old relative commands idempotently.
+function hookFileFromCommand(command) {
+  const match = /^node \.cursor\/hooks\/([a-z0-9.-]+\.js)(?: (.*))?$/i.exec(command);
+  return match ? { file: match[1], args: match[2] || "" } : null;
+}
+function hookCommandForRoot(projectRoot, command) {
+  const parsed = hookFileFromCommand(command);
+  if (!parsed) return command;
+  const hookDir = path.join(projectRoot, HOOKS_DIR_REL);
+  const quote = (name) => '"' + path.join(hookDir, name).replace(/\\/g, "/") + '"';
+  return 'node --require ' + quote('cwd-bootstrap.js') + ' ' + quote(parsed.file)
+    + (parsed.args ? ' ' + parsed.args : '');
+}
+function isManagedHookCommand(candidate, sourceCommand) {
+  const parsed = hookFileFromCommand(sourceCommand);
+  if (!parsed || typeof candidate !== "string") return candidate === sourceCommand;
+  const normalized = candidate.replace(/\\/g, "/");
+  return normalized.startsWith("node ") &&
+    normalized.includes('.cursor/hooks/' + parsed.file) &&
+    (candidate === sourceCommand || normalized.includes('cwd-bootstrap.js') ||
+     normalized.startsWith('node ".cursor/hooks/'));
 }
 
 function readJson(filePath, fallback = null) {
@@ -319,16 +348,17 @@ function installHooks(targetRoot, options = {}) {
 
   for (const [event, spec] of Object.entries(FXMIND_COMMANDS)) {
     for (const normalized of normalizeHookSpecs(spec).map(normalizeHookSpec)) {
-      const { command, timeout, loop_limit: loopLimit, matcher } = normalized;
+      const { command, timeout, loop_limit: loopLimit, matcher, failClosed } = normalized;
       if (!Array.isArray(existing.hooks[event])) {
         existing.hooks[event] = [];
       }
       existing.hooks[event] = existing.hooks[event].filter(
-        (entry) => typeof entry === "object" && entry.command !== command,
+        (entry) => typeof entry === "object" && !isManagedHookCommand(entry.command, command),
       );
-      const entry = { command, timeout };
+      const entry = { command: hookCommandForRoot(projectRoot, command), timeout };
       if (loopLimit != null) entry.loop_limit = loopLimit;
       if (matcher) entry.matcher = matcher;
+      if (failClosed != null) entry.failClosed = failClosed;
       existing.hooks[event].push(entry);
     }
   }
@@ -388,7 +418,8 @@ function uninstallHooks(targetRoot) {
         (s) => normalizeHookSpec(s).command,
       );
       existing.hooks[event] = existing.hooks[event].filter(
-        (entry) => typeof entry === "object" && !commands.includes(entry.command),
+        (entry) => typeof entry === "object" &&
+          !commands.some((command) => isManagedHookCommand(entry.command, command)),
       );
       if (existing.hooks[event].length === 0) delete existing.hooks[event];
     }
@@ -414,7 +445,8 @@ function hooksStatus(targetRoot) {
   }
   const wired = {};
   for (const [event, spec] of Object.entries(FXMIND_COMMANDS)) {
-    const commands = normalizeHookSpecs(spec).map((s) => normalizeHookSpec(s).command);
+    const commands = normalizeHookSpecs(spec).map((s) =>
+      hookCommandForRoot(projectRoot, normalizeHookSpec(s).command));
     wired[event] = Boolean(
       existing &&
         Array.isArray(existing.hooks?.[event]) &&

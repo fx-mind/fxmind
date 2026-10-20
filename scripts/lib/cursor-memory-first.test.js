@@ -5,99 +5,200 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
-const { installHooks } = require("../hooks");
+const { installHooks, uninstallHooks } = require("../hooks");
 const script = path.resolve(__dirname, "../../templates/hooks/memory-first.js");
 let dir;
-function event(hookEvent, payload = {}, env = {}) {
-  // Intentionally use Cursor's documented payload without conversation_id:
-  // the old implementation silently allowed Grep when session IDs were missing.
+function event(hookEvent, payload = {}, options = {}) {
   const input = { ...payload, hook_event_name: hookEvent };
-  const output = spawnSync(process.execPath, [script, hookEvent], {
-    cwd: dir, input: JSON.stringify(input), encoding: "utf8",
-    env: { ...process.env, FXMIND_MEMORY_FIRST: "1", CURSOR_SESSION_ID: "", ...env },
+  const process = spawnSync(global.process.execPath, [script, hookEvent], {
+    cwd: options.cwd || dir,
+    input: JSON.stringify(input),
+    encoding: "utf8",
+    env: { ...global.process.env, CURSOR_SESSION_ID: "", FXMIND_TARGET: "", ...options.env },
     timeout: 4000,
   });
-  assert.equal(output.status, 0, output.stderr);
-  return JSON.parse(output.stdout);
+  assert.equal(process.status, 0, process.stderr || process.stdout);
+  return JSON.parse(process.stdout);
 }
-describe("Cursor memory-first hooks with real Cursor payloads", () => {
+function lookup(result = { content: [{ type: "text", text: "Project memory: inventory and flyers" }] }, extras = {}) {
+  return event("afterMCPExecution", {
+    mcp_server_name: "fxmind",
+    tool_name: "fxmind_query",
+    result_json: JSON.stringify(result),
+    ...extras,
+  });
+}
+function denied(name = "Grep") { return event("preToolUse", { tool_name: name }); }
+describe("Cursor FxMind strict memory gate", () => {
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "fxmind-cursor-routing-"));
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "fxmind-cursor-strict-"));
+    fs.mkdirSync(path.join(dir, ".cursor"), { recursive: true });
+    fs.writeFileSync(path.join(dir, ".cursor", "hooks.json"), JSON.stringify({ version: 1, hooks: {} }));
     fs.mkdirSync(path.join(dir, ".fxmind", "memory"), { recursive: true });
   });
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-  it("injects context and starts a new turn without an ID", () => {
-    assert.match(event("sessionStart", { session_id: "new-composer" }).additional_context, /fxmind_query/);
-    assert.equal(event("beforeSubmitPrompt", { prompt: "linkar flyers" }).continue, true);
+  it("blocks Grep, Shell, Read, Write, Search, Task, subagents and unknown tools until FxMind", () => {
+    assert.equal(event("beforeSubmitPrompt", { prompt: "find outubrorosa" }).continue, true);
+    for (const name of ["Grep", "Glob", "Shell", "Read", "Write", "Delete", "Task", "Explore", "Search", "codebase_search", "mcp__other__tool"]) {
+      assert.equal(denied(name).permission, "deny", name);
+    }
   });
-  it("redirects premature Grep with no conversation_id (regression)", () => {
-    event("beforeSubmitPrompt", { prompt: "linkar flyers" });
-    const grep = { tool_name: "Grep", tool_input: { pattern: "outubrorosa" } };
-    assert.equal(event("preToolUse", grep).permission, "deny");
-    assert.equal(event("preToolUse", grep).permission, "deny");
-    assert.equal(event("preToolUse", grep).permission, "allow");
-    event("beforeSubmitPrompt", { prompt: "new turn" });
-    assert.equal(event("preToolUse", grep).permission, "deny");
-  });
-  it("handles beforeShellExecution without any tool_name", () => {
+  it("never grants automatic fallback, even after many failed attempts", () => {
     event("beforeSubmitPrompt");
-    assert.equal(event("beforeShellExecution", { command: 'rg -n "outubrorosa" .' }).permission, "deny");
-    assert.equal(event("beforeShellExecution", { command: 'git grep -n "card"' }).permission, "deny");
-    assert.equal(event("beforeShellExecution", { command: "npm test" }).permission, "allow");
+    for (let i = 0; i < 8; i++) {
+      assert.equal(denied("Grep").permission, "deny");
+      assert.equal(event("beforeShellExecution", { command: "grep flyer" }).permission, "deny");
+      assert.equal(event("beforeReadFile", { file_path: "core.lua" }).permission, "deny");
+    }
   });
-  it("does not count other MCP servers or errored tool responses", () => {
+  it("allows FxMind memory lookup but not other FxMind operations before the first read", () => {
     event("beforeSubmitPrompt");
-    event("afterMCPExecution", { mcp_server_name: "other", tool_name: "fxmind_query", result_json: "{}" });
-    event("afterMCPExecution", { mcp_server_name: "fxmind", tool_name: "fxmind_query", result_json: '{"isError":true}' });
-    assert.equal(event("preToolUse", { tool_name: "Grep" }).permission, "deny");
+    assert.equal(denied("MCP:fxmind_query").permission, "allow");
+    assert.equal(denied("MCP:fxmind_read_file").permission, "allow");
+    assert.equal(denied("MCP:fxmind_start_task").permission, "deny");
+    assert.equal(denied("MCP:fxmind_record_gate").permission, "deny");
+    assert.equal(event("beforeMCPExecution", { mcp_server_name: "fxmind", tool_name: "fxmind_query" }).permission, "allow");
+    assert.equal(event("beforeMCPExecution", { mcp_server_name: "other", tool_name: "fxmind_query" }).permission, "deny");
+    assert.equal(event("beforeMCPExecution", { mcp_server_name: "fxmind", tool_name: "fxmind_start_task" }).permission, "deny");
+  });
+  it("unblocks code tools only after an actual nonempty successful FxMind memory result", () => {
+    event("beforeSubmitPrompt");
+    assert.equal(denied("Read").permission, "deny");
+    lookup();
+    for (const name of ["Grep", "Read", "Shell", "Task", "Write", "Delete"]) {
+      assert.equal(denied(name).permission, "allow", name);
+    }
+    assert.equal(event("beforeShellExecution", { command: "ls" }).permission, "allow");
+    assert.equal(event("beforeReadFile", { file_path: "core.lua" }).permission, "allow");
+  });
+  it("rejects failed MCP, empty contents, wrong server, and errors", () => {
+    const failures = [
+      [{ isError: true, content: [{ type: "text", text: "error" }] }, {}],
+      [{ content: [] }, {}],
+      [{ content: [{ type: "text", text: "   " }] }, {}],
+      [{ content: [{ type: "text", text: "Error: unavailable" }] }, {}],
+      [{ ok: false, content: [{ type: "text", text: "oops" }] }, {}],
+      [{ error: "not found", content: [{ type: "text", text: "oops" }] }, {}],
+      [{ content: [{ type: "text", text: "foo" }] }, { mcp_server_name: "other" }],
+      [{ content: [{ type: "text", text: "foo" }] }, { tool_name: "fxmind_start_task" }],
+    ];
+    for (const [data, props] of failures) {
+      event("beforeSubmitPrompt");
+      lookup(data, props);
+      assert.equal(denied().permission, "deny", JSON.stringify([data, props]));
+    }
+  });
+  it("does not reuse successful FxMind result across user turns", () => {
+    event("beforeSubmitPrompt");
+    lookup();
+    assert.equal(denied("Grep").permission, "allow");
+    event("beforeSubmitPrompt", { prompt: "next request" });
+    assert.equal(denied("Grep").permission, "deny");
+  });
+  it("works with Cursor hook events that have no conversation ID", () => {
+    event("beforeSubmitPrompt", { prompt: "photo item" });
+    assert.equal(event("preToolUse", { tool_name: "Grep", tool_input: { pattern: "outubrorosa" } }).permission, "deny");
+    lookup();
+    assert.equal(denied("Grep").permission, "allow");
+  });
+  it("finds project root when invoked inside a resource subdirectory", () => {
+    const nested = path.join(dir, "resources", "[ecco]", "inventory", "web-side");
+    fs.mkdirSync(nested, { recursive: true });
+    event("beforeSubmitPrompt", {}, { cwd: nested });
+    assert.equal(event("beforeReadFile", { file_path: path.join(nested, "index.html") }, { cwd: nested }).permission, "deny");
+    assert.equal(event("preToolUse", { tool_name: "Grep" }, { cwd: nested }).permission, "deny");
+    assert.equal(event("preToolUse", { tool_name: "Grep" }, { cwd: nested }).permission, "deny");
     event("afterMCPExecution", {
       mcp_server_name: "fxmind", tool_name: "fxmind_query",
-      result_json: '{"content":[{"type":"text","text":"indexed memory: inventory"}]}',
-    });
-    assert.equal(event("preToolUse", { tool_name: "Grep" }).permission, "allow");
+      result_json: JSON.stringify({ content: [{ type: "text", text: "memory item and flyer" }] }),
+    }, { cwd: nested });
+    assert.equal(event("preToolUse", { tool_name: "Grep" }, { cwd: nested }).permission, "allow");
   });
-  it("recognizes FxMind MCP tool results with tool prefix", () => {
-    event("beforeSubmitPrompt");
-    event("afterMCPExecution", { mcp_server_name: "fxmind", tool_name: "MCP:fxmind_search", result_json: "{}" });
-    assert.equal(event("preToolUse", { tool_name: "Glob" }).permission, "allow");
+  it("fails closed when FxMind workspace cannot be resolved", () => {
+    fs.rmSync(path.join(dir, ".fxmind"), { recursive: true });
+    assert.equal(denied("Grep").permission, "deny");
+    assert.equal(event("beforeReadFile", { file_path: "core.lua" }).permission, "deny");
+    assert.equal(event("beforeSubmitPrompt").continue, false);
   });
-  it("does not gate known-file reads, shell tests, or normal edits", () => {
-    event("beforeSubmitPrompt");
-    for (const payload of [
-      { tool_name: "Read", tool_input: { path: ".fxmind/modes/task.md" } },
-      { tool_name: "Shell", tool_input: { command: "luac -p main.lua" } },
-      { tool_name: "Write", tool_input: { path: "main.lua" } },
-    ]) assert.equal(event("preToolUse", payload).permission, "allow");
-  });
-  it("allows fallback without infinite retry and can be disabled", () => {
-    event("beforeSubmitPrompt");
-    const grep = { tool_name: "Grep" };
-    assert.equal(event("preToolUse", grep).permission, "deny");
-    assert.equal(event("preToolUse", grep).permission, "deny");
-    assert.equal(event("preToolUse", grep).permission, "allow");
-    assert.equal(event("preToolUse", grep, { FXMIND_MEMORY_FIRST: "0" }).permission, "allow");
-  });
-  it("fails open when FxMind memory is not installed", () => {
-    fs.rmSync(path.join(dir, ".fxmind", "memory"), { recursive: true });
-    assert.equal(event("preToolUse", { tool_name: "Grep" }).permission, "allow");
-  });
-  it("saves no user prompts, patterns, or secrets to local state", () => {
-    event("beforeSubmitPrompt", { prompt: "secret-value-123" });
-    event("preToolUse", { tool_name: "Grep", tool_input: { pattern: "secret-pattern-456" } });
+  it("stores only booleans/version/timestamps, never user input or secrets", () => {
+    event("beforeSubmitPrompt", { prompt: "TOPSECRET-user-prompt" });
+    const result = event("preToolUse", { tool_name: "Grep", tool_input: { pattern: "TOPSECRET-pattern" } });
+    assert.equal(result.permission, "deny");
     const stateDir = path.join(dir, ".fxmind", "state", "cursor-memory-first");
-    const body = fs.readFileSync(path.join(stateDir, fs.readdirSync(stateDir)[0]), "utf8");
-    assert.doesNotMatch(body, /secret-value-123|secret-pattern-456/);
+    const contents = fs.readFileSync(path.join(stateDir, fs.readdirSync(stateDir)[0]), "utf8");
+    assert.doesNotMatch(contents, /TOPSECRET/);
   });
-  it("installer replaces blanket FxMind cursorignore and wires shell hook", () => {
-    fs.writeFileSync(path.join(dir, ".cursorignore"), "cache\n.fxmind/*\nnode_modules\n");
+  it("installer registers unconditional preToolUse and beforeMCP/Read/Shell guards with failClosed", () => {
+    fs.writeFileSync(path.join(dir, ".cursorignore"), ".fxmind/*\nnode_modules\n");
     installHooks(dir, { gitHook: false });
-    const ignore = fs.readFileSync(path.join(dir, ".cursorignore"), "utf8");
-    assert.doesNotMatch(ignore, /^\.fxmind\/\*$/m);
-    assert.match(ignore, /^\.fxmind\/state\/$/m);
-    assert.match(ignore, /^node_modules$/m);
-    const hooks = JSON.parse(fs.readFileSync(path.join(dir, ".cursor", "hooks.json"), "utf8")).hooks;
-    assert.ok(hooks.beforeShellExecution.some((x) => x.command.includes("memory-first.js")));
-    assert.ok(hooks.preToolUse.some((x) => x.command.includes("memory-first.js")));
+    const cfg = JSON.parse(fs.readFileSync(path.join(dir, ".cursor", "hooks.json"), "utf8")).hooks;
+    const main = cfg.preToolUse.find((e) => e.command.includes("memory-first.js"));
+    assert.equal(main.matcher, undefined);
+    assert.equal(main.failClosed, true);
+    for (const type of ["beforeShellExecution", "beforeReadFile", "beforeMCPExecution"]) {
+      assert.equal(cfg[type][0].failClosed, true, type);
+    }
+    assert.match(fs.readFileSync(path.join(dir, ".cursorignore"), "utf8"), /^.fxmind\/state\/$/m);
+  });
+  it("installs executable absolute commands that work from the Cursor host cwd", () => {
+    const project = path.join(dir, "FX MIND [ECCO]");
+    fs.mkdirSync(path.join(project, ".fxmind", "memory"), { recursive: true });
+    installHooks(project, { gitHook: false });
+    const hooksPath = path.join(project, ".cursor", "hooks.json");
+    const hooks = JSON.parse(fs.readFileSync(hooksPath, "utf8")).hooks;
+    const invoke = (kind, input) => {
+      const cmd = hooks[kind].find((e) => e.command.includes("memory-first.js"));
+      assert.ok(cmd && cmd.command.includes("cwd-bootstrap.js"), kind);
+      assert.ok(cmd.command.includes('"' + project.replace(/\\/g, "/") + '/.cursor/hooks/memory-first.js"'));
+      const res = spawnSync(cmd.command, {
+        shell: true, cwd: os.tmpdir(), encoding: "utf8",
+        input: JSON.stringify({ hook_event_name: kind, ...input }), timeout: 6000,
+      });
+      assert.equal(res.status, 0, String(res.stderr) + "\n" + String(res.stdout));
+      return JSON.parse(res.stdout);
+    };
+    assert.equal(invoke("beforeSubmitPrompt", { prompt: "find flyer" }).continue, true);
+    assert.equal(invoke("preToolUse", { tool_name: "Grep" }).permission, "deny");
+    assert.equal(invoke("beforeReadFile", { file_path: "main.lua" }).permission, "deny");
+    assert.equal(invoke("beforeMCPExecution", { tool_name: "fxmind_query", mcp_server_name: "fxmind" }).permission, "allow");
+    invoke("afterMCPExecution", {
+      mcp_server_name: "fxmind", tool_name: "fxmind_query",
+      result_json: JSON.stringify({ content: [{ type: "text", text: "memory: inventory" }] }),
+    });
+    assert.equal(invoke("preToolUse", { tool_name: "Grep" }).permission, "allow");
+    // All other registered hooks must be invocable from outside the workspace too.
+    for (const event of Object.keys(hooks)) for (const spec of hooks[event]) {
+      if (!spec.command.includes(".cursor/hooks/")) continue;
+      assert.ok(spec.command.includes("cwd-bootstrap.js"), event);
+      assert.ok(!spec.command.startsWith("node .cursor/"), event);
+    }
+  });
+  it("reinstallation replaces obsolete relative hook commands without duplicating entries", () => {
+    const first = installHooks(dir, { gitHook: false });
+    const hooksPath = path.join(dir, ".cursor", "hooks.json");
+    const before = fs.readFileSync(hooksPath, "utf8");
+    const config = JSON.parse(before);
+    config.hooks.preToolUse[0].command = "node .cursor/hooks/gate-guard.js";
+    config.hooks.preToolUse[1].command = "node .cursor/hooks/memory-first.js preToolUse";
+    fs.writeFileSync(hooksPath, JSON.stringify(config));
+    installHooks(dir, { gitHook: false });
+    const refreshed = JSON.parse(fs.readFileSync(hooksPath, "utf8"));
+    assert.equal(refreshed.hooks.preToolUse.length, 2);
+    assert.ok(refreshed.hooks.preToolUse.every((entry) => entry.command.includes("cwd-bootstrap.js")));
+    const next = fs.readFileSync(hooksPath, "utf8");
+    installHooks(dir, { gitHook: false });
+    assert.equal(fs.readFileSync(hooksPath, "utf8"), next);
+  });
+  it("uninstall removes absolute installed hooks without erasing unrelated hooks", () => {
+    installHooks(dir, { gitHook: false });
+    const hooksPath = path.join(dir, ".cursor", "hooks.json");
+    const cfg = JSON.parse(fs.readFileSync(hooksPath, "utf8"));
+    cfg.hooks.preToolUse.push({ command: "node custom-hook.js", timeout: 5 });
+    fs.writeFileSync(hooksPath, JSON.stringify(cfg));
+    uninstallHooks(dir);
+    const removed = JSON.parse(fs.readFileSync(hooksPath, "utf8")).hooks;
+    assert.deepEqual(removed.preToolUse, [{ command: "node custom-hook.js", timeout: 5 }]);
+    assert.ok(!fs.existsSync(path.join(dir, ".cursor", "hooks", "cwd-bootstrap.js")));
   });
 });
