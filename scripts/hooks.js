@@ -48,6 +48,7 @@ const FXMIND_COMMANDS = {
     { command: "node .cursor/hooks/gate-guard.js", timeout: 15 },
     { command: "node .cursor/hooks/memory-first.js preToolUse", timeout: 5, matcher: "^(Grep|Glob|Shell)$" },
   ],
+  beforeShellExecution: { command: "node .cursor/hooks/memory-first.js beforeShellExecution", timeout: 5 },
   beforeSubmitPrompt: { command: "node .cursor/hooks/memory-first.js beforeSubmitPrompt", timeout: 5 },
   afterMCPExecution: { command: "node .cursor/hooks/memory-first.js afterMCPExecution", timeout: 5 },
   postToolUse: { command: "node .cursor/hooks/drift-watcher.js", timeout: 15 },
@@ -272,9 +273,26 @@ function runPreCommitCheck(targetRoot, options = {}) {
   };
 }
 
+function ensureMemoryVisibleToCursor(projectRoot) {
+  const ignorePath = path.join(projectRoot, ".cursorignore");
+  if (!fs.existsSync(ignorePath)) return false;
+  const old = fs.readFileSync(ignorePath, "utf8");
+  // These patterns hide all FxMind modes/memories from Cursor's Read tool.
+  // Preserve other project exclusions and only narrow the blanket FxMind rule.
+  const updated = old.replace(/^(?:\.fxmind(?:\/\*|\/|))\s*\r?\n/gm, "");
+  if (updated === old) return false;
+  const lines = updated.split(/\r?\n/);
+  const stateExcluded = lines.some((line) => line.trim() === ".fxmind/state/");
+  const next = updated.replace(/\s*$/, "\n")
+    + (stateExcluded ? "" : ".fxmind/state/\n");
+  fs.writeFileSync(ignorePath, next, "utf8");
+  return true;
+}
+
 function installHooks(targetRoot, options = {}) {
   const projectRoot = path.resolve(targetRoot);
   const { installed, unchanged } = copyHookBundle(projectRoot);
+  if (ensureMemoryVisibleToCursor(projectRoot)) installed.push(".cursorignore (FxMind memory visible)");
 
   const autoTaskRule = installAutoTaskRule(projectRoot);
   if (autoTaskRule) {
