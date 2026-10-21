@@ -78,9 +78,10 @@ function normalizeHookSpec(spec) {
   return out;
 }
 
-// Cursor may run hooks from System32/extension-host, not projectRoot.
-// Use absolute script paths and a preloaded bootstrap which restores cwd.
-// The filename match is used to migrate old relative commands idempotently.
+// Cursor sometimes starts hook processes outside the workspace (e.g. System32).
+// Project hooks receive CURSOR_PROJECT_DIR / CLAUDE_PROJECT_DIR from Cursor.
+// Resolve the workspace at execution time; never persist a developer's
+// absolute path in .cursor/hooks.json (committed and shared with other users).
 function hookFileFromCommand(command) {
   const match = /^node \.cursor\/hooks\/([a-z0-9.-]+\.js)(?: (.*))?$/i.exec(command);
   return match ? { file: match[1], args: match[2] || "" } : null;
@@ -88,19 +89,29 @@ function hookFileFromCommand(command) {
 function hookCommandForRoot(projectRoot, command) {
   const parsed = hookFileFromCommand(command);
   if (!parsed) return command;
-  const hookDir = path.join(projectRoot, HOOKS_DIR_REL);
-  const quote = (name) => '"' + path.join(hookDir, name).replace(/\\/g, "/") + '"';
-  return 'node --require ' + quote('cwd-bootstrap.js') + ' ' + quote(parsed.file)
-    + (parsed.args ? ' ' + parsed.args : '');
+  // Node's -e argument is portable to PowerShell, cmd and POSIX shells:
+  // double quotes only around JS, single quotes inside; no hardcoded root.
+  // PowerShell pipelines do not reliably forward stdin to spawnSync with
+  // stdio:inherit. Consume the entire JSON envelope in this process and pass
+  // its raw bytes to the hook; preserve stdout/stderr and its exit status.
+  const args = [".cursor/hooks/" + parsed.file, ...parsed.args.split(" ").filter(Boolean)];
+  const js = "const fs=require('fs');const d=process.env.CURSOR_PROJECT_DIR||process.env.CLAUDE_PROJECT_DIR||process.cwd();" +
+    "const input=fs.readFileSync(0);" +
+    "const r=require('child_process').spawnSync(process.execPath," +
+    JSON.stringify(args).replace(/"/g, "'") +
+    ",{cwd:d,input,encoding:'utf8',maxBuffer:50331648});" +
+    "if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr);" +
+    "process.exit(r.status===null?2:r.status)";
+  return 'node -e "' + js + '"';
 }
 function isManagedHookCommand(candidate, sourceCommand) {
   const parsed = hookFileFromCommand(sourceCommand);
   if (!parsed || typeof candidate !== "string") return candidate === sourceCommand;
+  // Migrate both historical absolute/bootstrap and older relative entries.
+  // New portable -e commands match here too, for idempotent reinstalls.
   const normalized = candidate.replace(/\\/g, "/");
   return normalized.startsWith("node ") &&
-    normalized.includes('.cursor/hooks/' + parsed.file) &&
-    (candidate === sourceCommand || normalized.includes('cwd-bootstrap.js') ||
-     normalized.startsWith('node ".cursor/hooks/'));
+    normalized.includes(".cursor/hooks/" + parsed.file);
 }
 
 function readJson(filePath, fallback = null) {

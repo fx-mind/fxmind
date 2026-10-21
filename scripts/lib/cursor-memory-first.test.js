@@ -228,7 +228,7 @@ describe("Cursor FxMind strict memory gate", () => {
     }
     assert.match(fs.readFileSync(path.join(dir, ".cursorignore"), "utf8"), /^.fxmind\/state\/$/m);
   });
-  it("installs executable absolute commands that work from the Cursor host cwd", () => {
+  it("installs portable commands that work from Cursor host cwd without leaking root", () => {
     const project = path.join(dir, "FX MIND [ECCO]");
     fs.mkdirSync(path.join(project, ".fxmind", "memory"), { recursive: true });
     installHooks(project, { gitHook: false });
@@ -236,11 +236,13 @@ describe("Cursor FxMind strict memory gate", () => {
     const hooks = JSON.parse(fs.readFileSync(hooksPath, "utf8")).hooks;
     const invoke = (kind, input) => {
       const cmd = hooks[kind].find((e) => e.command.includes("memory-first.js"));
-      assert.ok(cmd && cmd.command.includes("cwd-bootstrap.js"), kind);
-      assert.ok(cmd.command.includes('"' + project.replace(/\\/g, "/") + '/.cursor/hooks/memory-first.js"'));
+      assert.ok(cmd && cmd.command.startsWith('node -e "'), kind);
+      assert.ok(!cmd.command.includes(project.replace(/\\/g, "/")), kind);
+      assert.ok(!cmd.command.includes("cwd-bootstrap.js"), kind);
       const res = spawnSync(cmd.command, {
         shell: true, cwd: os.tmpdir(), encoding: "utf8",
-        input: JSON.stringify({ hook_event_name: kind, ...input }), timeout: 6000,
+        env: { ...process.env, CURSOR_PROJECT_DIR: project },
+        input: JSON.stringify({ hook_event_name: kind, workspace_roots: [project], ...input }), timeout: 6000,
       });
       assert.equal(res.status, 0, String(res.stderr) + "\n" + String(res.stdout));
       return JSON.parse(res.stdout);
@@ -257,9 +259,34 @@ describe("Cursor FxMind strict memory gate", () => {
     // All other registered hooks must be invocable from outside the workspace too.
     for (const event of Object.keys(hooks)) for (const spec of hooks[event]) {
       if (!spec.command.includes(".cursor/hooks/")) continue;
-      assert.ok(spec.command.includes("cwd-bootstrap.js"), event);
-      assert.ok(!spec.command.startsWith("node .cursor/"), event);
+      assert.ok(spec.command.startsWith('node -e "'), event);
+      assert.ok(!spec.command.includes(project.replace(/\\/g, "/")), event);
     }
+  });
+  it("native PowerShell forwards Cursor JSON to the portable hook", { skip: process.platform !== "win32" }, () => {
+    const project = path.join(dir, "PS root [portable]");
+    fs.mkdirSync(path.join(project, ".fxmind", "memory"), { recursive: true });
+    installHooks(project, { gitHook: false });
+    const hooks = JSON.parse(fs.readFileSync(path.join(project, ".cursor", "hooks.json"), "utf8")).hooks;
+    const command = hooks.preToolUse.find((spec) => spec.command.includes("memory-first.js")).command;
+    const prefix = 'node -e "';
+    assert.ok(command.startsWith(prefix));
+    const js = command.slice(prefix.length, -1);
+    const quotePS = (v) => "'" + v.replace(/'/g, "''") + "'";
+    const input = JSON.stringify({
+      hook_event_name: "preToolUse",
+      tool_name: "MCP:fxmind_query",
+      conversation_id: "portable-powershell",
+      generation_id: "current",
+    });
+    const ps = "$env:CURSOR_PROJECT_DIR=" + quotePS(project) +
+      ";$js=" + quotePS(js) + ";$payload=" + quotePS(input) +
+      ";$payload | node -e $js";
+    const response = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", ps], {
+      cwd: os.tmpdir(), encoding: "utf8", timeout: 7000,
+    });
+    assert.equal(response.status, 0, response.stderr);
+    assert.equal(JSON.parse(response.stdout.trim()).permission, "allow");
   });
   it("reinstallation replaces obsolete relative hook commands without duplicating entries", () => {
     const first = installHooks(dir, { gitHook: false });
@@ -267,12 +294,13 @@ describe("Cursor FxMind strict memory gate", () => {
     const before = fs.readFileSync(hooksPath, "utf8");
     const config = JSON.parse(before);
     config.hooks.preToolUse[0].command = "node .cursor/hooks/gate-guard.js";
-    config.hooks.preToolUse[1].command = "node .cursor/hooks/memory-first.js preToolUse";
+    // Previous releases persisted the installer developer's absolute path.
+    config.hooks.preToolUse[1].command = 'node --require "F:/[FIVEM]/[ECCO]/ecco/.cursor/hooks/cwd-bootstrap.js" "F:/[FIVEM]/[ECCO]/ecco/.cursor/hooks/memory-first.js" preToolUse';
     fs.writeFileSync(hooksPath, JSON.stringify(config));
     installHooks(dir, { gitHook: false });
     const refreshed = JSON.parse(fs.readFileSync(hooksPath, "utf8"));
     assert.equal(refreshed.hooks.preToolUse.length, 2);
-    assert.ok(refreshed.hooks.preToolUse.every((entry) => entry.command.includes("cwd-bootstrap.js")));
+    assert.ok(refreshed.hooks.preToolUse.every((entry) => entry.command.startsWith('node -e "')));
     const next = fs.readFileSync(hooksPath, "utf8");
     installHooks(dir, { gitHook: false });
     assert.equal(fs.readFileSync(hooksPath, "utf8"), next);
@@ -287,13 +315,14 @@ describe("Cursor FxMind strict memory gate", () => {
     assert.ok(gate?.command);
     const result = spawnSync(gate.command, {
       shell: true, cwd: os.tmpdir(), encoding: "utf8",
-      input: JSON.stringify({ hook_event_name: "preToolUse", tool_name: "MCP:fxmind_query", tool_input: { question: "test" } }),
+      env: { ...process.env, CURSOR_PROJECT_DIR: dir },
+      input: JSON.stringify({ hook_event_name: "preToolUse", workspace_roots: [dir], tool_name: "MCP:fxmind_query", tool_input: { question: "test" } }),
       timeout: 6000,
     });
     assert.equal(result.status, 0, result.stderr);
     assert.doesNotMatch(result.stderr, /MODULE_NOT_FOUND|Cannot find module/);
   });
-  it("uninstall removes absolute installed hooks without erasing unrelated hooks", () => {
+  it("uninstall removes portable installed hooks without erasing unrelated hooks", () => {
     installHooks(dir, { gitHook: false });
     const hooksPath = path.join(dir, ".cursor", "hooks.json");
     const cfg = JSON.parse(fs.readFileSync(hooksPath, "utf8"));

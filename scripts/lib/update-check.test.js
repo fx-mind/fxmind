@@ -111,17 +111,17 @@ describe("hooks sessionStart wiring", () => {
     );
     const entries = hooksJson.hooks.sessionStart || [];
     assert.ok(
-      entries.some((e) => e.command.includes("/.cursor/hooks/update-notifier.js")),
+      entries.some((e) => e.command.includes(".cursor/hooks/update-notifier.js")),
     );
     assert.ok(
-      entries.some((e) => e.command.includes("/.cursor/hooks/graph-freshness.js")),
+      entries.some((e) => e.command.includes(".cursor/hooks/graph-freshness.js")),
     );
     assert.ok(fs.existsSync(path.join(dir, ".cursor", "hooks", "update-notifier.js")));
     assert.ok(fs.existsSync(path.join(dir, ".cursor", "hooks", "graph-freshness.js")));
     assert.ok(fs.existsSync(path.join(dir, ".cursor", "hooks", "lib", "update-check.js")));
     assert.ok(fs.existsSync(path.join(dir, ".cursor", "hooks", "lib", "stop-followup.js")));
     const stop = (hooksJson.hooks.stop || []).find(
-      (e) => e.command.includes("/.cursor/hooks/learn-prompt.js"),
+      (e) => e.command.includes(".cursor/hooks/learn-prompt.js"),
     );
     assert.equal(stop?.loop_limit, 1);
   });
