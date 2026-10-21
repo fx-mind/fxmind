@@ -960,6 +960,22 @@ async function dispatchTool(name, args) {
       if (data?.error === "multiple_active_sessions") {
         return data;
       }
+      // Learn only after a real, verified Gate C; never turn reviewer failure
+      // or unverifiable observations into persistent project knowledge.
+      if (gate === "C" && data?.gates?.C?.complete) {
+        try {
+          const autoMemory = require("./lib/auto-memory");
+          const memory = await autoMemory.learnAfterGate(root, data);
+          if (memory.status === "learned") {
+            tools.buildGraph(root, { updateHtml: false });
+          }
+          tools.appendMetric(root, { event: "auto_memory", status: memory.status, reason: memory.reason || null, topic: memory.topic || null });
+          return { ok: true, ...data, autoMemory: memory };
+        } catch (error) {
+          // Learning must not retroactively fail a successfully recorded Gate C.
+          return { ok: true, ...data, autoMemory: { status: "error", reason: "learning_failed" } };
+        }
+      }
       return { ok: true, ...data };
     }
 
