@@ -240,3 +240,26 @@ describe("Tool routing integration and high-confidence shortcuts", () => {
     }
   });
 });
+
+describe("MCP read-only annotations for noninteractive Gate V reviewer", () => {
+  it("classifies memory retrieval as read-only, never gate mutations", () => {
+    const tools = mcp.listTools(process.cwd(), { FXMIND_MCP_TOOLS: "all" });
+    for (const name of ["fxmind_query", "fxmind_search", "fxmind_read_file", "fxmind_list_memories"]) {
+      const item = tools.find(t => t.name === name);
+      assert.ok(item, name);
+      assert.equal(item.annotations.readOnlyHint, true, name);
+      assert.equal(item.annotations.destructiveHint, false, name);
+      assert.equal(item.annotations.openWorldHint, false, name);
+    }
+    for (const name of ["fxmind_record_gate", "fxmind_start_task", "fxmind_subagent_run"]) {
+      const item = tools.find(t => t.name === name);
+      if (item) assert.notEqual(item.annotations?.readOnlyHint, true, name);
+    }
+  });
+  it("read-only MCP hides gate mutation tools while preserving memory retrieval", () => {
+    const tools = mcp.listTools(process.cwd(), { FXMIND_MCP_READONLY: "1", FXMIND_MCP_TOOLS: "all" });
+    assert.ok(tools.some(t => t.name === "fxmind_query" && t.annotations.readOnlyHint));
+    assert.ok(!tools.some(t => t.name === "fxmind_record_gate"));
+    assert.ok(!tools.some(t => t.name === "fxmind_start_task"));
+  });
+});

@@ -33,6 +33,7 @@ const { readSource } = require("./lib/read-source");
 const { routeTool } = require("./lib/tool-router");
 const { formatQueryResult } = require("./lib/memory-retrieval");
 const independentReview = require("./lib/independent-review");
+const reviewerRouting = require("./lib/reviewer-routing");
 const verification = require("./lib/verification");
 const luaScope = require("./lib/lua-scope-check");
 
@@ -94,12 +95,12 @@ async function runGateVReviewer(root, session, files, evidence) {
   }
 
   const panelCli = require("./lib/panel-cli");
-  return panelCli.runSubagentTask(root, {
+  return reviewerRouting.runReviewerWithFallback(root, {
     agent: "reviewer",
     prompt: independentReview.buildPrompt(root, session, files, evidence || {}),
     paths: files,
     preferredCliId: callerCliId() || undefined,
-  });
+  }, panelCli.runSubagentTask);
 }
 
 const DB_ENVIRONMENT = {
@@ -1214,6 +1215,12 @@ function isReadonly(env = process.env) {
   return /^(1|true|yes|on)$/i.test(String(env.FXMIND_MCP_READONLY || "").trim());
 }
 
+// Codex requires explicit MCP annotations to auto-approve read-only calls in
+// a non-interactive review. Never annotate gate/task/write tools as read-only.
+const SAFE_MEMORY_TOOLS = new Set([
+  "fxmind_route_tool", "fxmind_list_memories", "fxmind_query",
+  "fxmind_search", "fxmind_read_file",
+]);
 function listTools(root = targetRoot(), env = process.env) {
   const groups = enabledToolGroups(root, env);
   const readonly = isReadonly(env);
@@ -1221,7 +1228,12 @@ function listTools(root = targetRoot(), env = process.env) {
     if (readonly && !READONLY_TOOLS.has(tool.name)) return false;
     const group = toolGroupOf(tool.name);
     return !group || groups.has(group);
-  });
+  }).map((tool) => SAFE_MEMORY_TOOLS.has(tool.name)
+    ? { ...tool, annotations: {
+      readOnlyHint: true, destructiveHint: false,
+      idempotentHint: true, openWorldHint: false,
+    } }
+    : tool);
 }
 
 function send(message) {

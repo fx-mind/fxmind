@@ -26,11 +26,12 @@ const CLI_MCP_AGENTS = {
   opencode: "opencode",
   claude: "claude",
   codex: "codex",
+  "cursor-agent": "cursor",
 };
 
 function ensureCliMcp(root, cliId) {
   const agentId = CLI_MCP_AGENTS[cliId];
-  if (!agentId || !root) return;
+  if (!agentId || !root) return { ok: false, error: "unsupported FxMind MCP provider" };
   try {
     const status = mcpStatusForAgent(root, agentId);
     const command = status.entry?.command || [];
@@ -39,8 +40,12 @@ function ensureCliMcp(root, cliId) {
       agentId === "opencode" &&
       (command[0] === "fxmind-mcp" || /\$\{env:/.test(commandText));
     if (!status.installed || needsRefresh) installMcpForAgent(root, agentId);
-  } catch {
-    /* best effort */
+    const current = mcpStatusForAgent(root, agentId);
+    if (!current.installed) return { ok: false, error: "FxMind MCP missing for " + cliId };
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: "FxMind MCP setup failed for " + cliId +
+      " (" + String(error.code || error.name || "unknown") + ")" };
   }
 }
 
@@ -1530,7 +1535,7 @@ async function reviewerExecution(cliId, cfg = {}) {
   }
   const model = pickReviewerModel(cliId, models, cfg.model || null);
   let effort = "default";
-  if (cliId === "codex") effort = "xhigh";
+  if (cliId === "codex") effort = "medium";
   else if (cliId === "claude") effort = "high";
   const resolved = resolveExecution(cliId, model, effort);
   return { ...resolved, variant: cfg.variant || resolved.variant, modelSource: model ? "smart-reviewer" : "provider-default" };
@@ -1543,8 +1548,8 @@ async function reviewerExecution(cliId, cfg = {}) {
  * with a text body and get text back", not the full transcript/session
  * machinery of runThreadDirect.
  */
-function buildJudgeArgs(cliId, { root, body, accessArgs, execOpts }) {
-  const trimmed = body.slice(0, 12000);
+function buildJudgeArgs(cliId, { root, body, accessArgs, execOpts, readOnly = false }) {
+  const trimmed = body.slice(0, cliId === "opencode" ? 12000 : 24000);
   if (cliId === "opencode") {
     const args = ["run", "--dir", root, "--format", "json", ...accessArgs];
     if (execOpts.model) args.push("--model", execOpts.model);
@@ -1570,7 +1575,11 @@ function buildJudgeArgs(cliId, { root, body, accessArgs, execOpts }) {
     return { args, stdinPrompt: trimmed };
   }
   if (cliId === "cursor-agent") {
-    const args = ["-p", ...accessArgs, "--workspace", root];
+    // Non-interactive reviewer/judge has no human to approve MCP prompts.
+    // Read-only ask mode prevents shell/edit while --approve-mcps permits
+    // the required fxmind_query. Without this flag the CLI can exit silently.
+    const args = ["-p", ...(readOnly ? ["--mode", "ask", "--approve-mcps", "--trust"] : []),
+      ...accessArgs, "--workspace", root];
     if (execOpts.model) args.push("--model", execOpts.model);
     return { args, stdinPrompt: trimmed };
   }
@@ -1706,7 +1715,9 @@ async function runJudge(threadId, options = {}) {
   const accessArgs = cliAccessArgs(judgeCliId, "ask");
   const execOpts = selectedExecution(judgeCliId);
   const body = fs.readFileSync(contextFile, "utf8");
-  const { args, stdinPrompt } = buildJudgeArgs(judgeCliId, { root, body, accessArgs, execOpts });
+  const { args, stdinPrompt } = buildJudgeArgs(judgeCliId, {
+    root, body, accessArgs, execOpts, readOnly: true,
+  });
 
   return new Promise((resolve) => {
     let child;
@@ -1838,8 +1849,10 @@ function buildSubagentBody(agentId, persona, { prompt, paths } = {}) {
     "",
     persona?.body || `You are the "${agentId}" subagent. Perform the scoped task below and stop.`,
     "",
+    "First call fxmind_query through the FxMind MCP before using other tools. If it is unavailable, report that the review cannot be verified and stop; do not attempt Grep/Read to bypass the project hook.",
+    "",
     "## Task",
-    String(prompt || "").slice(0, 6000),
+    String(prompt || "").slice(0, agentId === "reviewer" ? 18000 : 6000),
   ];
   if (Array.isArray(paths) && paths.length) {
     lines.push("", "## Known paths", paths.map((p) => `- ${p}`).join("\n"));
@@ -1859,6 +1872,20 @@ function buildSubagentBody(agentId, persona, { prompt, paths } = {}) {
  * the panel's configured accessMode — same "server decides" rule used for
  * plan mode and judge runs.
  */
+function subagentCompletion(agentId, cliId, exitCode, signal, output, cliError = "") {
+  const text = String(output || "").trim();
+  const prefix = 'subagent "' + agentId + '" (' + cliId + ')';
+  if (exitCode !== 0 || signal) {
+    return { ok: false, error: prefix + ' exited with code ' + String(exitCode == null ? "unknown" : exitCode) + (signal ? ' (signal ' + signal + ')' : '') + (cliError ? ': ' + cliError : '') };
+  }
+  if (!text || text === "(subagent returned no text)") {
+    return { ok: false, error: prefix + ' returned no text' + (cliError ? ': ' + cliError : '') };
+  }
+  if (agentId === "reviewer" && !/^VERDICT:\s*(?:VERIFIED|VERIFIED WITH CAVEATS|REFUTED)\s*$/im.test(text)) {
+    return { ok: false, error: prefix + ' produced no valid VERDICT line' };
+  }
+  return { ok: true, agent: agentId, cliId, output: text };
+}
 async function runSubagentTask(root, options = {}) {
   const agentId = String(options.agent || "").trim() || "general";
   const cfg = subagentConfigFor(agentId);
@@ -1881,8 +1908,12 @@ async function runSubagentTask(root, options = {}) {
     agentId === "reviewer"
       ? await reviewerExecution(cliId, cfg)
       : { ...resolveExecution(cliId, cfg.model, null), variant: cfg.variant || null };
+  const mcp = ensureCliMcp(root, cliId);
+  if (!mcp.ok) return { ok: false, error: mcp.error };
   const body = buildSubagentBody(agentId, persona, { prompt: options.prompt, paths: options.paths });
-  const { args, stdinPrompt } = buildJudgeArgs(cliId, { root, body, accessArgs, execOpts });
+  const { args, stdinPrompt } = buildJudgeArgs(cliId, {
+    root, body, accessArgs, execOpts, readOnly: forceReadOnly,
+  });
 
   return new Promise((resolve) => {
     let child;
@@ -1891,7 +1922,7 @@ async function runSubagentTask(root, options = {}) {
         bin,
         args,
         root,
-        buildEnv(),
+        { ...buildEnv(), ...(forceReadOnly ? { FXMIND_MCP_READONLY: "1" } : {}) },
         cliId === "codex" || stdinPrompt ? ["pipe", "pipe", "pipe"] : undefined,
       );
     } catch (err) {
@@ -1902,25 +1933,30 @@ async function runSubagentTask(root, options = {}) {
     let settled = false;
     let stdout = "";
     let textOut = "";
+    let lineTail = "";
+    let cliError = "";
     const finish = (result) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       resolve(result);
     };
+    const reviewerTimeoutMs = agentId === "reviewer" ? 180_000 : SUBAGENT_TIMEOUT_MS;
     const timer = setTimeout(() => {
       terminateCliProcess(child);
       finish({
         ok: false,
-        error: `subagent "${agentId}" timed out after ${Math.round(SUBAGENT_TIMEOUT_MS / 1000)}s`,
+        error: `subagent "${agentId}" timed out after ${Math.round(reviewerTimeoutMs / 1000)}s`,
       });
-    }, SUBAGENT_TIMEOUT_MS);
+    }, reviewerTimeoutMs);
 
     if (child.stdout) child.stdout.setEncoding("utf8");
     if (child.stderr) child.stderr.setEncoding("utf8");
     child.stdout?.on("data", (chunk) => {
       stdout += chunk;
-      for (const line of String(chunk).split("\n")) {
+      const lines = (lineTail + String(chunk)).split("\n");
+      lineTail = lines.pop() || "";
+      for (const line of lines) {
         if (!line.trim()) continue;
         try {
           for (const event of stream.parseLineEnriched(line, cliId)) {
@@ -1931,23 +1967,28 @@ async function runSubagentTask(root, options = {}) {
         }
       }
     });
-    child.stderr?.on("data", () => {});
+    child.stderr?.on("data", (chunk) => {
+      const line = String(chunk).slice(0, 2000);
+      if (/\bmcp\b/i.test(line)) cliError = "MCP startup or permission failure";
+      else if (/auth|login|unauthorized/i.test(line)) cliError = "provider authentication failure";
+      else if (/model.*(not found|invalid)|unknown model/i.test(line)) cliError = "provider model unavailable";
+    });
     if (stdinPrompt && child.stdin) {
       child.stdin.write(stdinPrompt);
       child.stdin.end();
     }
 
     child.on("error", (err) => finish({ ok: false, error: String(err.message || err) }));
-    child.on("close", () => {
-      const finalText = (textOut || stdout).trim();
-      finish({
-        ok: true,
-        agent: agentId,
-        cliId,
-        model: execOpts.model || null,
-        effort: execOpts.effort || "default",
-        output: finalText || "(subagent returned no text)",
-      });
+    child.on("close", (code, signal) => {
+      if (lineTail.trim()) {
+        try { for (const event of stream.parseLineEnriched(lineTail, cliId)) {
+          if (event.kind === "text" && event.text) textOut += event.text;
+        } } catch {}
+      }
+      const result = subagentCompletion(agentId, cliId, code, signal, (textOut || stdout).trim(), cliError);
+      finish(result.ok
+        ? { ...result, model: execOpts.model || null, effort: execOpts.effort || "default" }
+        : result);
     });
   });
 }
@@ -2570,6 +2611,9 @@ module.exports = {
   runJudge,
   runSubagentTask,
   reviewerCliCandidate,
+  subagentCompletion,
+  buildJudgeArgs,
+  ensureCliMcp,
   pickReviewerModel,
   reviewerExecution,
   readSubagentPersona,

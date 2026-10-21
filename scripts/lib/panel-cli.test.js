@@ -244,3 +244,41 @@ describe("panel-cli", () => {
     });
   });
 });
+
+describe("reviewer MCP CLI hardening", () => {
+  it("runs Cursor reviewer read-only with MCP approvals and preserves general agent access", () => {
+    const params = { root: "C:/dev/ecco", body: "Review the diff", accessArgs: [], execOpts: {} };
+    const readonly = panelCli.buildJudgeArgs("cursor-agent", { ...params, readOnly: true });
+    assert.ok(readonly.args.includes("--mode"));
+    assert.ok(readonly.args.includes("ask"));
+    assert.ok(readonly.args.includes("--approve-mcps"));
+    const general = panelCli.buildJudgeArgs("cursor-agent", { ...params, readOnly: false });
+    assert.ok(!general.args.includes("--mode"));
+    assert.ok(!general.args.includes("--approve-mcps"));
+  });
+  it("tells delegated reviewers to consult FxMind before reading code", () => {
+    const persona = panelCli.readSubagentPersona("reviewer");
+    const body = panelCli.buildSubagentBody("reviewer", persona, {
+      prompt: "Review robberys", paths: ["resources/[ecco]/robberys/server-side/server.lua"],
+    });
+    assert.match(body, /First call fxmind_query/);
+    assert.match(body, /VERDICT: VERIFIED/);
+  });
+  it("never treats a CLI error or empty result as a completed review", () => {
+    for (const args of [
+      ["reviewer", "cursor-agent", 1, null, ""],
+      ["reviewer", "cursor-agent", 0, null, ""],
+      ["reviewer", "cursor-agent", 0, null, "(subagent returned no text)"],
+      ["reviewer", "cursor-agent", 0, null, "I could not read the files"],
+      ["reviewer", "cursor-agent", null, "SIGTERM", ""],
+    ]) assert.equal(panelCli.subagentCompletion(...args).ok, false, String(args));
+  });
+  it("accepts a reviewer only with an explicit independent verdict", () => {
+    assert.equal(panelCli.subagentCompletion("reviewer", "cursor-agent", 0, null,
+      "Diff verified.\nVERDICT: VERIFIED").ok, true);
+    assert.equal(panelCli.subagentCompletion("reviewer", "cursor-agent", 0, null,
+      "Found bug.\nVERDICT: REFUTED").ok, true);
+    assert.equal(panelCli.subagentCompletion("reader", "cursor-agent", 0, null,
+      "Summary without a verdict").ok, true);
+  });
+});
