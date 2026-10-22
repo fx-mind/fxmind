@@ -274,7 +274,8 @@ describe("S3 image tools", () => {
   it("lists upload only when configured, keeps local tools available and protects read-only hosts", async () => {
     const names = (env) => listTools(root, env).map((tool) => tool.name);
     assert.ok(names({}).includes("fxmind_image_resize"));
-    assert.ok(!names({}).includes("fxmind_storage_upload_image"));
+    assert.ok(names({}).includes("fxmind_storage_upload_image"));
+    assert.ok(!names({ FXMIND_MCP_TOOLS: "auto" }).includes("fxmind_storage_upload_image"));
     assert.ok(names({ FXMIND_S3_BUCKET: "test-assets" }).includes("fxmind_storage_upload_image"));
     assert.ok(names({ FXMIND_MCP_TOOLS: "storage" }).includes("fxmind_storage_upload_image"));
     const readOnly = names({ FXMIND_MCP_READONLY: "1", FXMIND_MCP_TOOLS: "all" });

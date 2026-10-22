@@ -124,10 +124,14 @@ function installProjectHooks(targetRoot) {
   }
 }
 
-function installProjectMcp(targetRoot, agents) {
+function installProjectMcp(targetRoot, agents, options = {}) {
   try {
     const agentIds = agents.map((agent) => agent.id);
-    const result = installMcp(targetRoot, { agentIds });
+    // Adding a provider must never remove existing providers' MCP entries.
+    // Pruning is reserved for an explicit full replacement/install.
+    const result = installMcp(targetRoot, {
+      agentIds, prune: !options.providerOnly,
+    });
     const changedItems = (result.installed || []).filter((item) => item.changed);
     if (!result.changed) {
       return { changed: false };
@@ -215,7 +219,7 @@ function installProjectCursorIntegration(targetRoot, options, agents, packs = []
     changed = installProjectClaudeHook(targetRoot).changed || changed;
   }
   if (shouldInstallMcp(options, agents)) {
-    changed = installProjectMcp(targetRoot, agents).changed || changed;
+    changed = installProjectMcp(targetRoot, agents, options).changed || changed;
   }
   if (shouldRefreshFivem(options, packs)) {
     changed = installProjectFivem(targetRoot).changed || changed;

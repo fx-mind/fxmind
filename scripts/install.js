@@ -79,6 +79,17 @@ function formatAgentKind(kind) {
   return labels[kind] || `${kind} `;
 }
 
+function installOnlyProviders(options, agentIds) {
+  const selected = [...new Set(agentIds)];
+  const agents = resolveAgents(selected);
+  const changes = installAgentsLayer(options.target, agents, options);
+  installProjectCursorIntegration(options.target, {
+    ...options, agents: selected, fivem: false, providerOnly: true,
+  }, agents, []);
+  console.log(`Providers: ${selected.join(", ")} (existing packs and other providers preserved)`);
+  for (const item of changes) console.log(`  ${item.agent}: ${item.path}`);
+}
+
 function generatePanelBuild(reason) {
   const { buildPanel, printBuildResult } = require("./lib/panel-build");
   const result = buildPanel({
@@ -195,6 +206,23 @@ async function main() {
   if (!fs.existsSync(options.target)) {
     console.error(`Error: target directory does not exist: ${options.target}`);
     process.exit(1);
+  }
+
+  // Installing one additional provider into an existing FXMIND project is
+  // NOT a pack reinstall. Never rewrite packs.json/lock, unrelated agent
+  // configs, knowledge memories, FiveM templates or the panel build.
+  // Explicit --pack/--no-packs/--replace-agents still selects full setup.
+  const existingManifest = fs.existsSync(
+    require("path").join(options.target, ".fxmind", "packs.json"),
+  );
+  const providerOnly = existingManifest && options.explicitAgents &&
+    !options.update && !wantsInteractive(options) && !options.explicitPacks &&
+    !options.allPacks && !options.noPacks && !options.explicitSkills &&
+    !options.all && !options.replaceAgents && !options.globalStore &&
+    options.fivem !== true;
+  if (providerOnly) {
+    installOnlyProviders(options, options.agents || []);
+    return;
   }
 
   if (options.update) {
@@ -376,13 +404,14 @@ async function main() {
   }
 
   if (wantsInteractive(options)) {
-    const selections = await promptSelections();
+    const selections = await promptSelections(options.target);
 
     if (!selections) {
       console.log("Installation cancelled.");
       process.exit(0);
     }
 
+    options.selectedInteractively = true;
     options.packs = selections.packs;
     options.agents = selections.agents;
     options.skills = selections.skills;
@@ -416,6 +445,32 @@ async function main() {
 
   const skills = options.skills;
   const packs = options.packs;
+
+  // The interactive wizard also supports "add one provider". When packs,
+  // skills and helper choice stayed identical to the installed manifest,
+  // install only the newly selected provider; leave all shared data intact.
+  if (options.selectedInteractively && !options.replaceAgents) {
+    const previous = readPacksManifestFile(options.target);
+    if (previous) {
+      const ids = values => [...new Set(values)].sort().join(",");
+      const previousPacks = (previous.packs || []).map(p =>
+        typeof p === "string" ? p : p.id);
+      const previousSkills = previous.skills || getDefaultSkillsForPacks(previousPacks);
+      const sameContent = ids(previousPacks) === ids(packs) &&
+        ids(previousSkills) === ids(skills) &&
+        (previous.command !== false) === Boolean(options.command);
+      if (sameContent) {
+        const newlySelected = (options.agents || []).filter(id =>
+          !(previous.agents || []).includes(id));
+        const selected = newlySelected.length
+          ? newlySelected : (options.agents.length === 1 ? options.agents : []);
+        if (selected.length) {
+          installOnlyProviders(options, selected);
+          return;
+        }
+      }
+    }
+  }
 
   resolveInstallAgentIds(options.target, options);
   const agents = resolveAgents(options.agents);

@@ -1159,9 +1159,10 @@ function formatToolResult(toolName, result) {
 }
 
 /**
- * Optional tool groups. Core tools are always listed; groups that cannot work
- * in this project are hidden so their schemas do not cost context every turn.
- * FXMIND_MCP_TOOLS=all|fivem,db,panel,storage overrides the detection.
+ * Expose a consistent tool catalog across installations by default.
+ * Capability is checked when a tool runs, and FXMIND_MCP_READONLY still
+ * removes mutating tools. Use FXMIND_MCP_TOOLS=auto to opt into the previous
+ * project-aware filtering, or a comma-separated group list to restrict tools.
  */
 const TOOL_GROUPS = {
   storage: (name) => name === "fxmind_storage_upload_image",
@@ -1187,9 +1188,11 @@ function hasFivemPack(root) {
 
 function enabledToolGroups(root, env = process.env) {
   const explicit = String(env.FXMIND_MCP_TOOLS || "").trim().toLowerCase();
-  if (explicit) {
+  if (!explicit || explicit === "all") {
+    return new Set(Object.keys(TOOL_GROUPS));
+  }
+  if (explicit !== "auto") {
     const wanted = new Set(explicit.split(/[\s,]+/).filter(Boolean));
-    if (wanted.has("all")) return new Set(Object.keys(TOOL_GROUPS));
     return new Set(Object.keys(TOOL_GROUPS).filter((group) => wanted.has(group)));
   }
   const groups = new Set(["panel"]);

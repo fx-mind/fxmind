@@ -10,6 +10,21 @@ const { writeJsonIfChanged, writeFileIfChanged } = require("./install/sync-files
 const MCP_SERVER_KEY = "fxmind";
 const FXMIND_MCP_COMMAND = "fxmind-mcp";
 const MANIFEST_REL = path.join(".fxmind", "packs.json");
+const WINDOWS_MCP_LAUNCHER = [
+  "const fs=require('fs')",
+  "const path=require('path')",
+  "const os=require('os')",
+  "const cp=require('child_process')",
+  "const home=os.homedir()",
+  "const app=process.env.APPDATA||path.join(home,'AppData','Roaming')",
+  "const locations=[process.env.FXMIND_MCP_SERVER_PATH,path.join(app,'npm/node_modules/fxmind/scripts/mcp-server.js'),path.join(home,'.fxmind/npm/node_modules/fxmind/scripts/mcp-server.js')].filter(Boolean)",
+  "const script=locations.find(p=>fs.existsSync(p))",
+  "if(!script){process.stderr.write('FXMIND MCP not installed.\\n');process.exit(1)}",
+  "const child=cp.spawn(process.execPath,[script],{stdio:'inherit',env:process.env})",
+  "child.on('error',()=>process.exit(1))",
+  "child.on('exit',code=>process.exit(code==null?1:code))",
+].join(";");
+const portableWindowsMcpArgs = () => ["-e", WINDOWS_MCP_LAUNCHER];
 
 const MCP_AGENT_TARGETS = {
   cursor: {
@@ -110,29 +125,16 @@ function buildFxmindMcpEntry(agentId) {
 
   if (process.platform === "win32") {
     entry.command = "node";
-    const custom = customServerPath();
-    entry.args = [
-      custom
-        ? custom.replace(/\\/g, "/")
-        : "${env:APPDATA}/npm/node_modules/fxmind/scripts/mcp-server.js",
-    ];
+    entry.args = (!agentId || ['cursor','claude','copilot'].includes(agentId))
+      ? [String.fromCharCode(36) + '{env:APPDATA}/npm/node_modules/fxmind/scripts/mcp-server.js']
+      : portableWindowsMcpArgs();
   } else {
     entry.command = FXMIND_MCP_COMMAND;
   }
 
-  // Optional local FXServer RCON (IDE task). Set password in project mcp.json or env.
-  if (process.env.FXMIND_RCON_PASSWORD) {
-    entry.env.FXMIND_RCON_PASSWORD = process.env.FXMIND_RCON_PASSWORD;
-  }
-  if (process.env.FXMIND_RCON_HOST) {
-    entry.env.FXMIND_RCON_HOST = process.env.FXMIND_RCON_HOST;
-  }
-  if (process.env.FXMIND_RCON_PORT) {
-    entry.env.FXMIND_RCON_PORT = process.env.FXMIND_RCON_PORT;
-  }
-  if (process.env.FXMIND_FIVEM_LOG) {
-    entry.env.FXMIND_FIVEM_LOG = process.env.FXMIND_FIVEM_LOG;
-  }
+  // Never copy personal RCON passwords/host settings from the installer's
+  // process environment into tracked provider configuration files. The MCP
+  // process inherits runtime env and may read the project's private .env.
 
   return agentId === "claude" ? claudeMcpEntry(entry) : entry;
 }
@@ -298,12 +300,9 @@ function pruneStaleMcpConfigs(targetRoot, activeAgentIds) {
 }
 
 function codexMcpArgs(entry) {
-  if (!Array.isArray(entry.args) || entry.args.length === 0) return [];
-  if (process.platform !== "win32" || entry.command !== "node" || !process.env.APPDATA) {
-    return entry.args;
-  }
-  const serverPath = customServerPath() || defaultGlobalServerPath();
-  return fs.existsSync(serverPath) ? [serverPath] : entry.args;
+  if (!Array.isArray(entry.args) || !entry.args.length) return [];
+  return process.platform === "win32" && entry.command === "node"
+    ? portableWindowsMcpArgs() : entry.args;
 }
 
 function buildCodexMcpToml(entry, projectRoot) {
@@ -318,9 +317,9 @@ function buildCodexMcpToml(entry, projectRoot) {
   }
 
   const env = { ...(entry.env || {}) };
-  if (projectRoot) {
-    env.FXMIND_TARGET = path.resolve(projectRoot).replace(/\\/g, "/");
-  }
+  // Project config is committed and copied to other machines. Codex uses the
+  // active project CWD at runtime; never write the installer's absolute root.
+  delete env.FXMIND_TARGET;
   const envEntries = Object.entries(env).filter(([, value]) => value != null && value !== "");
   if (envEntries.length) {
     lines.push("", "[mcp_servers.fxmind.env]");
@@ -374,10 +373,9 @@ function mcpStatusMcpServersJson(configPath) {
 
 function resolveOpenCodeMcpLaunch() {
   if (process.platform === "win32") {
-    const script = (customServerPath() || defaultGlobalServerPath()).replace(/\\/g, "/");
     return {
       type: "local",
-      command: ["node", script],
+      command: ["node", ...portableWindowsMcpArgs()],
       environment: { FXMIND_AGENT_ID: "opencode" },
       enabled: true,
     };

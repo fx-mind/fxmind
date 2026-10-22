@@ -401,7 +401,18 @@ function getSkillDescription(skillName) {
   return match[1].trim().replace(/^["']|["']$/g, "");
 }
 
-async function promptSelections() {
+async function promptSelections(targetRoot) {
+  // Reopening the wizard must preserve the project's installed selection,
+  // rather than reverting to package defaults and silently dropping packs.
+  let installed = null;
+  try {
+    const manifest = path.join(targetRoot, ".fxmind", "packs.json");
+    installed = JSON.parse(fs.readFileSync(manifest, "utf8"));
+  } catch { /* fresh project */ }
+  const existingPacks = Array.isArray(installed?.packs)
+    ? installed.packs.map(p => typeof p === "string" ? p : p.id) : null;
+  const existingAgents = Array.isArray(installed?.agents) ? installed.agents : null;
+  const existingSkills = Array.isArray(installed?.skills) ? installed.skills : null;
   const { checkbox, confirm } = await import("@inquirer/prompts");
   const { CancelPromptError } = await import("@inquirer/core");
 
@@ -414,7 +425,7 @@ async function promptSelections() {
       choices: listPacks().map((pack) => ({
         name: truncate(`${pack.label} — ${pack.description}`, 90),
         value: pack.id,
-        checked: getDefaultPackIds().includes(pack.id),
+        checked: (existingPacks || getDefaultPackIds()).includes(pack.id),
       })),
       loop: false,
       required: false,
@@ -434,7 +445,7 @@ async function promptSelections() {
       choices: Object.entries(AGENTS).map(([value, agent]) => ({
         name: agent.label,
         value,
-        checked: value === "cursor",
+        checked: existingAgents ? existingAgents.includes(value) : value === "cursor",
       })),
       loop: false,
       required: true,
@@ -451,7 +462,7 @@ async function promptSelections() {
             choices: allSkills.map((name) => ({
               name: truncate(`${name} — ${getSkillDescription(name)}`, 90),
               value: name,
-              checked: defaultSkills.includes(name),
+              checked: (existingSkills || defaultSkills).includes(name),
             })),
             loop: false,
             required: true,
@@ -465,7 +476,7 @@ async function promptSelections() {
     const installCommand = await confirm({
       message:
         "Install /fxmind helper (/fxmind, /fxmind reference, /fxmind audit, /fxmind learn, /fxmind memory health, /fxmind graph)?",
-      default: true,
+      default: typeof installed?.command === "boolean" ? installed.command : true,
     });
 
     state.SKILL_SOURCES = savedSources;

@@ -74,10 +74,11 @@ describe("panel-install", () => {
       assert.equal(status.entry.command, process.platform === "win32" ? "node" : "fxmind-mcp");
       assert.match(config, /\[mcp_servers\.fxmind\]/);
       assert.match(config, /\[mcp_servers\.fxmind\.env\]/);
-      assert.match(config, /FXMIND_TARGET\s*=/);
+      assert.doesNotMatch(config, /FXMIND_TARGET\s*=/);
       if (process.platform === "win32") {
         assert.match(config, /args\s*=\s*\[.*mcp-server\.js/);
-        assert.equal(status.entry.args.length, 1);
+        assert.equal(status.entry.args.length, 2);
+        assert.equal(status.entry.args[0], "-e");
       }
     } finally {
       fs.rmSync(cwd, { recursive: true, force: true });

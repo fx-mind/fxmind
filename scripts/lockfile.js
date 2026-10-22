@@ -37,7 +37,7 @@ function lockfileComparePayload(data) {
   if (!data) return null;
   return {
     ...omitKeys(data, ["lockedAt"]),
-    packs: (data.packs || []).map((entry) => omitKeys(entry, ["lockedAt"])),
+    packs: (data.packs || []).map((entry) => omitKeys(entry, ["lockedAt", "resolvedSkillsDir"])),
   };
 }
 
@@ -78,7 +78,8 @@ function buildLockEntry(packId, options = {}) {
     skillsRepo: pack.skills.repo,
     cacheName: pack.skills.cacheName,
     resolvedSource,
-    resolvedSkillsDir: skillsDir.replace(/\\/g, "/"),
+    // The shared lockfile must not disclose or depend on the machine's
+    // absolute skills cache directory. cacheName + pinned SHA are portable.
     commitSha: resolveCommitSha(pack),
     skills,
     lockedAt: new Date().toISOString(),
@@ -99,7 +100,10 @@ function writeLockfile(targetRoot, packIds, options = {}) {
   const lockPath = path.join(path.resolve(targetRoot), SHARED_DIR, LOCKFILE_NAME);
   const data = buildLockfile(packIds, options);
   const prev = readJson(lockPath);
-  if (prev && jsonSemanticallyEqual(lockfileComparePayload(prev), lockfileComparePayload(data))) {
+  const legacyMachinePath = prev?.packs?.some((item) =>
+    Object.prototype.hasOwnProperty.call(item, "resolvedSkillsDir"));
+  if (prev && !legacyMachinePath &&
+      jsonSemanticallyEqual(lockfileComparePayload(prev), lockfileComparePayload(data))) {
     return { lockPath, data: prev, changed: false };
   }
   writeJson(lockPath, data);

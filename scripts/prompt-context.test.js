@@ -93,9 +93,14 @@ describe("mcp tool groups", () => {
 
   const names = (list) => list.map((tool) => tool.name);
 
-  it("hides FiveM tools without the fivem pack and DB tools without a connection", () => {
+  it("defaults to the full MCP catalog on every machine", () => {
     fs.writeFileSync(path.join(root, ".fxmind", "packs.json"), JSON.stringify({ packs: [] }));
-    const listed = names(mcp.listTools(root, {}));
+    assert.deepEqual(names(mcp.listTools(root, {})), names(mcp.TOOL_DEFS));
+  });
+
+  it("auto mode hides FiveM tools without its pack and DB tools without a connection", () => {
+    fs.writeFileSync(path.join(root, ".fxmind", "packs.json"), JSON.stringify({ packs: [] }));
+    const listed = names(mcp.listTools(root, { FXMIND_MCP_TOOLS: "auto" }));
     assert.ok(listed.includes("fxmind_query"));
     assert.ok(listed.includes("fxmind_db_status"));
     assert.ok(listed.includes("fxmind_panel_wait"));
@@ -103,10 +108,10 @@ describe("mcp tool groups", () => {
     assert.ok(!listed.includes("fxmind_db_query"));
   });
 
-  it("keeps FiveM tools when the pack is installed or the manifest is missing", () => {
-    assert.ok(names(mcp.listTools(root, {})).includes("fxmind_fivem_status"));
+  it("auto mode keeps FiveM tools when the pack is installed or the manifest is missing", () => {
+    assert.ok(names(mcp.listTools(root, { FXMIND_MCP_TOOLS: "auto" })).includes("fxmind_fivem_status"));
     fs.writeFileSync(path.join(root, ".fxmind", "packs.json"), JSON.stringify({ packs: [{ id: "fivem" }] }));
-    assert.ok(names(mcp.listTools(root, {})).includes("fxmind_fivem_status"));
+    assert.ok(names(mcp.listTools(root, { FXMIND_MCP_TOOLS: "auto" })).includes("fxmind_fivem_status"));
   });
 
   it("FXMIND_MCP_TOOLS overrides detection", () => {
