@@ -50,7 +50,14 @@ function buildPromptContext(root, prompt, options = {}) {
   if (!root || shouldSkipPrompt(prompt)) return "";
   const playbooks = require("./lib/playbooks");
   const plan = options.plan || playbooks.planTask(root, prompt, { playbooks: options.playbooks });
-  if (plan.playbook) return plan.playbookText;
+  const lean = require("./lib/lean-engineering");
+  const guidance = lean.leanPlan(plan.kind);
+  if (plan.playbook) return [plan.playbookText, guidance].filter(Boolean).join("\n\n");
+  // A cheap bounded map helps reuse existing symbols, including FiveM/Lua.
+  // It is skipped for non-implementation questions and when git is unavailable.
+  const map = plan.kind && options.codebaseMap !== false
+    ? lean.codebaseMap(root, prompt, { maxChars: 1100 }) : "";
+  const leanContext = [guidance, map].filter(Boolean).join("\n\n");
 
   const tools = require("./fxmind-tools");
   const { formatQueryResult } = require("./lib/memory-retrieval");
@@ -62,14 +69,15 @@ function buildPromptContext(root, prompt, options = {}) {
     // Never rebuild on the prompt path; ranking reads memory files directly.
     rebuild: false,
   });
-  if (!result.ok || !result.memories?.length) return "";
+  if (!result.ok || !result.memories?.length) return leanContext;
   return [
     "# fxmind — preloaded project memories",
     "Use these first and confirm against current source. Skip fxmind_query for these topics.",
     ...[playbooks.kindLine(plan), playbooks.staleLine(plan)].filter(Boolean),
     "",
     formatQueryResult(result),
-  ].join("\n");
+    leanContext,
+  ].filter(Boolean).join("\n\n");
 }
 
 /** Network-backed classification is optional; the sync API stays stable. */
