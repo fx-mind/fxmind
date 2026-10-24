@@ -226,6 +226,8 @@ function buildPrompt(root, session, files, evidence = {}) {
   lines.push(
     "",
     "Inspect the actual diff and relevant callers. Try to falsify the change: requirement gaps, lexical/scope errors, accidental globals, wrong function order, missed twins, stale assumptions, edge cases, security/performance regressions, scope creep and unsupported verification claims.",
+    "Lean review (no extra gate): check whether the patch needlessly duplicates an existing helper/event/component, introduces a speculative abstraction/dependency, or modifies unrelated code. Name a concrete reusable alternative and its callers before flagging. Do NOT demand fewer lines when it removes security, validation, accessibility, error handling or essential tests. Do not invent savings.",
+    "For new branching logic, parsers, security, persistence or money, check for one focused regression test that would fail on a real defect. Verify the tests and their behavior, not just their existence.",
     "For Lua, explicitly check that every local callee is lexically visible to its callers and that a later local declaration did not turn an earlier reference into a global lookup.",
   );
   if (guidance) {

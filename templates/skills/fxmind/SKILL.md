@@ -20,6 +20,10 @@ Shared knowledge lives under `.fxmind/`; domain skills live in `.fxmind/skills/`
 
 Quick/full adjusts effort and narration, not quality requirements. Quick does not imply trivial. Only known tiny changes without new behavior qualify for auto A/B.
 
+## Lean engineering (all coding agents and delegated reviewers)
+
+Use the existing Gate B to choose the **smallest complete solution**: first ask whether new code is needed, search for existing helpers/events/components and playbooks, then prefer platform/standard APIs or installed dependencies. Only introduce new code, abstraction, configuration or dependency when those options cannot satisfy the task. Check the affected callers and source; FXMIND's optional compact symbol map is just a hint, not an authoritative AST. For Lua/FiveM search event registrations, exports and resource boundaries; keep existing security/permission checks. Do not cut requirements, failure handling, privacy, tests or UI verification to reduce lines. In Gate V, independently review unnecessary duplication, scope creep and missed tests as well as functional correctness. The same criteria apply to subagents; no new Gate or mandatory MCP call is required.
+
 ## Context and control
 
 When choosing between FxMind discovery tools is ambiguous, call `fxmind_route_tool` once (advisory only). It proposes a read-only MCP tool; it does not call it, authorize actions or replace gates. If the preloaded context already recommends a tool, use that hint instead of calling the router again. Follow known playbooks and preloaded memories first.

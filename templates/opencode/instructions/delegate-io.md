@@ -6,7 +6,7 @@ Keep intent, architecture, task gates and final synthesis with the primary agent
 - Missing paths/symbols: fxmind_search in the likely directory.
 - Known paths: read directly, or delegate independent substantial reads to reader.
 - Unresolved discovery: explore with the specific missing question, already-known facts and bounded scope.
-- Bounded implementation: general with exact task files, local conventions, Done and verification expectations.
+- Bounded implementation: general with exact task files, local conventions, Done and verification expectations. Include the Lean decision: reuse existing helpers/components/events and standard/platform APIs before adding new abstractions, and preserve tests, security and callers. This is context, not a separate MCP query or gate.
 - External documentation: scout with the exact API question.
 - Independent verification is automatic inside Gate V. Do not delegate it manually during normal task flow; call V with real evidence, then repair any returned findings and retry V.
 
