@@ -12,6 +12,12 @@ The first pack is **FiveM** (vRP, QBCore, Qbox, ESX, NUI). More domains can be a
 
 ---
 
+## Agent Plugin (Codex, Cursor, Claude Code)
+
+FXMIND also ships a portable Agent Plugin with the existing skill and MCP configuration. For installation, project scoping and runtime requirements, see [docs/plugin.md](docs/plugin.md). The regular CLI installer remains supported; do not enable duplicate MCP servers. Cursor uses its dedicated plugin manifest for compatible path expansion.
+
+---
+
 ## Quick start
 
 ```bash

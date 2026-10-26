@@ -1,0 +1,22 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "fxmind",
+  "version": "1.5.0",
+  "description": "Shared project memory, selective task workflows and MCP tools for coding agents.",
+  "author": {
+    "name": "FXMIND"
+  },
+  "repository": "https://github.com/fx-mind/fxmind",
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "coding-agent",
+    "mcp",
+    "skills"
+  ],
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/fxmind-setup/SKILL.md"
+    }
+  }
+}
