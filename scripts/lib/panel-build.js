@@ -52,8 +52,8 @@ function hasPanelBuild() {
   return fs.existsSync(path.join(WEB_DIST, "index.html"));
 }
 
-function runNpm(args, cwd, quiet = false) {
-  const env = { ...process.env, NPM_CONFIG_UPDATE_NOTIFIER: "false" };
+function runNpm(args, cwd, quiet = false, extraEnv = {}) {
+  const env = { ...process.env, ...extraEnv, NPM_CONFIG_UPDATE_NOTIFIER: "false" };
   for (const key of Object.keys(env)) {
     if (/^npm_config_(prefix|local_prefix|global)$/i.test(key)) {
       delete env[key];
@@ -118,7 +118,7 @@ function buildPanel(options = {}) {
         quiet,
       );
     }
-    runNpm(["run", "build"], panelRoot, quiet);
+    runNpm(["run", "build"], panelRoot, quiet, { FXMIND_PANEL_DIST: WEB_DIST });
 
     if (!hasPanelBuild()) {
       throw new Error(`Panel build completed without ${path.join(WEB_DIST, "index.html")}`);

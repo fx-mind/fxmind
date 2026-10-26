@@ -6,7 +6,7 @@ You are a FiveM development expert. Help the user with their FiveM scripting que
 
 ### Instructions
 
-0. **Before scanning the whole codebase** — read `.fxmind/memory/_index.md`. If a memory exists for the detected topic (craft, item, loja, etc.), read **`memory/<topic>.md` first** and answer from it when sufficient. Memories are stored in **compact technical English** (`lang: en-compact`) for token efficiency — **translate/adapt to the user's language in your reply**, do not paste memory verbatim unless showing code paths.
+0. For repository-specific questions, use preloaded precise facts or call **`fxmind_query` once** to retrieve only relevant atomic source/Markdown fragments. Do not read an entire topic Markdown by default. Answer ordinary questions directly without querying FXMIND or running gates.
 
 1. **Analyze the query** to determine what the user needs:
    - Native function → Fetch from https://docs.fivem.net/natives/
@@ -23,7 +23,7 @@ You are a FiveM development expert. Help the user with their FiveM scripting que
    - Rewrite/optimize a badly written resource → suggest **`/fxmind refactor <resource>`**
    - Verify claims / "did that actually work?" → suggest **`/fxmind judge`**
    - Implement, fix, refactor, add/remove code → suggest **`/fxmind task <request>`**
-   - Recurring project flow (craft, item, loja, NUI) → read `.fxmind/memory/<topic>.md` if exists; else suggest `/fxmind learn <topic>`
+   - Recurring project flow (craft, item, loja, NUI) → retrieve precise facts through `fxmind_query`; if unavailable suggest `/fxmind learn <topic>`
   - Web panel / demandas do dia / chat com agente → suggest **`/fxmind painel`**
    - Architecture / cross-topic flow → suggest `/fxmind query "<question>"` if `knowledge-graph.json` exists
    - Project conventions → Read **`.fxmind/reference.md`** at project root if it exists

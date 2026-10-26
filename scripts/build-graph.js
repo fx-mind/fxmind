@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
+const atomic = require("./lib/atomic-memory");
 const {
   resolveDataRoot,
   resolveMemoryDir,
@@ -829,7 +830,13 @@ function buildGraphData(projectRoot, options = {}) {
 
   links.push(...inferCrossProjectLinks(learnedNodes, foreignNodes));
 
-  const allNodes = [...learnedNodes, ...foreignNodes, ...catalogNodes].map(
+  // Atomic source/fact nodes provide Obsidian-style navigable local detail.
+  // The source index is kept separately for complete, cheap retrieval.
+  const atomicIndex = atomic.readAtomic(projectRootResolved);
+  const atomicNodes = atomicIndex?.nodes || [];
+  const atomicLinks = atomicIndex?.links || [];
+  links.push(...atomicLinks);
+  const allNodes = [...learnedNodes, ...foreignNodes, ...catalogNodes, ...atomicNodes].map(
     stripInternalFields,
   );
 
@@ -847,6 +854,9 @@ function buildGraphData(projectRoot, options = {}) {
         learned: learnedNodes.length,
         catalog: catalogNodes.length,
         foreign: foreignNodes.length,
+        atomic: atomicNodes.length,
+        facts: atomicNodes.filter((node) => node.group === "memory-atom").length,
+        symbols: atomicNodes.filter((node) => node.group === "code-symbol").length,
         links: links.length,
         tokens: allNodes.reduce((sum, node) => sum + (node.tokens || 0), 0),
       },

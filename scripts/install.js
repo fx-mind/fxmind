@@ -130,8 +130,50 @@ async function main() {
     if (sub === "validate" || sub === "validate-memories") {
       process.exit(runHooksCli(["validate-memories", ...argv.slice(2)]));
     }
+    if (sub === "add") {
+      const path = require("node:path");
+      const flag = (name) => {
+        const i = argv.indexOf("--" + name);
+        return i < 0 ? "" : (argv[i + 1] || "");
+      };
+      const target = path.resolve(flag("target") || process.cwd());
+      if (!fs.existsSync(path.join(target, ".fxmind"))) {
+        console.error("Project not initialized: missing .fxmind/");
+        process.exit(1);
+      }
+      try {
+        const atomic = require("./lib/atomic-memory");
+        const fact = atomic.addFact(target, {
+          topic: flag("topic"), text: flag("text"),
+          path: flag("path"), evidence: flag("evidence"),
+          kind: flag("kind") || "rule",
+        });
+        require("./fxmind-tools").buildGraph(target, { updateHtml: false });
+        console.log(JSON.stringify({ ok: true, target, fact }));
+        process.exit(0);
+      } catch (err) {
+        console.error(err.message);
+        process.exit(1);
+      }
+    }
+    if (sub === "migrate" || sub === "index") {
+      const path = require("node:path");
+      const targetArg = argv.indexOf("--target");
+      if (targetArg >= 0 && !argv[targetArg + 1]) {
+        console.error("Missing --target directory.");
+        process.exit(1);
+      }
+      const root = targetArg >= 0 ? path.resolve(argv[targetArg + 1]) : process.cwd();
+      if (!fs.existsSync(path.join(root, ".fxmind"))) {
+        console.error("Project not initialized: missing .fxmind/");
+        process.exit(1);
+      }
+      const result = require("./fxmind-tools").buildGraph(root, { updateHtml: false });
+      console.log(JSON.stringify({ ok: true, target: root, ...result.atomicIndex, legacyMemoriesPreserved: true }));
+      process.exit(0);
+    }
     console.error(`Unknown memory subcommand: ${sub}`);
-    console.error("Usage: fxmind memory validate [--target <dir>] [--strict]");
+    console.error("Usage: fxmind memory validate|migrate|index|add [--target <dir>]");
     process.exit(1);
   }
 
@@ -586,7 +628,7 @@ async function main() {
   console.log("Run /fxmind refactor <resource> to rewrite a badly written resource with contract parity.");
   console.log("Run /fxmind audit [scope] for security/perf/pattern audit + fix plan.");
   console.log(
-    "Run /fxmind learn <topic> to scan the codebase and save compact English topic memory under .fxmind/memory/ (shared by all agents).",
+    "Run /fxmind learn <topic> to save small, evidence-linked facts globally by project; legacy topic Markdown is preserved.",
   );
   console.log(
     "Run /fxmind memory health [fix] [topic] to verify memories vs codebase and optionally compact-rewrite stale topics.",

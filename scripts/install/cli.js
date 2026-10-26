@@ -77,6 +77,8 @@ Without global install:
   ${npxInstall("hooks uninstall-mcp")} Remove fxmind MCP entries for installed agents
   ${npxInstall("hooks status")}       Show installed hooks
   ${npxInstall("memory validate")}    Validate memory frontmatter + duplicates
+  ${npxInstall("memory migrate")}     Build atomic code/memory index (preserves Markdown)
+  ${npxInstall("memory add --topic T --text F --path P --evidence E")}   Save source-grounded atomic fact
   ${npxInstall("playbooks list")}     Playbooks: surgical instructions for repeated tasks (show|check|match)
   ${npxInstall("corrections list")}   List skill-improvement corrections backlog
   ${npxInstall("corrections export")} Export open corrections for editing best-practices

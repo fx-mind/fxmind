@@ -198,7 +198,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_query",
     description:
-      "Rank project memories for a question (PT or EN) and return the matching sections within a token budget, plus related topics. Read-only.",
+      "Find source-grounded atomic facts, functions and events (PT/EN) within a small token budget; legacy Markdown and bounded source search remain fallbacks. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
@@ -212,7 +212,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_graph",
     description:
-      "Rebuild .fxmind/graph/knowledge-graph.json + memory-index.json from memories (HTML optional). Use after learn.",
+      "Incrementally index source symbols and atomic memory fragments, then rebuild knowledge-graph.json and memory-index.json (HTML optional).",
     inputSchema: {
       type: "object",
       properties: {
@@ -221,6 +221,21 @@ const TOOL_DEFS = [
           description:
             "Also sync knowledge-graph.html (default true). Set false for JSON + index only.",
           default: true,
+        },
+        addFact: {
+          type: "object",
+          description: "Optional source-grounded atomic fact to learn before rebuilding; no full topic Markdown is written.",
+          properties: {
+            topic: { type: "string" },
+            text: { type: "string", description: "One concise factual behavior or rule (12-900 characters)." },
+            path: { type: "string", description: "Existing project-relative source file." },
+            evidence: { type: "string", description: "Exact substring present in the source file." },
+            kind: { type: "string", description: "rule, behavior, pitfall, decision or mapping." },
+            symbols: { type: "array", items: { type: "string" } },
+            events: { type: "array", items: { type: "string" } },
+          },
+          required: ["topic", "text", "path", "evidence"],
+          additionalProperties: false,
         },
       },
     },
@@ -243,7 +258,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_drift_check",
     description:
-      "Check which topic memories reference a changed file path (broken or stale-candidate).",
+      "Check which topic and atomic memory records reference a changed source file (broken or stale-candidate).",
     inputSchema: {
       type: "object",
       properties: {
@@ -842,10 +857,15 @@ async function dispatchTool(name, args) {
         budget: Number(args.budget) || 1500,
       });
 
-    case "fxmind_graph":
-      return tools.buildGraph(root, {
+    case "fxmind_graph": {
+      const fact = args.addFact
+        ? require("./lib/atomic-memory").addFact(root, args.addFact)
+        : null;
+      const graph = tools.buildGraph(root, {
         updateHtml: args.updateHtml !== false,
       });
+      return fact ? { ...graph, fact } : graph;
+    }
 
     case "fxmind_check_update":
       return checkForUpdate({

@@ -1,71 +1,41 @@
 # fxmind — Mode: Learn
 
-Generate or update a **topic memory** at `.fxmind/memory/<topic>.md` (shared by all agents).
+Create **small, source-grounded atomic facts** linked to code symbols, not one large memory file per topic. Learn mode is read-only for project source code.
 
-**Do not implement code** in this mode — only scan, write markdown, and update index/reference links.
+## Scope
 
-## Step 1 — Resolve topic
+- `/fxmind learn list`: show known topics and atom counts using `fxmind_query` or the atomic index; legacy `.fxmind/memory/_index.md` is an optional historical reference.
+- `/fxmind learn <topic>`: investigate only the requested topic and produce a handful of independent, searchable facts.
+- If this is a general question, do not run learn or gates. Use `fxmind_query` instead.
 
-1. Parse `$ARGUMENTS` after `learn` (e.g. `craft`, `item-usavel`).
-2. If `learn list` → read `.fxmind/memory/_index.md` and `.fxmind/policy/topic-catalog.md`; reply with table; stop.
-3. Normalize slug: lowercase, hyphens, no spaces → `memory/<slug>.md`.
+## Procedure
 
-## Step 2 — Load context
+1. Read the preloaded FXMIND context and the smallest relevant topic hints in `.fxmind/policy/topic-catalog.md`. Call `fxmind_query` first to identify existing facts and avoid duplicates.
+2. Search only the matching source files and symbols. Prefer bounded FXMIND discovery tools; use grep only when coverage is missing. Never invent paths, names, events or behavior.
+3. Extract one behavior, event mapping, permission check, pitfall, rule or decision per fact. Make text concise and self-contained; do not copy secrets or whole files.
+4. For **each** fact, call MCP `fxmind_graph` with:
+   ```json
+   {
+     "updateHtml": false,
+     "addFact": {
+       "topic": "garages",
+       "kind": "behavior",
+       "text": "The storage handler verifies player id and plate before storing a vehicle.",
+       "path": "resources/example/garages/server.lua",
+       "evidence": "if not userId or not plate then return false end",
+       "symbols": ["canStoreVehicle"]
+     }
+   }
+   ```
+   This is a shape example, **not** a claim about the current repository. Supply actual source-relative path and an **exact substring** found in that source file. If evidence cannot be verified, **do not save** the fact.
+5. The MCP records evidence, file hash and line in a global per-project store and rebuilds the atomic graph. It deduplicates and ignores stale facts when their source changes. A later `fxmind_query` retrieves just the matching snippets.
+6. If MCP is unavailable, do not manufacture a local memory file. Explain the limitation and use `fxmind memory index` when CLI access resumes.
 
-Read from `.fxmind/skills/`:
+## Constraints
 
-| File | Purpose |
-|------|---------|
-| `fivem-development/` (`communication`…`security`) | Patterns, anti-bugs |
-| Framework skill (`vrp-framework`, etc.) | If detected |
-| `.fxmind/policy/topic-catalog.md` | Search hints for known topics |
-| `.fxmind/templates/memory.md` | Output skeleton |
-| `.fxmind/reference.md` at project root | If exists — project paths |
-| `.fxmind/memory/<topic>.md` | If exists — **merge** (preserve valid content, update paths) |
-
-## Step 3 — Scan codebase
-
-1. Match topic to catalog row if possible; use its grep/paths hints.
-2. Unknown topic → infer paths from user request + `.fxmind/reference.md`.
-3. Grep + read files — **every path in output must exist in the repo**.
-4. Extract: config paths, handlers, events, checklists, one real example from the codebase.
-
-## Step 4 — Write memory
-
-Save to `.fxmind/memory/<topic>.md` using `.fxmind/templates/memory.md` structure (**~25–60 lines**, token-efficient):
-
-- Frontmatter **required**: `topic`, `updated`, `lang: en-compact`.
-- Frontmatter **required for routing**: non-empty `paths[]` **or** `triggers[]` (preferably both).
-- `triggers[]` also lists the PT-BR words users actually type for this topic (e.g. `garagem`, `inventario`, `guarda-roupa`) next to the EN terms — retrieval matches the user's words, and memory bodies are English. `symbols[]` holds the real function/export names users paste from errors.
-- Also set: `framework`, `confidence: extracted`, `resources`, `events`, `exports`, `symbols`.
-- Sections: `Files`, `Recipe`, `Example`, `Pitfalls`, `Skills` — **compact technical English only**.
-- No prose, no tables unless essential; bullet lists and short imperative lines.
-- Keep repo literals verbatim: paths, events, item ids, permissions, resource names.
-- **Do not** write memory in Portuguese — memory is shared project context (`lang: en-compact`). Only `triggers[]` carries PT-BR search words.
-- Use one heading or `Label:` line per section: retrieval loads only the sections matching the question when a memory exceeds the budget.
-- **One slug = one file** — update existing `memory/<slug>.md`; do not create `admin2.md` / `admin-fix.md`.
-
-## Step 5 — Validate + update index
-
-1. Call MCP **`fxmind_validate_memories`** (or note to run `fxmind memory validate`) and fix any errors before finishing.
-2. Update `.fxmind/memory/_index.md` — table row: topic | file | triggers | last updated. Create from `memory-index.template.md` if missing.
-
-## Step 6 — Rebuild graph (required for query / Gate B)
-
-After index validation, call MCP **`fxmind_graph`** with `{ updateHtml: false }` (or `fxmind graph --no-open --no-html`). If MCP is unavailable, tell the user once to run that command manually. HTML sync is optional (`fxmind graph` or `updateHtml: true`).
-
-## Step 7 — Update .fxmind/reference.md
-
-If `.fxmind/reference.md` exists: ensure section `## Memórias por tópico` exists; add/update one table row per topic; keep the rest lean (do not duplicate full flows here). If absent, skip.
-
-## Step 8 — Reply
-
-Reply in **their language** (usually PT-BR): summary of what was learned (3–5 bullets), path `.fxmind/memory/<topic>.md`, note that **`fxmind_graph`** (JSON) was rebuilt or should be run if MCP failed.
-
-## Learn rules
-
-- **Never invent** paths, events, or APIs.
-- **Do not** edit Lua/JS during learn mode.
-- **Do not** leave files in `.fxmind/state/tmp/` — learn is read-only; use grep/read in place.
-- Cursor Agent: use **AskQuestion** if critical context is missing; otherwise ask in chat.
-- **Memory file:** compact technical English (`lang: en-compact`). **Chat reply:** user's language.
+- Never modify Lua/JS code during learn.
+- Do not automatically create or extend broad `.fxmind/memory/<topic>.md` files. Existing topic Markdown remains compatible and is migrated non-destructively.
+- Prefer separate facts for event registration, handler, command, config and return values; add `symbols`/`events` only when confirmed.
+- Do not expose secrets, credentials or personal data in facts, evidence, replies or external AI prompts.
+- Optional JEV assists routing; it never determines fact truth or blocks verified local writes.
+- Respond in the user's language with learned fact count, topic, linked sources and skipped evidence if any.

@@ -14,7 +14,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-const { SHARED_DIR, resolveDataRoot } = require("./global-store");
+const { SHARED_DIR, resolveDataRoot, resolveMemoryDir } = require("./global-store");
 const {
   resolveLocal,
   writeLocal,
@@ -31,6 +31,7 @@ const { ensureProjectGitignore } = require("./lib/project-gitignore");
 const taskSessions = require("./lib/task-sessions");
 const { withFileLock } = require("./lib/fs-lock");
 const retrieval = require("./lib/memory-retrieval");
+const atomic = require("./lib/atomic-memory");
 
 const SCHEMA_VERSION = 1;
 const GATES_FILE = "fxmind-gates.json";
@@ -82,7 +83,7 @@ function fxmindDir(targetRoot) {
 }
 
 function memoryDir(targetRoot) {
-  return path.join(fxmindDir(targetRoot), "memory");
+  return resolveMemoryDir(targetRoot);
 }
 
 function memoryIndexPath(targetRoot) {
@@ -683,10 +684,16 @@ function driftCheck(targetRoot, changedFile) {
     }
   }
 
+  const atomicIndex = atomic.readAtomic(targetRoot);
+  const atomicHits = (atomicIndex?.nodes || []).filter((node) =>
+    node.file === rel || (node.sourcePaths || []).some((source) => normalizeRepoPath(source) === rel));
   const result = {
     changedFile: rel,
     fileExists,
     memoriesAffected: hits.length,
+    atomicAffected: atomicHits.length,
+    atomicNodes: atomicHits.slice(0, 30).map((node) => ({ id: node.id, name: node.name,
+      kind: node.kind, sourceHash: node.sourceHash })),
     hits,
   };
   appendMetric(targetRoot, {
@@ -700,6 +707,7 @@ function driftCheck(targetRoot, changedFile) {
 function buildGraph(targetRoot, options = {}) {
   return withFileLock(path.resolve(targetRoot), "graph-rebuild", () => {
     const updateHtml = options.updateHtml !== false;
+    const atomicIndex = atomic.buildAtomic(targetRoot, { force: options.forceAtomic === true });
     const data = buildGraphData(targetRoot, { useCache: options.useCache !== false });
     if (!data.meta) data.meta = {};
     data.meta.schemaVersion = SCHEMA_VERSION;
@@ -711,7 +719,9 @@ function buildGraph(targetRoot, options = {}) {
       links: data.meta?.counts?.links,
       updateHtml,
     });
-    return { counts: data.meta.counts, paths, memoryIndex: index };
+    return { counts: data.meta.counts, paths, memoryIndex: index,
+      atomicIndex: { nodes: atomicIndex.nodes.length, links: atomicIndex.links.length,
+        scanned: atomicIndex.scanned, reused: atomicIndex.reused } };
   });
 }
 
@@ -744,6 +754,41 @@ function queryGraph(targetRoot, question, options = {}) {
   const budget = Number.isFinite(requestedBudget) && requestedBudget > 0
     ? Math.max(1, Math.min(8000, Math.floor(requestedBudget))) : 1500;
   const mode = options.dfs ? "dfs" : "bfs";
+
+  // Atomic-first: no topic Markdown is read when a verified fragment or code
+  // symbol answers the question. Legacy topic retrieval remains the fallback.
+  let atom = atomic.queryAtomic(targetRoot, question, { budget });
+  if (!atom && fs.existsSync(fxmindDir(targetRoot))) {
+    try {
+      atomic.buildAtomic(targetRoot);
+      atom = atomic.queryAtomic(targetRoot, question, { budget });
+    } catch { /* keep legacy queries available on index failures */ }
+  }
+  if (atom?.hits?.length) {
+    const memories = atom.hits.map(({ node, score, tokens }) => ({
+      slug: node.slug || node.id,
+      id: node.id,
+      kind: node.kind,
+      resource: node.resource,
+      topic: node.name || node.topic,
+      file: path.resolve(targetRoot, node.file),
+      path: node.file,
+      line: node.line,
+      sourceHash: node.sourceHash,
+      score: Math.round(score * 100) / 100,
+      matched: [],
+      tokens,
+      content: node.content,
+      truncated: false,
+      omittedSections: [],
+    }));
+    appendMetric(targetRoot, { event: "atomic_query", mode, tokensUsed: atom.tokensUsed,
+      fragments: memories.length, fallback: false });
+    return { ok: true, graphStale, mode: "atomic", expanded: memories.map((m) => m.id),
+      startNodes: memories.map((m) => m.id), memories, fragments: memories,
+      related: atom.related.map((r) => ({ slug: r.id, name: r.name, kind: r.kind, type: r.type })),
+      tokensUsed: atom.tokensUsed, budget, indexVersion: atom.index.version };
+  }
 
   const memories = listMemories(targetRoot).map((memory) => ({
     ...memory,

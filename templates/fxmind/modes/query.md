@@ -1,57 +1,12 @@
 # fxmind — Mode: Query
 
-Answer a question by **traversing the topic knowledge graph** and loading only relevant memories. Read-only — do not edit code or memory files.
+Answer repository questions with **atomic, symbol-aware retrieval**. Read-only.
 
-## MCP fast path
+1. If the answer is already known or the question is unrelated to the repository, answer directly — no memory lookup or gates.
+2. If preloaded FXMIND context contains the precise answer, use it without a second call.
+3. Otherwise call MCP `fxmind_query` once with `{ "question": "...", "budget": 1500 }` (optionally `dfs: true`). Its response returns a few grounded, ranked facts/code-symbol snippets and source locations instead of a full topic Markdown file.
+4. For questions such as "o que tem dentro de garages", prefer the resource's compact inventory of handlers/functions/events/exports.
+5. Read the specific source file/line only if current implementation details must be independently checked, or the atomic result is insufficient. If coverage is missing, use bounded FXMIND search then native grep as a last resort.
+6. Reply in the user's language. Name source paths/lines where helpful and disclose absent information.
 
-If the fxmind MCP server is available, call **`fxmind_query`** with `{ question, dfs?, budget? }` once. It ranks memories (PT or EN questions; rare terms weigh more than words every memory shares), returns only the matching sections within the budget as Markdown, and lists related topics without loading them. Answer from the result; read a memory file only for an omitted section you need. `dfs: true` also loads related memories with leftover budget. Skip Steps 1–4 below. With the Claude Code preload hook, relevant memories may already be in context — do not query them again.
-
-## Manual path
-
-Parse `$ARGUMENTS` after `query`: question text in quotes (required), `--dfs` (depth-first trace), `--budget N` (default **1500**).
-
-### Step 1 — Load graph
-
-1. Prefer MCP **`fxmind_query`** — it rebuilds `knowledge-graph.json` automatically when missing or stale (JSON + `memory-index.json` only; HTML is optional).
-2. Manual: read `.fxmind/graph/knowledge-graph.json` (or global store path if linked). If missing or older than any `memory/*.md` → call MCP **`fxmind_graph`** with `{ updateHtml: false }` or run `fxmind graph --no-open --no-html`, then reload JSON.
-3. Do **not** require `knowledge-graph.html` — the agent uses JSON + index only. HTML is for human visualization (`fxmind graph` in the browser).
-
-### Step 2 — Vocabulary expansion (required)
-
-Build vocabulary from graph learned nodes only: `id`, `name`, `triggers`, `paths`, `events`, `exports`, `resources`. Select up to **12 tokens from this vocabulary** that match the question intent. Pick only tokens present in the graph vocabulary; do not invent synonyms. If no tokens match → say plainly; stop.
-
-Print: `Query expanded to: [token1, token2, ...]`
-
-### Step 3 — Traversal
-
-| Mode | When |
-|------|------|
-| **BFS** (default) | Broad context — neighbors layer by layer, depth 3 |
-| **DFS** (`--dfs`) | Trace a specific chain — depth max 6 |
-
-1. Score learned nodes by token overlap; take top 1–3 start nodes.
-2. Traverse using link priority: `event-flow` > `shared-resource` > `shared-path` > `shared-symbol` > `cross-mention` > `domain-related`.
-3. Catalog nodes are never traversal targets.
-
-### Step 4 — Load memories (budget-aware)
-
-For each traversed learned node, load `memory/<topic>.md`:
-
-| Depth | Load |
-|-------|------|
-| Hub (degree ≥ 3) | Full memory, up to 40 lines |
-| BFS depth 1 | `Files` + `Recipe` |
-| BFS depth 2+ | Frontmatter + `Files` only |
-| DFS chain | Full memory for nodes on the path |
-
-Stop when `--budget` token estimate is reached (`chars / 4`).
-
-### Step 5 — Answer
-
-Reply in **user's language**. Cite memory paths and link types used. Quote events/paths from memories only. If graph lacks enough information → say so; suggest `/fxmind learn <topic>` or `/fxmind graph`.
-
-## Query rules
-
-- **Do not** scan full codebase beyond loaded memory files.
-- **Do not** edit any files.
-- **Do not** invent edges or events not in graph/memories.
+Never load an entire `garages.md` (or another broad topic document) by default. Never infer an event, source, edge or symbol that is not evidenced. Queries do not invoke Gate V or Gate C.
