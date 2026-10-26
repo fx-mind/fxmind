@@ -43,6 +43,9 @@ Recommended (install once globally, then use short command):
   fxmind graph --no-open     Build graph files only
   fxmind painel [--open]      Painel web local (UI + API; abre /chat)
   fxmind serve --api-only     Dev: só API (UI via npm run dev)
+  fxmind plugin cursor       Install/update user-scoped Cursor plugin (skills only)
+  fxmind plugin claude       Install/update native Claude Code plugin
+  fxmind plugin codex        Install/update native Codex plugin
   fxmind -v                  Show version
   fxmind -h
 

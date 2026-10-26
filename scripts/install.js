@@ -100,6 +100,11 @@ async function main() {
     process.exit(0);
   }
 
+  if (argv[0] === "plugin") {
+    const { runPluginCli } = require("./plugin-cli");
+    process.exit(runPluginCli(argv.slice(1)));
+  }
+
   if (argv[0] === "context") {
     const { runPromptContextCli } = require("./prompt-context");
     runPromptContextCli(argv.slice(1)).then((code) => process.exit(code));
