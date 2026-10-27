@@ -262,6 +262,14 @@ async function main() {
     const skills = options.skills;
     const packs = options.packs;
     const agents = resolveAgents(options.agents);
+    // A single update with --global-store performs a verified backup,
+    // migrates legacy memories and activates the global project store.
+    const atomicMigration = options.globalStore
+      ? require("./upgrade").prepareGlobalMigration(options.target)
+      : null;
+    if (atomicMigration) {
+      console.log(`[FXMIND] Backup verified (${atomicMigration.files} files): ${atomicMigration.backup}`);
+    }
     if (options.replaceAgents) {
       cleanUnselectedAgents(
         options.target,
@@ -321,7 +329,12 @@ async function main() {
       );
     }
 
+    const atomicResult = atomicMigration
+      ? require("./upgrade").finishGlobalMigration(options.target, agents)
+      : null;
+
     const changedCount =
+      (atomicResult ? 1 : 0) +
       layoutRefresh.length +
       shared.installed.length +
       shared.removed.length +
@@ -413,6 +426,9 @@ async function main() {
     }
 
     generatePanelBuild("update");
+    if (atomicResult) {
+      console.log(`[FXMIND] Atomic memory migration: ${atomicResult.atomicIndex?.nodes ?? 0} nodes; plugins: ${atomicResult.plugins.join(", ") || "none"}.`);
+    }
     console.log("Update complete.");
     console.log("Updated only files that differed from this CLI.");
     printLegacyAuditLayoutWarning(options.target);
