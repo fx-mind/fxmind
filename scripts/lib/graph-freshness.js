@@ -19,6 +19,8 @@ function isGraphStale(projectRoot) {
   }
 
   const graphMtime = fs.statSync(jsonPath).mtimeMs;
+  const atomicPath = path.join(resolveDataRoot(resolved), "graph", "atomic-index.json");
+  if (fs.existsSync(atomicPath) && fs.statSync(atomicPath).mtimeMs > graphMtime) return true;
   const memoryDir = resolveMemoryDir(resolved);
 
   if (fs.existsSync(memoryDir)) {
@@ -66,6 +68,7 @@ function ensureGraphFresh(projectRoot, options = {}) {
   }
 
   const { buildGraphData, writeGraph } = require("../build-graph");
+  require("./atomic-memory").buildAtomic(projectRoot);
   const updateHtml = options.updateHtml === true;
   const useCache = options.useCache !== false;
   const data = buildGraphData(projectRoot, { useCache });

@@ -100,6 +100,11 @@ async function main() {
     process.exit(0);
   }
 
+  if (argv[0] === "plugin") {
+    const { runPluginCli } = require("./plugin-cli");
+    process.exit(runPluginCli(argv.slice(1)));
+  }
+
   if (argv[0] === "context") {
     const { runPromptContextCli } = require("./prompt-context");
     runPromptContextCli(argv.slice(1)).then((code) => process.exit(code));
@@ -125,8 +130,50 @@ async function main() {
     if (sub === "validate" || sub === "validate-memories") {
       process.exit(runHooksCli(["validate-memories", ...argv.slice(2)]));
     }
+    if (sub === "add") {
+      const path = require("node:path");
+      const flag = (name) => {
+        const i = argv.indexOf("--" + name);
+        return i < 0 ? "" : (argv[i + 1] || "");
+      };
+      const target = path.resolve(flag("target") || process.cwd());
+      if (!fs.existsSync(path.join(target, ".fxmind"))) {
+        console.error("Project not initialized: missing .fxmind/");
+        process.exit(1);
+      }
+      try {
+        const atomic = require("./lib/atomic-memory");
+        const fact = atomic.addFact(target, {
+          topic: flag("topic"), text: flag("text"),
+          path: flag("path"), evidence: flag("evidence"),
+          kind: flag("kind") || "rule",
+        });
+        require("./fxmind-tools").buildGraph(target, { updateHtml: false });
+        console.log(JSON.stringify({ ok: true, target, fact }));
+        process.exit(0);
+      } catch (err) {
+        console.error(err.message);
+        process.exit(1);
+      }
+    }
+    if (sub === "migrate" || sub === "index") {
+      const path = require("node:path");
+      const targetArg = argv.indexOf("--target");
+      if (targetArg >= 0 && !argv[targetArg + 1]) {
+        console.error("Missing --target directory.");
+        process.exit(1);
+      }
+      const root = targetArg >= 0 ? path.resolve(argv[targetArg + 1]) : process.cwd();
+      if (!fs.existsSync(path.join(root, ".fxmind"))) {
+        console.error("Project not initialized: missing .fxmind/");
+        process.exit(1);
+      }
+      const result = require("./fxmind-tools").buildGraph(root, { updateHtml: false });
+      console.log(JSON.stringify({ ok: true, target: root, ...result.atomicIndex, legacyMemoriesPreserved: true }));
+      process.exit(0);
+    }
     console.error(`Unknown memory subcommand: ${sub}`);
-    console.error("Usage: fxmind memory validate [--target <dir>] [--strict]");
+    console.error("Usage: fxmind memory validate|migrate|index|add [--target <dir>]");
     process.exit(1);
   }
 
@@ -215,6 +262,14 @@ async function main() {
     const skills = options.skills;
     const packs = options.packs;
     const agents = resolveAgents(options.agents);
+    // A single update with --global-store performs a verified backup,
+    // migrates legacy memories and activates the global project store.
+    const atomicMigration = options.globalStore
+      ? require("./upgrade").prepareGlobalMigration(options.target)
+      : null;
+    if (atomicMigration) {
+      console.log(`[FXMIND] Backup verified (${atomicMigration.files} files): ${atomicMigration.backup}`);
+    }
     if (options.replaceAgents) {
       cleanUnselectedAgents(
         options.target,
@@ -274,7 +329,12 @@ async function main() {
       );
     }
 
+    const atomicResult = atomicMigration
+      ? require("./upgrade").finishGlobalMigration(options.target, agents)
+      : null;
+
     const changedCount =
+      (atomicResult ? 1 : 0) +
       layoutRefresh.length +
       shared.installed.length +
       shared.removed.length +
@@ -366,6 +426,9 @@ async function main() {
     }
 
     generatePanelBuild("update");
+    if (atomicResult) {
+      console.log(`[FXMIND] Atomic memory migration: ${atomicResult.atomicIndex?.nodes ?? 0} nodes; plugins: ${atomicResult.plugins.join(", ") || "none"}.`);
+    }
     console.log("Update complete.");
     console.log("Updated only files that differed from this CLI.");
     printLegacyAuditLayoutWarning(options.target);
@@ -581,7 +644,7 @@ async function main() {
   console.log("Run /fxmind refactor <resource> to rewrite a badly written resource with contract parity.");
   console.log("Run /fxmind audit [scope] for security/perf/pattern audit + fix plan.");
   console.log(
-    "Run /fxmind learn <topic> to scan the codebase and save compact English topic memory under .fxmind/memory/ (shared by all agents).",
+    "Run /fxmind learn <topic> to save small, evidence-linked facts globally by project; legacy topic Markdown is preserved.",
   );
   console.log(
     "Run /fxmind memory health [fix] [topic] to verify memories vs codebase and optionally compact-rewrite stale topics.",

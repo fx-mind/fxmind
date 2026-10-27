@@ -29,8 +29,13 @@ const STOPWORDS = new Set(
 
 /** Equivalent terms (accentless, lowercase). A query term expands to its whole group. */
 const SYNONYM_GROUPS = [
-  "garagem garage",
+  "garagem garagens garage garages",
   "veiculo veiculos carro carros vehicle vehicles car cars",
+  "guardar armazenar estacionar store park saving",
+  "retirar recuperar retrieve fetch withdraw",
+  "placa plate licenseplate",
+  "proprietario dono owner ownership",
+  "apreensao impound",
   "inventario inventory mochila bag backpack",
   "item itens items",
   "banco bank conta account",

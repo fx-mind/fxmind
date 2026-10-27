@@ -1,39 +1,13 @@
-description = "Learn topic memory from codebase — scan, write memory/<topic>.md"
+description = "Learn atomic facts tied to verified project source rather than full topic Markdown"
 
 prompt = """
-Generate or update a **topic memory** at **`.fxmind/memory/<topic>.md`**.
+Learn reusable knowledge about {{args}} without editing source code.
 
-**Do NOT implement code** — only scan, write markdown, update index and reference links.
+1. Query existing FXMIND facts first: fxmind_query({ question: "{{args}}", budget: 1500 }).
+2. Inspect only related project code. Identify independent facts (event, handler, config, guard, pitfall, rule), each with an exact source substring and a real project-relative path.
+3. For each fact call fxmind_graph({ updateHtml: false, addFact: { topic, kind, text, path, evidence, symbols, events } }). The MCP validates evidence and stores a globally scoped, project-keyed atom.
+4. Do not create or extend broad .fxmind/memory/<topic>.md files or invent sources. Keep existing Markdown intact.
+5. Respond with factual atom count and source links in the user's language.
 
-**Topic / args:** {{args}}
-- `list` → read `.fxmind/memory/_index.md` + `.fxmind/policy/topic-catalog.md` and reply with tables
-- Otherwise normalize slug (lowercase, hyphens) → `memory/<slug>.md`
-
-## Load
-
-- `.fxmind/skills/fivem-development/SKILL.md` (+ topic refs as needed)
-- Framework skill if detected
-- `.fxmind/policy/topic-catalog.md` — search hints
-- `.fxmind/templates/memory.md` — output skeleton
-- `.fxmind/reference.md` at project root if present
-- Existing `.fxmind/memory/<topic>.md` — merge if present
-
-## Scan
-
-Use catalog grep/paths when topic matches. Grep + read — every path must exist in repo.
-Extract config paths, handlers, events, exports, symbols, resource names, one real code example.
-
-## Write
-
-1. Save `.fxmind/memory/<topic>.md` (~25–60 lines, **compact technical English**, `lang: en-compact`)
-   - Frontmatter: `topic`, `updated`, `framework`, `lang`, `confidence: extracted`
-   - Structured arrays (grep-confirmed only): `resources`, `paths`, `events`, `exports`, `symbols`, `triggers`
-   - Sections: Files, Recipe, Example, Pitfalls, Skills
-   - No prose; keep repo literals verbatim (paths, events, ids)
-   - **Do not** write memory in Portuguese — shared project memory (`lang: en-compact`) only
-2. Update `.fxmind/memory/_index.md` (create from template if missing)
-3. If `.fxmind/reference.md` exists → add/update row in `## Memórias por tópico` (one line per topic; keep reference lean)
-
-Reply in the **user's language** (summary bullets, memory path, suggest `/fxmind:graph` after learn).
-Never invent paths or APIs.
+If MCP is unavailable, state that learning was not persisted; do not fake a successful save.
 """

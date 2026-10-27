@@ -8,6 +8,13 @@
   },
   "files": [
     ".env.example",
+    "plugin.json",
+    "mcp.json",
+    ".mcp.json",
+    ".claude-plugin",
+    ".cursor-plugin",
+    "skills",
+    "docs/plugin.md",
     "scripts",
     "templates",
     "packs",

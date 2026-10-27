@@ -1,0 +1,17 @@
+{
+  "name": "fxmind",
+  "version": "1.5.0",
+  "description": "Project memory, selective workflows and MCP tools for coding agents.",
+  "author": {
+    "name": "FXMIND"
+  },
+  "mcpServers": {
+    "fxmind": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${CURSOR_PLUGIN_ROOT}/scripts/plugin-mcp.js"
+      ]
+    }
+  }
+}

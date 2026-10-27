@@ -12,6 +12,12 @@ The first pack is **FiveM** (vRP, QBCore, Qbox, ESX, NUI). More domains can be a
 
 ---
 
+## Agent Plugin (Codex, Cursor, Claude Code)
+
+FXMIND ships a portable Agent Plugin. Install its **skills-only** integration per client with `fxmind plugin cursor`, `fxmind plugin claude`, or `fxmind plugin codex`; re-run the command to update. The project's existing `fxmind --agent ...` installer continues to provide memory, guarded hooks, and the single per-project MCP connection. See [docs/plugin.md](docs/plugin.md) for prerequisites and plugin details.
+
+---
+
 ## Quick start
 
 ```bash

@@ -43,6 +43,9 @@ Recommended (install once globally, then use short command):
   fxmind graph --no-open     Build graph files only
   fxmind painel [--open]      Painel web local (UI + API; abre /chat)
   fxmind serve --api-only     Dev: só API (UI via npm run dev)
+  fxmind plugin cursor       Install/update user-scoped Cursor plugin (skills only)
+  fxmind plugin claude       Install/update native Claude Code plugin
+  fxmind plugin codex        Install/update native Codex plugin
   fxmind -v                  Show version
   fxmind -h
 
@@ -63,6 +66,7 @@ Without global install:
   ${npxInstall("--all-packs -y")}    Every available pack
   ${npxInstall("--all -y")}          All skills from selected pack(s)
   ${npxInstall("--update -y")}       Refresh only files that differ from this CLI (stamps cliVersion in packs.json)
+  ${npxInstall("--update --global-store -y")}   One-command legacy migration: backup, global memory, plugins, atomic index
   ${npxInstall("graph")}             Build graph from .fxmind/memory/ + open browser
   ${npxInstall("painel")}             Painel web local (produção)
   ${npxInstall("serve --api-only")}   Dev: API only (UI via npm run dev)
@@ -74,6 +78,8 @@ Without global install:
   ${npxInstall("hooks uninstall-mcp")} Remove fxmind MCP entries for installed agents
   ${npxInstall("hooks status")}       Show installed hooks
   ${npxInstall("memory validate")}    Validate memory frontmatter + duplicates
+  ${npxInstall("memory migrate")}     Build atomic code/memory index (preserves Markdown)
+  ${npxInstall("memory add --topic T --text F --path P --evidence E")}   Save source-grounded atomic fact
   ${npxInstall("playbooks list")}     Playbooks: surgical instructions for repeated tasks (show|check|match)
   ${npxInstall("corrections list")}   List skill-improvement corrections backlog
   ${npxInstall("corrections export")} Export open corrections for editing best-practices
@@ -94,7 +100,7 @@ Local dev (monorepo):
   node scripts/build-graph.js --target ./my-project
 
 Options:
-  --global-store     Store memories/graph in ~/.fxmind/projects/<id>/ (shared pack skills)
+  --global-store     With --update: verify backup, migrate memories globally, install agent plugins and build atomic index
   --update           Refresh global fxmind (GitHub) + project files from .fxmind/packs.json (keeps memories; also refreshes hooks, MCP, fivem-start)
   --no-self-update   With --update, skip npm install -g github:fx-mind/fxmind
   --hooks            Install Cursor hooks (gate-guard, drift-watcher, learn-prompt)
