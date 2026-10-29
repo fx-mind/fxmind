@@ -246,6 +246,47 @@ describe("panel-cli", () => {
 });
 
 describe("reviewer MCP CLI hardening", () => {
+  it("passes Claude's configured access to non-interactive task execution", () => {
+    for (const [accessMode, permissionMode] of [["full", "bypassPermissions"], ["auto", "auto"]]) {
+      const run = panelCli.buildJudgeArgs("claude", {
+        root: "C:/dev/ecco", body: "Implement the requested change\nusing FxMind",
+        accessArgs: panelCli.cliAccessArgs("claude", accessMode),
+        execOpts: { model: "sonnet", claudeEffort: "high" },
+      });
+      assert.equal(run.args[run.args.indexOf("--permission-mode") + 1], permissionMode);
+      if (accessMode === "auto") {
+        assert.equal(run.args[run.args.indexOf("--allowedTools") + 1], "mcp__fxmind");
+      }
+      assert.ok(run.args.includes("sonnet"));
+      assert.ok(run.args.includes("high"));
+      assert.equal(run.stdinPrompt, "Implement the requested change\nusing FxMind");
+      assert.ok(!run.args.some((arg) => arg.includes("\n")));
+    }
+  });
+
+  it("allows Claude memory reads without authorizing gates in ask mode", () => {
+    const args = panelCli.cliAccessArgs("claude", "ask");
+    assert.equal(args[args.indexOf("--permission-mode") + 1], "plan");
+    const allowed = args[args.indexOf("--allowedTools") + 1].split(",");
+    assert.ok(allowed.includes("mcp__fxmind__fxmind_query"));
+    assert.ok(allowed.includes("mcp__fxmind__fxmind_search"));
+    assert.ok(allowed.includes("mcp__fxmind__fxmind_read_file"));
+    assert.ok(!allowed.includes("mcp__fxmind"));
+    assert.ok(!allowed.includes("mcp__fxmind__fxmind_start_task"));
+    assert.ok(!allowed.includes("mcp__fxmind__fxmind_record_gate"));
+    assert.ok(!allowed.some((tool) => tool.includes("*")));
+  });
+
+  it("forces Claude reviewer reads even when full access arguments were supplied", () => {
+    const { args } = panelCli.buildJudgeArgs("claude", {
+      root: "C:/dev/ecco", body: "Review the change", readOnly: true,
+      accessArgs: panelCli.cliAccessArgs("claude", "full"), execOpts: {},
+    });
+    assert.equal(args[args.indexOf("--permission-mode") + 1], "plan");
+    assert.ok(!args.includes("bypassPermissions"));
+    assert.ok(!args.includes("mcp__fxmind"));
+  });
+
   it("runs Cursor reviewer read-only with MCP approvals and preserves general agent access", () => {
     const params = { root: "C:/dev/ecco", body: "Review the diff", accessArgs: [], execOpts: {} };
     const readonly = panelCli.buildJudgeArgs("cursor-agent", { ...params, readOnly: true });

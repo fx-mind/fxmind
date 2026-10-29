@@ -972,6 +972,20 @@ function normalizeAccessMode(mode) {
 
 function cliAccessArgs(cliId, accessMode) {
   const mode = normalizeAccessMode(accessMode);
+  if (cliId === "claude") {
+    // Print mode cannot ask a human for tool approval. Match the panel's
+    // selected access instead of silently falling back to CLI defaults.
+    if (mode === "full") return ["--permission-mode", "bypassPermissions"];
+    if (mode === "auto") {
+      return ["--permission-mode", "auto", "--allowedTools", "mcp__fxmind"];
+    }
+    return ["--permission-mode", "plan", "--allowedTools", [
+      "mcp__fxmind__fxmind_query", "mcp__fxmind__fxmind_search",
+      "mcp__fxmind__fxmind_read_file", "mcp__fxmind__fxmind_playbook",
+      "mcp__fxmind__fxmind_route_tool", "mcp__fxmind__fxmind_list_memories",
+      "mcp__fxmind__fxmind_gate_status", "mcp__fxmind__fxmind_session_status",
+    ].join(",")];
+  }
   if (cliId === "codex") {
     if (mode === "full") {
       return ["--sandbox", "danger-full-access", "--dangerously-bypass-approvals-and-sandbox"];
@@ -1569,7 +1583,7 @@ function buildJudgeArgs(cliId, { root, body, accessArgs, execOpts, readOnly = fa
   // Prompt through stdin, never argv: on Windows these CLIs are `.cmd` shims
   // run via `cmd.exe /c`, which truncates any argument at its first newline.
   if (cliId === "claude") {
-    let args = ["-p"];
+    let args = ["-p", ...(readOnly ? cliAccessArgs(cliId, "ask") : accessArgs)];
     if (execOpts.model) args = ["--model", execOpts.model, ...args];
     if (execOpts.claudeEffort) args = ["--effort", execOpts.claudeEffort, ...args];
     return { args, stdinPrompt: trimmed };
@@ -2151,9 +2165,7 @@ async function runThreadDirect(threadId, options = {}) {
     // Prompt goes through stdin, never argv: on Windows the CLI is a `.cmd`
     // shim run via `cmd.exe /c`, which truncates any argument at its first
     // newline — a multi-line prompt would arrive as just its first line.
-    args = ["-p"];
-    if (execOpts.model) args = ["--model", execOpts.model, ...args];
-    if (execOpts.claudeEffort) args = ["--effort", execOpts.claudeEffort, ...args];
+    ({ args } = buildJudgeArgs(cliId, { root, body, accessArgs, execOpts }));
     stdinPrompt = body.slice(0, 12000);
   } else if (cliId === "hermes") {
     args = ["-p"];
