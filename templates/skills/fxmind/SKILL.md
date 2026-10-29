@@ -36,11 +36,6 @@ Read gate requirements from the mode files instead of duplicating them in chat. 
 
 ## Domain routing
 
-Read only installed entries from `.fxmind/skills/_index.md`:
-- FiveM: `.fxmind/policy/fivem-principles.md` is binding for every change (scope/payload/chunks/statebags/anti-flood, no DB in hot paths, minimal code); then `fivem-development/quality-gates.md` rows for the touched artifacts and relevant references.
-- Framework calls: the matching vRP, QBCore, Qbox or ESX skill.
-- NUI/React: `fivem-react-nui/SKILL.md`.
-
-FiveM dev tools: status before ensure/restart/tail; use tools yourself when available. Missing runtime blocks runtime verification. NUI wire/dump must be unwired before final validation; CEF visuals require in-game evidence. Respect real DB mutation boundaries and never invent approval.
+Read only installed entries from `.fxmind/skills/_index.md`. If `.fxmind/policy/domain-routing.md` exists, it is the installed pack's routing and tool rules for this project — follow it.
 
 Atomic source-linked memories live in the project-keyed global graph store by default; legacy Markdown under `.fxmind/memory/` is preserved and indexed as granular facts. For `/fxmind learn`, use `fxmind_graph.addFact` with exact source evidence, not broad topic Markdown. Audits and corrections remain under `.fxmind/audits/` and `.fxmind/corrections/`. Save verified reusable knowledge, preserve existing decisions. Stop immediately when the user asks.
