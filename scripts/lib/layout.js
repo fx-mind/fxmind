@@ -108,6 +108,17 @@ const PROJECT_GITIGNORE_LINES = [
   ".fxmind/rcon.json",
   ".fxmind/graph-cache.json",
   ".fxmind/tmp/",
+  // Machine-local install state, rewritten on every `fxmind install`/`update`.
+  ".fxmind/store.json",
+  ".fxmind/packs.lock.json",
+  // Covered by the user-scoped FXMIND plugin (`fxmind plugin cursor|claude|codex`).
+  ".claude/skills/fxmind/",
+  ".cursor/skills/fxmind/",
+  ".agents/skills/fxmind/",
+  ".codex/skills/fxmind/",
+  ".opencode/skills/fxmind/",
+  // Regenerated MCP registration; path/version specific to this machine.
+  ".codex/config.toml",
 ];
 
 /** Already-tracked generated files to drop from the git index (`git rm --cached`). */
@@ -122,6 +133,14 @@ const PROJECT_GITIGNORE_UNTRACK = [
   ".fxmind/fxmind-gates.json",
   ".fxmind/tmp",
   ".fxmind-gates.json",
+  ".fxmind/store.json",
+  ".fxmind/packs.lock.json",
+  ".claude/skills/fxmind",
+  ".cursor/skills/fxmind",
+  ".agents/skills/fxmind",
+  ".codex/skills/fxmind",
+  ".opencode/skills/fxmind",
+  ".codex/config.toml",
 ];
 
 function fxmindDir(root) {
