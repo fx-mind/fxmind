@@ -6,6 +6,21 @@ const { randomUUID } = require("node:crypto");
 const { readProjectEnv } = require("./lib/project-env");
 const { prepareImage, integer, checkExtension, MAX_DIMENSION, MAX_INPUT_BYTES, DEFAULT_MAX_BYTES } = require("./lib/image-tools");
 
+let s3Sdk;
+function getS3Sdk() {
+  if (s3Sdk) return s3Sdk;
+  try {
+    s3Sdk = require("@aws-sdk/client-s3");
+  } catch (error) {
+    const err = new Error(
+      "@aws-sdk/client-s3 is required for storage tools — run: npm install @aws-sdk/client-s3 (in the fxmind package)",
+    );
+    err.cause = error;
+    throw err;
+  }
+  return s3Sdk;
+}
+
 function httpUrl(value, name) {
   if (value === undefined || value === "") return undefined;
   let url;
@@ -93,7 +108,7 @@ async function uploadImage(root, args = {}) {
   if (!path.posix.extname(key)) key += `.${extension}`;
   checkExtension(key, prepared.image.format);
   key = objectKey(config.prefix ? `${config.prefix}/${key}` : key);
-  const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
+  const { S3Client, PutObjectCommand } = getS3Sdk();
   const client = new S3Client({
     region: config.region, endpoint: config.endpoint, forcePathStyle: config.forcePathStyle,
     ...(credentials ? { credentials } : {}),

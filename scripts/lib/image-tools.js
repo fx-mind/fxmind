@@ -9,6 +9,21 @@ const MAX_DIMENSION = 8192;
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
 const MIME = { webp: "image/webp", png: "image/png", jpeg: "image/jpeg" };
 
+let sharp;
+function getSharp() {
+  if (sharp) return sharp;
+  try {
+    sharp = require("sharp");
+  } catch (error) {
+    const err = new Error(
+      "sharp is required for image tools — run: npm install sharp (in the fxmind package)",
+    );
+    err.cause = error;
+    throw err;
+  }
+  return sharp;
+}
+
 function integer(value, name, fallback, max) {
   const resolved = value === undefined ? fallback : value;
   if (!Number.isInteger(resolved) || resolved < 1 || resolved > max) {
@@ -30,7 +45,7 @@ function checkExtension(file, format) {
 
 /** Decode raster input, orient it, strip metadata and encode within a byte budget. */
 async function prepareImage(root, args = {}, defaults = {}) {
-  const sharp = require("sharp"); // Load native binaries only when an image tool is called.
+  const sharp = getSharp(); // Load native binaries only when an image tool is called.
   const inputPath = localPath(root, args.path, "path");
   const format = args.format === undefined ? "png" : args.format;
   if (!Object.hasOwn(MIME, format)) throw new Error("format must be webp, png or jpeg.");

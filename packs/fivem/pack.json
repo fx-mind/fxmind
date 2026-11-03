@@ -17,6 +17,7 @@
     { "src": "reference.example.mdc", "dest": "templates/reference.example.mdc" },
     { "src": "minimum-evidence.md", "dest": "policy/minimum-evidence.md" },
     { "src": "fivem-principles.md", "dest": "policy/fivem-principles.md" },
-    { "src": "resource-design.template.md", "dest": "templates/resource-design.md" }
+    { "src": "resource-design.template.md", "dest": "templates/resource-design.md" },
+    { "src": "domain-routing.md", "dest": "policy/domain-routing.md" }
   ]
 }

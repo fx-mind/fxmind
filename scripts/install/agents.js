@@ -2,6 +2,7 @@
  * install/agents — agent detection, manifest handling, per-agent skill/command install.
  */
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const { npxInstall } = require("../constants");
@@ -330,24 +331,45 @@ function removePackSkillsFromAgentDirs(targetRoot, packSkillNames) {
   return removed;
 }
 
+function fxmindAgentSkillDestinations(targetRoot, agent) {
+  const destinations = [
+    path.join(targetRoot, agent.skillsDir, COMMAND_SKILL_NAME, "SKILL.md"),
+  ];
+  if (agent.altSkillsDir) {
+    destinations.push(
+      path.join(targetRoot, agent.altSkillsDir, COMMAND_SKILL_NAME, "SKILL.md"),
+    );
+  }
+  return destinations;
+}
+
+/** Path to the fxmind skill the user-scoped plugin installs for this agent, if any. */
+function globalPluginSkillPath(agentId) {
+  const home = os.homedir();
+  if (agentId === "cursor") {
+    return path.join(home, ".cursor", "plugins", "local", "fxmind", "skills", "fxmind", "SKILL.md");
+  }
+  if (agentId === "claude" || agentId === "codex") {
+    return path.join(
+      home, ".fxmind", "plugin-cli", "marketplace", "plugins", "fxmind", "skills", "fxmind", "SKILL.md",
+    );
+  }
+  return null;
+}
+
+function hasGlobalPluginSkill(agentId) {
+  const target = globalPluginSkillPath(agentId);
+  return Boolean(target && fs.existsSync(target));
+}
+
 function installFxmindAgentSkill(targetRoot, agent) {
   const src = path.join(PACKAGE_ROOT, FXMIND_SKILL_TEMPLATE);
   if (!fs.existsSync(src)) {
     throw new Error(`fxmind skill template not found: ${FXMIND_SKILL_TEMPLATE}`);
   }
 
-  const destinations = [
-    path.join(targetRoot, agent.skillsDir, COMMAND_SKILL_NAME, "SKILL.md"),
-  ];
-
-  if (agent.altSkillsDir) {
-    destinations.push(
-      path.join(targetRoot, agent.altSkillsDir, COMMAND_SKILL_NAME, "SKILL.md"),
-    );
-  }
-
   const installed = [];
-  for (const dest of destinations) {
+  for (const dest of fxmindAgentSkillDestinations(targetRoot, agent)) {
     const result = copyFileIfChanged(src, dest);
     if (result.changed) {
       installed.push(path.relative(targetRoot, dest));
@@ -355,6 +377,19 @@ function installFxmindAgentSkill(targetRoot, agent) {
   }
 
   return installed;
+}
+
+/** Drop the project-local fxmind skill copy once the user-scoped plugin covers it. */
+function removeFxmindAgentSkill(targetRoot, agent) {
+  const removed = [];
+  for (const dest of fxmindAgentSkillDestinations(targetRoot, agent)) {
+    const skillDir = path.dirname(dest);
+    if (!fs.existsSync(skillDir)) continue;
+    fs.rmSync(skillDir, { recursive: true, force: true });
+    removed.push(path.relative(targetRoot, skillDir));
+    pruneEmptyDirsUpward(path.dirname(skillDir), targetRoot);
+  }
+  return removed;
 }
 
 function removeLegacyCommand(targetRoot, agent) {
@@ -440,7 +475,11 @@ function installAgentsLayer(targetRoot, agents, options) {
   const { installOpenCodeSubagents } = require("./opencode");
 
   for (const agent of agents) {
-    if (options.command) {
+    if (options.command && hasGlobalPluginSkill(agent.id)) {
+      for (const dest of removeFxmindAgentSkill(targetRoot, agent)) {
+        installed.push({ agent: agent.label, path: dest, kind: "skill-removed" });
+      }
+    } else if (options.command) {
       for (const dest of installFxmindAgentSkill(targetRoot, agent)) {
         installed.push({ agent: agent.label, path: dest, kind: "skill" });
       }
@@ -478,6 +517,8 @@ module.exports = {
   resolveUpdateOptions,
   removePackSkillsFromAgentDirs,
   installFxmindAgentSkill,
+  removeFxmindAgentSkill,
+  hasGlobalPluginSkill,
   removeLegacyCommand,
   installPromptCommands,
   installTomlCommands,
