@@ -38,6 +38,9 @@ describe("panel-context", () => {
     assert.match(body, /fxmind_query/);
     assert.match(body, /fxmind_search/);
     assert.match(body, /short and direct/);
+    assert.match(body, /Gate V requires code evidence/);
+    assert.match(body, /reviewer may read source\/diff directly without MCP/);
+    assert.doesNotMatch(body, /Before Gate V.*require fxmind_independent_review|UI also needs browser/);
   });
 
   it("normalizeTaskMode defaults unknown to full", () => {

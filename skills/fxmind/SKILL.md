@@ -16,7 +16,7 @@ Shared knowledge lives under `.fxmind/`; domain skills live in `.fxmind/skills/`
 - Explicit `/fxmind judge`: read `.fxmind/modes/judge.md`.
 - Explicit `/fxmind teach <name>`: read `.fxmind/modes/teach.md` (turn a task that worked into a playbook).
 - Other `/fxmind` commands: read `.fxmind/fxmind.md`, then only the matching mode.
-- Verification: read `.fxmind/modes/task-verify.md`; for UI, read it before editing to prepare browser checks.
+- Verification: read `.fxmind/modes/task-verify.md`; Gate V checks code only (lint/syntax, types and broken logic).
 
 Quick/full adjusts effort and narration, not quality requirements. Quick does not imply trivial. Only known tiny changes without new behavior qualify for auto A/B.
 
@@ -30,9 +30,9 @@ When choosing between FxMind discovery tools is ambiguous, call `fxmind_route_to
 
 A `# fxmind — playbook` block in the preloaded context is the procedure for a repeated request: follow its files/anchors, skip discovery, pass `kind` + `playbook` to `fxmind_start_task`. Task kind (config / fix / mechanic / create) is stated at Gate A; see `task.md`. For repository-specific questions or tasks needing code context, use preloaded precise facts first, otherwise call `fxmind_query` once before generic Grep. For ordinary non-repository questions, answer directly without memory lookup or gates. Read source to confirm memory claims. If retrieval lacks coverage, call bounded `fxmind_search` first; only then use native Grep/ripgrep as fallback or verification. If MCP is disconnected, say so and fall back to native search; never invent paths or repeat blind queries. Load only relevant references/corrections.
 
-Gates are MCP-managed: start → A → B → implement/checks → **V auto-review** → C. Every `fxmind_record_gate(V)` automatically dispatches a fresh read-only reviewer, preferring a strong model from the same provider and loading relevant installed skill rubrics. Strict VERIFIED is required. If V returns findings, fix them without asking the user, rerun affected checks and retry V; edits make the previous review stale. Keep sessionId; parallel agents claim task paths before editing. Never write gate/session JSON directly. Missing MCP prevents gate-controlled edits but need not prevent read-only investigation.
+Gates are MCP-managed: start → A → B → implement/checks → **V auto-review** → C. `fxmind_record_gate(V)` automatically dispatches a fresh read-only code reviewer for non-trivial tasks; tiny/config tasks use code evidence and deterministic checks. The review stays scoped to lint/syntax, types and concrete broken logic. Strict VERIFIED is required. If V returns findings, fix them without asking the user, rerun affected checks and retry V; edits make the previous review stale. Keep sessionId; parallel agents claim task paths before editing. Never write gate/session JSON directly. Missing MCP prevents gate-controlled edits but need not prevent read-only investigation.
 
-Read gate requirements from the mode files instead of duplicating them in chat. User-facing replies stay short and direct: outcome first, no long explanations. Failed/blocked V stays open. Browser interaction, screenshot inspection and console observations are required for UI; build alone is insufficient. State missing verification honestly.
+Read gate requirements from the mode files instead of duplicating them in chat. User-facing replies stay short and direct: outcome first, no long explanations. Failed/blocked code checks keep V open. Gate V never requires browser, screenshots, gameplay or runtime proof. Report runtime/visual checks separately and honestly. The reviewer may read source/diff without MCP; infrastructure failure is not a code finding and must not trigger repair loops.
 
 ## Domain routing
 

@@ -38,6 +38,23 @@ describe("Cursor FxMind strict memory gate", () => {
   });
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
+  it("lets the server's read-only code reviewer inspect paths without MCP", () => {
+    const env = { FXMIND_REVIEW_CODE_ONLY: "1", FXMIND_MCP_READONLY: "1" };
+    assert.match(event("sessionStart", {}, { env }).additional_context, /code review only/);
+    assert.equal(event("beforeSubmitPrompt", {}, { env }).continue, true);
+    for (const kind of ["preToolUse", "beforeReadFile", "beforeShellExecution"]) {
+      assert.equal(event(kind, { tool_name: "Read" }, { env }).permission, "allow", kind);
+    }
+    // A normal executor/read-only session must still use the memory guard.
+    assert.equal(event("preToolUse", { tool_name: "Read" }, {
+      env: { FXMIND_MCP_READONLY: "1" },
+    }).permission, "deny");
+    assert.equal(event("preToolUse", { tool_name: "Read" }, {
+      env: { FXMIND_REVIEW_CODE_ONLY: "1" },
+    }).permission, "deny");
+    assert.equal(denied("Read").permission, "deny");
+  });
+
   it("blocks Grep, Shell, Read, Write, Search, Task, subagents and unknown tools until FxMind", () => {
     assert.equal(event("beforeSubmitPrompt", { prompt: "find outubrorosa" }).continue, true);
     for (const name of ["Grep", "Glob", "Shell", "Read", "Write", "Delete", "Task", "Explore", "Search", "codebase_search", "mcp__other__tool"]) {

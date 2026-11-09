@@ -83,6 +83,7 @@ async function runGateVReviewer(root, session, files, evidence) {
     const line =
       verdict === "verified" ? "VERDICT: VERIFIED" :
       verdict === "caveats" ? "VERDICT: VERIFIED WITH CAVEATS" :
+      verdict === "unverifiable" ? "VERDICT: UNVERIFIABLE" :
       "VERDICT: REFUTED";
     return {
       ok: true,
@@ -302,7 +303,7 @@ const TOOL_DEFS = [
       type: "object",
       properties: {
         note: { type: "string", description: "Optional goal/scope note." },
-        ui: { type: "boolean", description: "Planning hint: true only for expected visual/interaction changes. At Gate V, assess the actual diff with evidence.ui.changed and reason; an unchanged interface does not need a browser." },
+        ui: { type: "boolean", description: "Planning hint for visual/interaction work outside Gate V. Gate V verifies code only and never requires a browser." },
         trivial: {
           type: "boolean",
           description:
@@ -348,7 +349,7 @@ const TOOL_DEFS = [
   {
     name: "fxmind_record_gate",
     description:
-      "Persist a gate in A→B→V→C order. Gate V prioritizes lint/typecheck, code quality and focused tests, then automatically launches a fresh read-only reviewer. Only actual visual/interaction changes require browser evidence; set evidence.ui.changed with a diff-based reason. Fix review findings and retry without asking the user. C rejects stale verification after code changes.",
+      "Persist a gate in A→B→V→C order. Gate V verifies code only: lint/syntax, types, focused tests and concrete broken logic in the diff/callers. It automatically reviews non-trivial code tasks. No browser, screenshot, gameplay or runtime proof is required. Infrastructure failure is not a code finding. C rejects stale verification after code changes.",
     inputSchema: {
       type: "object",
       properties: {
@@ -356,12 +357,12 @@ const TOOL_DEFS = [
           type: "string",
           enum: ["START", "A", "B", "V", "C"],
           description:
-            "START begins a task; A/B unlock edits; V records verify-by-observation; C closes the task.",
+            "START begins a task; A/B unlock edits; V records code verification; C closes the task.",
         },
         note: { type: "string", description: "Optional note (e.g. memories loaded). Gate A also restates: user replies stay short and direct." },
         evidence: {
           type: "object",
-          description: "Required for V. Record actual observations after checks, never predictions. See task-verify.md. Browser unavailable: status=blocked, reason; do not mark passed.",
+          description: "Required for V. Record actual code-check results, never predictions. Manual means source/diff review. Legacy runtime/browser observations do not approve or block Gate V.",
           properties: {
             files: { type: "array", minItems: 1, items: { type: "string" }, description: "All task files, repository-relative. Include deletions." },
             review: { type: "string", description: "Diff review: unnecessary constants/helpers removed or justified, local conventions and invariants checked." },
@@ -379,11 +380,12 @@ const TOOL_DEFS = [
             },
             ui: {
               type: "object",
-              description: "Actual visual/interaction impact of the final diff, checked by the independent reviewer. Use changed=false with a specific reason for backend-only work, untouched UI context or non-visual refactors, even if the initial task had ui=true.",
+              description: "Optional legacy UI metadata. Not required or used to approve Gate V code verification.",
               properties: { changed: { type: "boolean" }, reason: { type: "string", minLength: 1 } },
               required: ["changed", "reason"],
             },
             browser: {
+              description: "Optional legacy browser observations; separate from Gate V code verification and never required.",
               type: "object",
               properties: {
                 required: { type: "boolean" },
@@ -909,9 +911,16 @@ async function dispatchTool(name, args) {
         if (!session?.taskActive || !session.sessionId) {
           return { ok: false, error: "no_active_session", message: "Gate V requires an active FxMind task." };
         }
+        if (!session.gates?.B?.complete) {
+          return { ok: false, error: "gate_v_prerequisite", message: "Gate V requires Gate B first." };
+        }
+        // A failed recheck (including unavailable infrastructure) must not leave
+        // an older successful V available for Gate C.
+        tools.recordGate(root, "V", false, { ...sessionExtra(args), note: "Code verification in progress" });
 
         let files;
         try {
+          verification.validateEvidence(args.evidence);
           files = verification.verificationFiles(root, args.evidence, session);
         } catch (error) {
           return { ok: false, error: "gate_v_evidence_invalid", message: String(error.message || error) };
@@ -930,45 +939,60 @@ async function dispatchTool(name, args) {
           };
         }
 
-        const reviewRun = await runGateVReviewer(root, session, files, args.evidence || {});
-        if (!reviewRun?.ok) {
-          return {
-            ok: false,
-            error: "gate_v_reviewer_unavailable",
-            gate: "V",
-            complete: false,
-            message: reviewRun?.error || "Independent reviewer failed to run.",
-            action: "retry_gate_v_reviewer",
-            userReply: "Do not mark the task complete. Resolve reviewer availability and retry Gate V.",
-          };
+        // Failed code checks must be fixed before spending a reviewer run.
+        // Tiny tasks still receive deterministic verification without a CLI review.
+        if (args.evidence.checks.some((check) => check.kind !== "runtime" && check.status !== "passed")) {
+          return { ok: false, error: "gate_v_code_checks_failed", gate: "V", complete: false,
+            action: "fix_code_checks_and_retry_gate_v", findings: args.evidence.checks.filter((check) => check.kind !== "runtime" && check.status !== "passed") };
         }
+        if (independentReview.requiresIndependentReview(session, files)) {
+          const reviewRun = await runGateVReviewer(root, session, files, args.evidence || {});
+          if (!reviewRun?.ok) {
+            tools.recordGate(root, "V", false, { ...sessionExtra(args), note: "gate_v_reviewer_unavailable" });
+            return {
+              ok: false,
+              error: "gate_v_reviewer_unavailable",
+              gate: "V",
+              complete: false,
+              message: reviewRun?.error || "Independent reviewer failed to run.",
+              action: "report_reviewer_unavailable",
+              userReply: "Report code checks separately and the reviewer infrastructure limitation once. Do not change code or repeat repair/review cycles for infrastructure failures; Gate V remains unverified.",
+            };
+          }
 
-        const record = independentReview.recordReview(root, {
-          sessionId: session.sessionId,
-          session,
-          files,
-          evidence: args.evidence || {},
-          reviewer: {
-            agent: "reviewer",
-            cliId: reviewRun.cliId || null,
-            model: reviewRun.model || null,
-            effort: reviewRun.effort || null,
-          },
-          output: reviewRun.output || "",
-        });
-        if (record.verdict !== "verified") {
-          return {
-            ok: false,
-            error: "gate_v_review_failed",
-            gate: "V",
-            complete: false,
-            verdict: record.verdict,
-            reviewId: record.reviewId,
-            reviewer: record.reviewer,
-            findings: reviewRun.output || "",
-            action: "fix_findings_and_retry_gate_v",
-            userReply: "Do not ask the user. Apply the independent review findings surgically, rerun affected checks, then call Gate V again. Maximum 3 repair/review cycles before reporting blocked.",
-          };
+          const record = independentReview.recordReview(root, {
+            sessionId: session.sessionId,
+            session,
+            files,
+            evidence: args.evidence || {},
+            reviewer: {
+              agent: "reviewer",
+              cliId: reviewRun.cliId || null,
+              model: reviewRun.model || null,
+              effort: reviewRun.effort || null,
+            },
+            output: reviewRun.output || "",
+          });
+          if (record.verdict === "unverifiable") {
+            tools.recordGate(root, "V", false, { ...sessionExtra(args), note: "gate_v_reviewer_unavailable" });
+            return { ok: false, error: "gate_v_reviewer_unavailable", gate: "V", complete: false,
+              verdict: record.verdict, message: record.output, action: "report_reviewer_unavailable",
+              userReply: "Report the infrastructure limitation once; do not treat it as a code finding or repeat repair cycles." };
+          }
+          if (record.verdict !== "verified") {
+            return {
+              ok: false,
+              error: "gate_v_review_failed",
+              gate: "V",
+              complete: false,
+              verdict: record.verdict,
+              reviewId: record.reviewId,
+              reviewer: record.reviewer,
+              findings: reviewRun.output || "",
+              action: "fix_findings_and_retry_gate_v",
+              userReply: "Do not ask the user. Apply the independent review findings surgically, rerun affected checks, then call Gate V again. Maximum 3 repair/review cycles before reporting blocked.",
+            };
+          }
         }
       }
 

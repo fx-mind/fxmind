@@ -117,6 +117,13 @@ function deny() {
   return { permission: "deny", user_message: FAILURE, agent_message: FAILURE };
 }
 function run(event, input = {}, env = process.env) {
+  // The server launches Gate V in a read-only code-review process. It already
+  // has explicit source paths; memory discovery must not deadlock its reads.
+  if (env.FXMIND_REVIEW_CODE_ONLY === "1" && env.FXMIND_MCP_READONLY === "1") {
+    if (event === "sessionStart") return { additional_context: "Gate V: code review only; inspect source/diff directly. FxMind memory is optional." };
+    if (event === "beforeSubmitPrompt") return { continue: true };
+    return { permission: "allow" };
+  }
   const root = projectRoot(input, env);
   switch (event) {
     case "sessionStart":

@@ -221,6 +221,7 @@ function claimSessionNag(projectRoot, sessionId) {
 }
 
 function shouldFollowup(input = {}) {
+  if (input.gateV?.note === "gate_v_reviewer_unavailable") return false;
   const status = String(input.status || "completed").toLowerCase();
   if (status === "aborted" || status === "error" || status === "cancelled" || status === "canceled") {
     return false;

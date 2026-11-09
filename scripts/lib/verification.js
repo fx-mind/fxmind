@@ -6,7 +6,6 @@ const crypto = require("crypto");
 const { execFileSync } = require("child_process");
 const luaScope = require("./lua-scope-check");
 const independentReview = require("./independent-review");
-const { uiFile, uiImpact } = require("./ui-impact");
 
 function repoPath(root, value) {
   if (typeof value !== "string" || !value.trim()) throw new Error("Verification requires file paths.");
@@ -61,60 +60,50 @@ function verificationFiles(root, evidence, session) {
     .map((file) => repoPath(root, file)))].sort();
 }
 
-function verify(root, evidence, session) {
+function validateEvidence(evidence) {
   if (!evidence || !Array.isArray(evidence.files) || !evidence.files.length ||
       !text(evidence.review) || !Array.isArray(evidence.checks) || !evidence.checks.length) {
-    throw new Error("Gate V requires evidence: files[], review, checks[{kind, target, expected, observed, status}]. UI changes also require browser evidence; read task-verify.md.");
+    throw new Error("Gate V requires evidence: files[], review, code checks[{kind, target, expected, observed, status}]; read task-verify.md.");
   }
-  const claimed = session.claimedPaths || [];
-  const files = verificationFiles(root, evidence, session);
   const checks = evidence.checks;
   if (checks.some((check) => !check || !["lint", "typecheck", "test", "build", "runtime", "manual"].includes(check.kind) ||
       !["passed", "failed", "blocked"].includes(check.status) ||
       !text(check.target) || !text(check.expected) || !text(check.observed))) {
     throw new Error("Each verification check needs kind, target, expected, observed and status (passed/failed/blocked).");
   }
+  const codeChecks = checks.filter((check) => check.kind !== "runtime");
+  if (!codeChecks.length) {
+    throw new Error("Gate V requires at least one code check: lint/syntax, typecheck, focused test, build or manual source review. Runtime alone is insufficient.");
+  }
+  return codeChecks;
+}
+
+function verify(root, evidence, session) {
+  const codeChecks = validateEvidence(evidence);
+  const claimed = session.claimedPaths || [];
+  const files = verificationFiles(root, evidence, session);
+  const checks = evidence.checks;
   const luaCheck = luaScope.checkFiles(root, files);
   if (!luaCheck.ok) {
     const detail = luaCheck.issues.slice(0, 5).map((issue) => `${issue.file}:${issue.line} ${issue.symbol} (${issue.rule})`).join("; ");
     throw new Error(`Lua lexical-scope verification failed: ${detail}`);
   }
 
-  const ui = uiImpact(root, files, evidence, session);
   const independent = independentReview.assertVerifiedFresh(root, session, files, evidence);
-  const uiRequired = ui.changed;
-  let browser = evidence.browser;
-  if (uiRequired) {
-    if (!browser || !["passed", "failed", "blocked"].includes(browser.status)) {
-      throw new Error("UI changes require browser evidence. A build alone cannot pass Gate V. If browser/runtime is unavailable, record browser.status=blocked with reason.");
-    }
-    if (browser.status === "passed") {
-      if (!text(browser.url) || !text(browser.visual) || !text(browser.console) ||
-          !Array.isArray(browser.interactions) || !browser.interactions.length ||
-          !browser.interactions.every(text) || !text(browser.artifact)) {
-        throw new Error("Browser evidence requires url, interactions[], visual, console, artifact (screenshot/trace path).");
-      }
-      const artifact = path.resolve(root, browser.artifact);
-      const stat = fs.statSync(artifact);
-      if (!stat.isFile() || stat.size === 0) throw new Error("Browser artifact must be a non-empty file.");
-      browser = { ...browser, artifact };
-    } else if (!text(browser.reason)) {
-      throw new Error("Failed/blocked browser verification requires a reason.");
-    }
-  }
-  const complete = checks.every((check) => check.status === "passed") &&
-    (!uiRequired || browser.status === "passed");
+  // Legacy callers may still send runtime/browser results. They neither prove
+  // nor block code verification; keep them separate from Gate V's checks.
+  const complete = codeChecks.every((check) => check.status === "passed");
   return {
     complete,
     // This validates the contract, not the truth of agent-authored observations.
     evidence: {
       files,
       review: evidence.review,
-      checks,
-      ui,
+      scope: "code",
+      checks: codeChecks,
+      ...(checks.some((check) => check.kind === "runtime") ? { runtimeChecks: checks.filter((check) => check.kind === "runtime") } : {}),
       automated: { luaScope: { status: "passed", files: luaCheck.filesChecked } },
       ...(independent ? { independentReview: independent } : {}),
-      ...(uiRequired ? { browser } : {}),
     },
     snapshot: snapshot(root, files),
     scoped: claimed.length > 0,
@@ -131,4 +120,4 @@ function assertFresh(root, gate) {
   }
 }
 
-module.exports = { verify, assertFresh, uiFile, verificationFiles };
+module.exports = { verify, assertFresh, verificationFiles, validateEvidence };

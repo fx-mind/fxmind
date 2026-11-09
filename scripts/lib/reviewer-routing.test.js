@@ -43,4 +43,14 @@ describe("Gate V reviewer fallback", () => {
     assert.equal(result.ok, false);
     assert.equal(calls, 1);
   });
+  it("bounds infrastructure failures to two attempts even when a provider throws", async () => {
+    const seen = [];
+    const result = await runReviewerWithFallback("/repo", opts, async (_, args) => {
+      seen.push(args.preferredCliId);
+      throw new Error("provider unavailable");
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.error, /provider unavailable/);
+    assert.deepEqual(seen, ["cursor-agent", "codex"]);
+  });
 });

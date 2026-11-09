@@ -1863,7 +1863,9 @@ function buildSubagentBody(agentId, persona, { prompt, paths } = {}) {
     "",
     persona?.body || `You are the "${agentId}" subagent. Perform the scoped task below and stop.`,
     "",
-    "First call fxmind_query through the FxMind MCP before using other tools. If it is unavailable, report that the review cannot be verified and stop; do not attempt Grep/Read to bypass the project hook.",
+    agentId === "reviewer"
+      ? "Gate V reviews code only. Read the supplied paths and Git diff directly; FxMind MCP/memory is optional. Do not require browser/gameplay/runtime evidence. Infrastructure failures use VERDICT: UNVERIFIABLE, never REFUTED."
+      : "First call fxmind_query through the FxMind MCP before using other tools. If it is unavailable, report that the review cannot be verified and stop; do not attempt Grep/Read to bypass the project hook.",
     "",
     "## Task",
     String(prompt || "").slice(0, agentId === "reviewer" ? 18000 : 6000),
@@ -1895,8 +1897,11 @@ function subagentCompletion(agentId, cliId, exitCode, signal, output, cliError =
   if (!text || text === "(subagent returned no text)") {
     return { ok: false, error: prefix + ' returned no text' + (cliError ? ': ' + cliError : '') };
   }
-  if (agentId === "reviewer" && !/^VERDICT:\s*(?:VERIFIED|VERIFIED WITH CAVEATS|REFUTED)\s*$/im.test(text)) {
-    return { ok: false, error: prefix + ' produced no valid VERDICT line' };
+  if (agentId === "reviewer") {
+    const verdict = require("./independent-review").parseVerdict(text);
+    if (verdict === "unverifiable") {
+      return { ok: false, error: prefix + ' could not verify code: ' + text.slice(-2000), output: text };
+    }
   }
   return { ok: true, agent: agentId, cliId, output: text };
 }
@@ -1922,8 +1927,10 @@ async function runSubagentTask(root, options = {}) {
     agentId === "reviewer"
       ? await reviewerExecution(cliId, cfg)
       : { ...resolveExecution(cliId, cfg.model, null), variant: cfg.variant || null };
-  const mcp = ensureCliMcp(root, cliId);
-  if (!mcp.ok) return { ok: false, error: mcp.error };
+  if (agentId !== "reviewer") {
+    const mcp = ensureCliMcp(root, cliId);
+    if (!mcp.ok) return { ok: false, error: mcp.error };
+  }
   const body = buildSubagentBody(agentId, persona, { prompt: options.prompt, paths: options.paths });
   const { args, stdinPrompt } = buildJudgeArgs(cliId, {
     root, body, accessArgs, execOpts, readOnly: forceReadOnly,
@@ -1936,7 +1943,8 @@ async function runSubagentTask(root, options = {}) {
         bin,
         args,
         root,
-        { ...buildEnv(), ...(forceReadOnly ? { FXMIND_MCP_READONLY: "1" } : {}) },
+        { ...buildEnv(), ...(forceReadOnly ? { FXMIND_MCP_READONLY: "1" } : {}),
+          ...(agentId === "reviewer" ? { FXMIND_REVIEW_CODE_ONLY: "1" } : {}) },
         cliId === "codex" || stdinPrompt ? ["pipe", "pipe", "pipe"] : undefined,
       );
     } catch (err) {

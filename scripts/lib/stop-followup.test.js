@@ -107,6 +107,10 @@ describe("lastAssistantTextFromTranscript", () => {
 });
 
 describe("shouldFollowup", () => {
+  it("does not restart a code review blocked by reviewer infrastructure", () => {
+    assert.equal(shouldFollowup({ status: "completed", loop_count: 0,
+      lastUserText: "fix lua", gateV: { complete: false, note: "gate_v_reviewer_unavailable" } }), false);
+  });
   it("nags once on a normal completed turn", () => {
     assert.equal(shouldFollowup({ status: "completed", loop_count: 0, lastUserText: "fix lua" }), true);
   });

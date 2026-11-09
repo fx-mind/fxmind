@@ -1,80 +1,59 @@
 # fxmind — Task verification
 
-Success requires observed behavior matching the user's request. A green build or a completion report alone cannot establish it. Applies to all domains and quick/full modes.
+Gate V verifies code only: lint/syntax, applicable types and broken logic in the actual diff and directly affected callers. It does not certify runtime, visual appearance or gameplay. Questions, explanations and read-only investigations do not start a task or require Gate V.
 
 ## Before V
 
-Review the task diff against Done and applicable pack rules. Confirm invariants for refactors, inspect error paths, remove unnecessary constants/helpers/files, debug remnants and unrelated churn. Do not replace required validation with cosmetic brevity.
+Inspect the changed code against the user's requested behavior. Check lexical scope, function order, control flow, boundaries, data contracts, error paths and concrete security/performance regressions. For a defect, inspect the affected area for the same failure pattern (TWINS); avoid unrelated cleanup or speculative refactors. Preserve refactor invariants.
 
-For a defect, search the affected area for the same failure pattern (TWINS); fix in-scope equivalents or identify remaining sites. FiveM NUI CEF background bugs also inspect the whole resource's shell, popup/modal, styles and Vite output names using the relevant style reference.
+Run existing lint/syntax checks and applicable typechecks. Use focused automated tests or a build when they help expose a defect. If no linter exists, use the available syntax/static check; do not install tooling or invent passing results. For non-executable changes, record a manual source/diff review. Tests should expose a real failure, not mirror the implementation; new tests are not mandatory for every tiny edit. Reuse results only while the checked code is unchanged.
 
-Prioritize **lint/syntax, typecheck where applicable and code quality** on the actual changed code. Run the project's existing checks, then focused regression tests and build/runtime checks only where they establish Done. If no linter is configured, record the applicable syntax/static check; do not install tooling or invent a passing lint result. Tests must detect the original failure or assert observable behavior, not mirror the implementation. Reuse results only while the tested code is unchanged.
+## Scope
 
-## UI: browser verification only for real interface changes
+Gate V never requires opening a browser, screenshots, visual inspection, starting an application/game server, login credentials, manual gameplay or production access. This also applies to frontend/NUI code. Optional runtime/browser validation may be useful for the task or explicitly requested by the user, but is separate from Gate V. Report its status honestly; passing V must never be described as proof of runtime or visual behavior.
 
-Assess the final diff and record `ui: { changed: boolean, reason: "specific diff-based explanation" }` in V evidence. Browser verification is required only when the change actually alters rendered content, layout/styles or user interactions, including backend changes that alter those outcomes. Merely touching a frontend path, reviewing an unchanged UI file, having `ui_page` in a manifest, an installed UI skill, or an old task planning flag does not require opening an interface.
+`evidence.ui` and `evidence.browser` remain accepted for compatibility but are not required or used to pass/block V. Legacy `runtime` checks are stored separately as informational observations; runtime evidence alone cannot pass code verification.
 
-When rendered output and user interactions are preserved, backend-only code, tooling/config/tests, comments/formatting and behavior-preserving refactors use `ui.changed: false` with a reason. Complete lint/static checks and code review without opening a browser. The independent reviewer must validate this assessment against the diff; a claim of no UI impact cannot exempt actual visual/interaction changes.
+## Independent code review
 
-For visual or interaction changes, use the available browser tool or installed browser automation to:
+Call `fxmind_record_gate { gate: "V", ... }` directly. It validates code-check evidence and Lua lexical scope, then automatically runs a fresh read-only code reviewer for non-trivial Lua/multi-file or fix/mechanic/create tasks. Known tiny tasks and single-file config tasks use the deterministic/evidence checks without an additional CLI review. Do not call a separate reviewer first.
 
-1. Start/reuse the project's documented local preview and open the actual affected route.
-2. Reproduce the user's flow: click/type/submit/navigate and check the resulting state. Exercise relevant empty/loading/error states and a narrower viewport when layout is affected.
-3. Capture and inspect a screenshot of the resulting UI. Check clipping, overlap, spacing, contrast and expected content; inspect console/runtime errors and relevant failed requests.
-4. Correct observed defects, repeat the affected interactions and inspect a fresh screenshot after the final edit.
-5. Save the screenshot or trace produced by the browser tool, preferably in OS temp, and record its path with URL, interactions and observations.
+The reviewer reads current source, diff and relevant callers directly. FxMind MCP/memory is optional for this reviewer; unavailable MCP must not block direct source inspection. Broad skill routers, UI checklists and runtime requirements do not expand its scope.
 
-Do not substitute curl, source review, DOM assertions alone or a build for visual inspection. Never fabricate screenshots, traces or tool observations. If the browser/runtime/login is unavailable, finish feasible checks, record blocked evidence with the concrete reason and explain what remains. Do not mark V complete or describe the UI as verified.
+Only a concrete code defect with file:line and the broken execution path can block approval. Subjective style, hypothetical improvements, unrelated old issues and missing runtime proof are not blocking findings. Non-blocking suggestions may accompany `VERDICT: VERIFIED`.
 
-FiveM NUI: browser preview checks web behavior; CEF-specific claims require the NUI open in-game, actual visual evidence and console/DOM evidence when available. Clean up temporary wire/probe before final validation. If only browser preview was possible, record the missing in-game verification as a blocked runtime check.
+- `VERDICT: VERIFIED`: code review passed.
+- `VERDICT: REFUTED` or `VERDICT: VERIFIED WITH CAVEATS`: concrete code findings; fix surgically, rerun affected checks and retry V. Maximum three repair cycles for actual code findings.
+- `VERDICT: UNVERIFIABLE`: source/tool/provider infrastructure prevented review. This is not a code finding. The server may try one provider fallback; report the limitation once, keep V unverified and do not repeat repair cycles or change code to fix infrastructure.
 
-## Gate V independent validation
-
-`fxmind_record_gate { gate: "V", ... }` automatically launches a fresh read-only reviewer **for every task**. There is no separate review step the executor has to remember. The reviewer prefers a strong model from the same provider as the coding agent (for example the best available Codex reasoning model, Cursor model, or Claude Sonnet-class model), in a new session with no executor rationale. It receives the original goal, current files/diff, structured observations, binding policy, installed skill routers and relevant domain quality/style/security references.
-
-Only strict `VERDICT: VERIFIED` lets V proceed. `VERIFIED WITH CAVEATS` / `REFUTED` return their findings to the coding agent with `fix_findings_and_retry_gate_v`; the executor fixes them without asking the user, reruns affected checks and calls V again. Any edit or task-context change makes a prior review stale. Reviewer unavailability is a blocker, never an implicit pass.
-
-Lua files also receive a deterministic lexical-scope check before the LLM review. A caller that reaches a later `local function`, or an obvious wider-scope call to a narrower local helper, returns a repair finding immediately even if syntax/tests otherwise pass.
+Lua also receives a deterministic lexical-scope check. A caller that resolves a later local function as a global, or calls a helper outside its lexical scope, fails before the reviewer runs.
 
 ## MCP evidence contract
 
-Call `fxmind_record_gate` with `gate: "V"`, sessionId and evidence:
-
 ```json
 {
-  "files": ["src/server.js"],
-  "review": "Compared callers and invariants; removed the one-use forwarding helper.",
-  "ui": { "changed": false, "reason": "Only server validation changed; rendered output and interactions are unchanged." },
-  "checks": [{
-    "kind": "lint",
-    "target": "node --check src/server.js",
-    "expected": "Valid JavaScript syntax",
-    "observed": "Exit 0, no syntax errors",
-    "status": "passed"
-  }, {
-    "kind": "test",
-    "target": "node --test test/server.test.js",
-    "expected": "Invalid input is rejected and valid input still succeeds",
-    "observed": "Both assertions passed; exit 0",
-    "status": "passed"
-  }]
+  "gate": "V",
+  "sessionId": "<task session>",
+  "evidence": {
+    "files": ["src/server.js"],
+    "review": "Checked changed conditions, callers and error paths; boundary validation is preserved.",
+    "checks": [{
+      "kind": "lint",
+      "target": "node --check src/server.js",
+      "expected": "Valid JavaScript syntax",
+      "observed": "Exit 0, no syntax errors",
+      "status": "passed"
+    }]
+  }
 }
 ```
 
-Use actual task paths/commands/results, not the example values. Check kinds: lint/typecheck/test/build/runtime/manual. Every check records target, expected, observed and status (passed/failed/blocked). Review is required outside FiveM too. Record the actual lint/syntax and quality findings first.
+Use real paths, commands and observations. Code-check kinds: lint/typecheck/test/build/manual (source/diff review). Each check records target, expected, observed and status (passed/failed/blocked). List all task files, including deletions; Git discovery or scoped claims supplement the list.
 
-Only when `ui.changed: true`, add `browser`:
-- passed: status, url, interactions[] (actions and observed outcomes), visual, console, artifact (existing non-empty screenshot/trace file).
-- failed/blocked: status and reason. Include the observations in checks where relevant.
+Failed/blocked code checks keep V incomplete and prevent Gate C. A failed recheck invalidates prior approval. Review artifacts bind to current file contents and task goal/kind/playbook; editing code after V requires fresh checks and review before C. The server validates evidence structure and freshness, not the truth of agent-written observations.
 
-The task-start `ui: true` flag is a planning hint; final `evidence.ui` reflects actual changes and can correct that hint. Without an explicit assessment, changed UI source files, declared UI behavior or `browser.required` retain the conservative browser requirement. Unchanged UI files listed only as context do not trigger it in Git projects. All task files must be listed; Git-discovered changed files are included for unclaimed sessions, claimed paths for scoped parallel sessions.
+## Additional validation
 
-The server checks gate order, evidence structure, artifact existence and code fingerprints. Failed/blocked observations persist with V incomplete. Code changes after V require fresh verification before C. These checks cannot authenticate agent-written observations; Judge must inspect the actual evidence.
+Use Judge when the user explicitly requests proof or sensitive authorization/money/data behavior needs deeper validation. Read `.fxmind/modes/judge.md`; keep any runtime/visual conclusions separate from the Gate V code verdict. Do not automatically turn routine code review into a runtime audit.
 
-## Judge
-
-Use Judge before success for sensitive authorization/money/data behavior, unresolved intent conflicts, substantial cross-resource changes, or explicit proof requests. File count alone is not risk. Quick mode never exempts these cases.
-
-Read `.fxmind/modes/judge.md`. Judge checks source, diff and real observations; missing critical behavior/browser evidence prevents VERIFIED. In an authorized implementation, fix actionable findings and repeat affected checks before V/C. A review-only request remains read-only.
-
-Keep verification notes concise. Report failed or unverified work explicitly; do not end early just to produce a completion message.
+Keep verification notes concise. Report code-check failures and unverified runtime behavior accurately.

@@ -142,6 +142,7 @@ async function main() {
   const lastAssistantText = lastAssistantTextFromPayload(payload);
   if (
     !shouldFollowup({
+      gateV: gates.gates?.V,
       status: payload.status,
       loop_count: payload.loop_count ?? payload.loopCount,
       lastUserText,

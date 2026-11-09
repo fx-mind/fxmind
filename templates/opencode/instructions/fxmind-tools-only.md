@@ -6,6 +6,6 @@ If paths or symbols are missing, use `fxmind_search` with a literal query and th
 
 Use MCP for gates, graph, corrections and available FiveM/DB operations. Missing MCP prevents gated edits; report the missing tool while completing feasible read-only investigation.
 
-Implementation follows `.fxmind/modes/task.md`; UI reads task-verify.md before editing. Quick mode preserves all quality/verification requirements. Call Gate V directly: it automatically runs the fresh read-only reviewer for every task, with relevant skill rubrics and a strong same-provider model when available. If V returns findings, fix them without asking the user, rerun affected checks and retry V. Gates V/C need actual evidence; a build does not prove browser correctness.
+Implementation follows `.fxmind/modes/task.md`. Call Gate V directly: it checks lint/syntax, applicable types and broken logic, then automatically runs a fresh read-only code reviewer for non-trivial tasks. The reviewer can read source/diff without FxMind MCP. Browser, screenshots, gameplay and runtime proof are separate from V. Fix concrete code findings and rerun affected checks; report reviewer infrastructure failure once without repair loops. Tiny/config tasks use code evidence and deterministic checks without an extra CLI review. Questions and read-only investigation require no gates.
 
 Do not repeat the memory index and matched memories, load entire repositories or delegate just to read a tiny file. Parallelize independent work when it reduces latency.

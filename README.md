@@ -267,16 +267,21 @@ Generated / session-only (gitignored, rebuilt locally): `.fxmind/graph/` — `kn
 
 ## Task mode & Gates
 
-Gate V now requires structured `evidence` (`files`, `review`, `checks`) through
-`fxmind_record_gate`; a note-only call no longer completes verification. Prioritize
-lint/syntax, typecheck, code quality and focused tests. Check kinds include `lint`
-and `typecheck`. Record `evidence.ui: { changed, reason }` from the actual diff.
-Only actual rendered-content/layout/style/interaction changes require browser
-interactions, visual/console observations and a screenshot/trace. Unchanged UI
-context, backend-only work, comments/tooling and non-visual refactors do not require
-opening the interface. The reviewer validates this assessment against the diff;
-changing it after review invalidates the review. `ui: true` at task start is a planning hint.
-Failed or blocked checks keep V incomplete; C rejects code changed since V. Lua files also pass a deterministic lexical-scope check. Gate V automatically runs a fresh read-only reviewer against the original goal and actual source/diff; do not launch a separate review first. Gate V accepts only a strict `VERIFIED` artifact bound to the current file fingerprints and UI assessment.
+Gate V requires structured `evidence` (`files`, `review`, `checks`) through
+`fxmind_record_gate`. It verifies **code only**: lint/syntax, applicable types and
+broken logic in the diff and directly affected callers. Existing focused tests
+and builds may support the review. Browser, screenshots, application/game-server
+access, gameplay and runtime proof are separate from V, including for UI changes.
+Legacy UI/browser metadata is optional; runtime checks cannot approve or block V.
+
+Failed/blocked code checks keep V incomplete; C rejects code changed since V.
+Lua receives a deterministic lexical-scope check. Non-trivial code tasks also run
+a fresh read-only reviewer automatically; do not launch a separate review first.
+The reviewer reads source/diff directly without requiring FxMind MCP. Only concrete
+code defects block approval. Infrastructure failures are `UNVERIFIABLE`, never
+code findings: report once without repeating repair cycles. Tiny/config tasks
+use code evidence and deterministic checks without an extra CLI review. Questions
+and read-only investigation require no gates.
 See `templates/fxmind/modes/task-verify.md` for the contract.
 
 Quick mode reduces overhead without bypassing quality checks. `fxmind_search`
@@ -295,10 +300,9 @@ Just ask for the change in natural language — Task mode runs **automatically**
 3. **Gate A** — CLASS, Done+verify, INTENT if needed → `fxmind_record_gate` A
 4. **Gate B** — load memories → `fxmind_record_gate` B
 5. **Implement** — surgical edits; max 3 fix→verify retries
-6. **Independent review** — when required, call `fxmind_independent_review`; fix `REFUTED` / `VERIFIED WITH CAVEATS`, then rerun until strict `VERIFIED`
-7. **Gate V** — read `.fxmind/modes/task-verify.md`; deterministic checks + observed Done (+ TWINS) → `fxmind_record_gate` V (**required before C**)
-8. **Judge** — when task-verify says mandatory (blast radius / money-permission / INTENT)
-9. **Gate C** — post-task learn → `fxmind_record_gate` C (clears session)
+6. **Gate V** — read `.fxmind/modes/task-verify.md`; code checks and automatic independent review → `fxmind_record_gate` V (**required before C**)
+7. **Judge** — additional validation when requested or required for sensitive behavior
+8. **Gate C** — post-task learn → `fxmind_record_gate` C (clears session)
 
 Prove claims: **`/fxmind judge`**. Behavioral map: `.fxmind/policy/failure-modes.md`. FiveM evidence: `.fxmind/policy/minimum-evidence.md`.
 
@@ -445,7 +449,7 @@ The global binary avoids `npx.cmd` → `cmd.exe` on Windows, which breaks MCP sp
 | `fxmind_drift_check` | Memories referencing a file |
 | `fxmind_start_task` | Begin Task session |
 | `fxmind_gate_status` / `fxmind_record_gate` | Gates START/A/B/V/C (session only) |
-| `fxmind_independent_review` | Fresh read-only reviewer; stores a strict verdict tied to the current task files/fingerprint. Required before V for Lua, multi-file and normal fix/mechanic/create tasks. |
+| `fxmind_independent_review` | Manual/debug code review tied to current file fingerprints. Gate V automatically reviews non-trivial code tasks; no separate call is required. |
 | `fxmind_record_correction` / `fxmind_list_corrections` | Skill-improvement backlog |
 | `fxmind_fivem_status` / `fxmind_fivem_cmd` / `fxmind_fivem_console_tail` | Local FXServer RCON + log tail (dev). **Status probes reachability** — use cmd/tail only when `available: true`; otherwise ask user to run console commands manually. |
 | `fxmind_fivem_nui_wire` / `fxmind_fivem_nui_dump` / `fxmind_fivem_nui_unwire` | Agent TEMP-wires a NUI resource, dumps structured state, then **must unwire**. Better than screenshots. |

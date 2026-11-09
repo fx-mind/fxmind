@@ -297,12 +297,14 @@ describe("reviewer MCP CLI hardening", () => {
     assert.ok(!general.args.includes("--mode"));
     assert.ok(!general.args.includes("--approve-mcps"));
   });
-  it("tells delegated reviewers to consult FxMind before reading code", () => {
+  it("lets code reviewers inspect source without an MCP prerequisite", () => {
     const persona = panelCli.readSubagentPersona("reviewer");
     const body = panelCli.buildSubagentBody("reviewer", persona, {
       prompt: "Review robberys", paths: ["resources/[ecco]/robberys/server-side/server.lua"],
     });
-    assert.match(body, /First call fxmind_query/);
+    assert.doesNotMatch(body, /First call fxmind_query/);
+    assert.match(body, /MCP\/memory is optional/);
+    assert.match(body, /UNVERIFIABLE, never REFUTED/);
     assert.match(body, /VERDICT: VERIFIED/);
   });
   it("never treats a CLI error or empty result as a completed review", () => {
@@ -311,6 +313,8 @@ describe("reviewer MCP CLI hardening", () => {
       ["reviewer", "cursor-agent", 0, null, ""],
       ["reviewer", "cursor-agent", 0, null, "(subagent returned no text)"],
       ["reviewer", "cursor-agent", 0, null, "I could not read the files"],
+      ["reviewer", "cursor-agent", 0, null, "MCP unavailable\nVERDICT: UNVERIFIABLE"],
+      ["reviewer", "cursor-agent", 0, null, "VERDICT: VERIFIED\ntrailing content"],
       ["reviewer", "cursor-agent", null, "SIGTERM", ""],
     ]) assert.equal(panelCli.subagentCompletion(...args).ok, false, String(args));
   });

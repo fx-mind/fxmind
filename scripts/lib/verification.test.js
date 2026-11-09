@@ -55,7 +55,7 @@ describe("verification gates", () => {
     ];
     const result = record(sessionId, data);
     assert.equal(result.gates.V.complete, true);
-    assert.equal(result.gates.V.evidence.ui.changed, false);
+    assert.equal(result.gates.V.evidence.scope, "code");
   });
 
   it("allows correcting a stale UI planning flag when the final change does not affect the interface", () => {
@@ -65,21 +65,20 @@ describe("verification gates", () => {
     assert.equal(record(sessionId, data).gates.V.complete, true);
   });
 
-  it("requires a reason for a UI impact assessment and never passes failed lint", () => {
+  it("does not require legacy UI metadata and never passes failed lint", () => {
     const sessionId = start();
     const data = evidence();
     data.ui = { changed: false, reason: " " };
-    assert.throws(() => record(sessionId, data), /UI impact requires/);
-    data.ui.reason = "Only server-side validation changed.";
+    assert.equal(record(sessionId, data).gates.V.complete, true);
     data.checks[0].kind = "lint";
     data.checks[0].status = "failed";
     assert.equal(record(sessionId, data).gates.V.complete, false);
   });
 
-  it("requires browser evidence for explicitly confirmed backend-driven UI changes", () => {
+  it("verifies code without browser evidence even for backend-driven UI changes", () => {
     const data = evidence();
-    data.ui = { changed: true, reason: "Server response now changes the displayed validation error." };
-    assert.throws(() => record(start(), data), /UI changes require browser/);
+    data.ui = { changed: true, reason: "Server response changes the displayed validation error." };
+    assert.equal(record(start(), data).gates.V.complete, true);
   });
 
   it("detects staged changes and deleted UI source when no assessment was supplied", () => {
@@ -88,9 +87,9 @@ describe("verification gates", () => {
     const sessionId = start();
     fs.writeFileSync(path.join(root, "App.tsx"), "export const App = () => <button>Delete</button>;");
     execFileSync("git", ["add", "App.tsx"], { cwd: root });
-    assert.throws(() => record(sessionId, evidence(["App.tsx"])), /UI changes require browser/);
+    assert.equal(record(sessionId, evidence(["App.tsx"])).gates.V.complete, true);
     fs.rmSync(path.join(root, "App.tsx"));
-    assert.throws(() => record(sessionId, evidence(["App.tsx"])), /UI changes require browser/);
+    assert.equal(record(sessionId, evidence(["App.tsx"])).gates.V.complete, true);
   });
 
   it("rejects a note-only V and C before verification", () => {
@@ -130,36 +129,42 @@ describe("verification gates", () => {
     record(sessionId, evidence());
     assert.equal(recordGate(root, "C", true, { sessionId }).taskActive, false);
   });
-  it("rejects build-only UI verification even if browser.required is false", () => {
+  it("accepts frontend code checks without browser proof", () => {
     fs.writeFileSync(path.join(root, "App.tsx"), "export const App = () => <button>Save</button>;");
     const data = evidence(["App.tsx"]);
-    data.browser = { required: false };
-    assert.throws(() => record(start(), data), /UI changes require browser/);
+    data.browser = { required: true };
+    data.checks[0].kind = "build";
+    assert.equal(record(start(), data).gates.V.complete, true);
   });
-  it("keeps backend-driven UI verification blocked when browser is unavailable", () => {
+
+  it("does not let unavailable browser or gameplay block code checks", () => {
     const sessionId = start({ ui: true });
     const data = evidence();
     data.browser = { status: "blocked", reason: "Preview requires an unavailable login" };
-    assert.equal(record(sessionId, data).gates.V.complete, false);
-    assert.throws(() => recordGate(root, "C", true, { sessionId }), /requires Gate V/);
+    data.checks.push({ kind: "runtime", target: "in-game test", expected: "observe zone edge", observed: "game server unavailable", status: "blocked" });
+    const result = record(sessionId, data);
+    assert.equal(result.gates.V.complete, true);
+    assert.equal(result.gates.V.evidence.checks.length, 1);
+    assert.equal(result.gates.V.evidence.runtimeChecks[0].status, "blocked");
+    assert.equal(recordGate(root, "C", true, { sessionId }).taskActive, false);
   });
-  it("requires real artifact files and all browser observations", () => {
+
+  it("never reads browser artifacts during code verification", () => {
     const sessionId = start({ ui: true });
     const data = evidence();
-    data.browser = { status: "passed", url: "http://localhost/settings", interactions: ["Saved and reloaded the setting"], visual: "No clipped controls", console: "No new runtime errors", artifact: "trace.json" };
-    assert.throws(() => record(sessionId, data), /ENOENT/);
-    fs.writeFileSync(path.join(root, "trace.json"), "");
-    assert.throws(() => record(sessionId, data), /non-empty/);
-    // A synthetic artifact validates the contract; it does not prove browser execution.
-    fs.writeFileSync(path.join(root, "trace.json"), '{"fixture":true}');
+    data.browser = { status: "passed", artifact: "missing-trace.json" };
     assert.equal(record(sessionId, data).gates.V.complete, true);
-    delete data.browser.visual;
-    assert.throws(() => record(sessionId, data), /requires url/);
   });
+  it("cannot replace code verification with runtime observations", () => {
+    const data = evidence();
+    data.checks[0].kind = "runtime";
+    assert.throws(() => record(start(), data), /at least one code check/);
+  });
+
   it("discovers omitted untracked UI files in Git", () => {
     execFileSync("git", ["init", "-q"], { cwd: root });
     fs.writeFileSync(path.join(root, "page.html"), "<button>Save</button>");
-    assert.throws(() => record(start(), evidence()), /UI changes require browser/);
+    assert.ok(record(start(), evidence()).gates.V.evidence.files.includes("page.html"));
   });
   it("rejects newly added files after V in Git", () => {
     execFileSync("git", ["init", "-q"], { cwd: root });

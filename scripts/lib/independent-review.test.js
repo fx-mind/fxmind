@@ -10,6 +10,7 @@ describe("independent review artifact", () => {
     assert.equal(review.parseVerdict("Options: VERDICT: REFUTED\nVERDICT: VERIFIED"), "verified");
     assert.equal(review.parseVerdict("VERDICT: VERIFIED\nextra text"), "unverifiable");
     assert.equal(review.parseVerdict("finding\nVERDICT: REFUTED"), "refuted");
+    assert.equal(review.parseVerdict("MCP unavailable\nVERDICT: UNVERIFIABLE"), "unverifiable");
   });
 
   it("binds VERIFIED to the exact reviewed contents", () => {
@@ -66,7 +67,7 @@ describe("independent review artifact", () => {
     }
   });
 
-  it("loads relevant installed skills into the Gate V review rubric", () => {
+  it("loads code references without importing broad skill gates", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "fx-review-skills-"));
     try {
       fs.mkdirSync(path.join(root, ".fxmind", "policy"), { recursive: true });
@@ -76,15 +77,15 @@ describe("independent review artifact", () => {
       fs.writeFileSync(path.join(root, ".fxmind", "skills", "fivem-development", "SKILL.md"), "FiveM skill router");
       fs.writeFileSync(path.join(root, ".fxmind", "skills", "fivem-development", "quality-gates.md"), "Quality gates C1-C8");
       fs.writeFileSync(path.join(root, ".fxmind", "skills", "fivem-development", "style.md"), "callee before caller");
-      fs.writeFileSync(path.join(root, ".fxmind", "skills", "vrp-framework", "SKILL.md"), "vRP framework rules");
+      fs.writeFileSync(path.join(root, ".fxmind", "skills", "vrp-framework", "patterns.md"), "vRP framework rules");
       const prompt = review.buildPrompt(
         root,
         { taskActive: true, sessionId: "s", kind: "fix", note: "fix vrp save" },
         ["vrp/modules/base.lua"],
-        { checks: [{ kind: "runtime", target: "disconnect", status: "passed", observed: "no error" }] },
+        { checks: [{ kind: "test", target: "disconnect unit test", status: "passed", observed: "no error" }] },
       );
-      assert.match(prompt, /C5 Lexical locals binding/);
-      assert.match(prompt, /Quality gates C1-C8/);
+      assert.doesNotMatch(prompt, /C5 Lexical locals binding/);
+      assert.doesNotMatch(prompt, /Quality gates C1-C8/);
       assert.match(prompt, /callee before caller/);
       assert.match(prompt, /vRP framework rules/);
       assert.match(prompt, /Executor observations \(claims; verify independently\)/);
@@ -104,19 +105,19 @@ describe("independent review artifact", () => {
         ui: { changed: false, reason: "Only build tooling changed; output UI is identical." },
         checks: [{ kind: "lint", target: "project lint", status: "passed", observed: "no errors" }],
       });
-      assert.match(prompt, /Prioritize lint\/syntax, typecheck/);
-      assert.match(prompt, /Do not open an interface/);
-      assert.match(prompt, /Check the UI impact assessment against the actual diff/);
+      assert.match(prompt, /Check lint\/syntax, applicable types/);
+      assert.match(prompt, /Do not open a browser/);
+      assert.match(prompt, /Block only on a concrete code defect/);
       assert.doesNotMatch(prompt, /UI_ONLY_ROUTER_MUST_NOT_LOAD_FOR_BUILD/);
       assert.doesNotMatch(review.reviewGuidance(root, ["scripts/build.js"]), /UI_ONLY_ROUTER_MUST_NOT_LOAD_FOR_BUILD/);
       const uiPrompt = review.buildPrompt(root, {}, ["web/App.tsx"], {
         ui: { changed: true, reason: "Changed the rendered button label." },
       });
-      assert.match(uiPrompt, /UI_ONLY_ROUTER_MUST_NOT_LOAD_FOR_BUILD/);
+      assert.doesNotMatch(uiPrompt, /UI_ONLY_ROUTER_MUST_NOT_LOAD_FOR_BUILD/);
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
 
-  it("invalidates a review if the UI impact assessment changes after review", () => {
+  it("keeps code review independent of optional UI metadata", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "fx-review-impact-"));
     try {
       fs.writeFileSync(path.join(root, "App.tsx"), "export const App = () => <button>Save</button>;");
@@ -125,9 +126,23 @@ describe("independent review artifact", () => {
       review.recordReview(root, { sessionId: session.sessionId, session, files: ["App.tsx"], evidence,
         reviewer: { agent: "reviewer" }, output: "VERDICT: VERIFIED" });
       assert.equal(review.assertVerifiedFresh(root, session, ["App.tsx"], evidence).verdict, "verified");
-      assert.throws(() => review.assertVerifiedFresh(root, session, ["App.tsx"], {
+      assert.equal(review.assertVerifiedFresh(root, { ...session, ui: true }, ["App.tsx"], {
         ui: { changed: false, reason: "Do not open the browser." },
-      }), /UI impact assessment changed/);
+      }).verdict, "verified");
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("ignores runtime claims and scopes findings to code even for UI tasks", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fx-review-code-"));
+    try {
+      const prompt = review.buildPrompt(root, { kind: "fix", ui: true }, ["App.tsx"], {
+        checks: [{ kind: "runtime", target: "GAMEPLAY_UNAVAILABLE", status: "blocked" }],
+        browser: { status: "blocked", reason: "BROWSER_UNAVAILABLE" },
+      });
+      assert.match(prompt, /concrete code defect, with file:line/);
+      assert.match(prompt, /MCP\/memory is optional/);
+      assert.match(prompt, /VERDICT: UNVERIFIABLE/);
+      assert.doesNotMatch(prompt, /GAMEPLAY_UNAVAILABLE|BROWSER_UNAVAILABLE/);
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
 
