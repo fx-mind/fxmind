@@ -111,6 +111,13 @@ async function main() {
     return;
   }
 
+  if (argv[0] === "claude-send" || argv[0] === "cold-compact") {
+    const coldCompact = require("./lib/cold-compact");
+    const runner = argv[0] === "claude-send" ? coldCompact.runSendCli : coldCompact.runColdCompactCli;
+    runner(argv.slice(1)).then((code) => process.exit(code));
+    return;
+  }
+
   if (argv[0] === "graph") {
     const { runGraphCli } = require("./build-graph");
     process.exit(runGraphCli(argv.slice(1)));

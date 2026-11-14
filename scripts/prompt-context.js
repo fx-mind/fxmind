@@ -185,11 +185,10 @@ function installClaudePromptHook(targetRoot) {
   }
   settings.hooks = settings.hooks && typeof settings.hooks === "object" ? settings.hooks : {};
   const groups = Array.isArray(settings.hooks.UserPromptSubmit) ? settings.hooks.UserPromptSubmit : [];
-  const present = groups.some((group) =>
-    (group?.hooks || []).some((hook) => hook?.command === CLAUDE_HOOK_COMMAND),
-  );
-  if (!present) {
-    groups.push({ hooks: [{ type: "command", command: CLAUDE_HOOK_COMMAND, timeout: 10 }] });
+  const { HOOK_COMMAND: COLD_COMPACT_COMMAND } = require("./lib/cold-compact");
+  for (const command of [COLD_COMPACT_COMMAND, CLAUDE_HOOK_COMMAND]) {
+    const present = groups.some((group) => (group?.hooks || []).some((hook) => hook?.command === command));
+    if (!present) groups.push({ hooks: [{ type: "command", command, timeout: 10 }] });
   }
   settings.hooks.UserPromptSubmit = groups;
   fs.mkdirSync(path.dirname(settingsPath), { recursive: true });

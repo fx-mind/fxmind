@@ -199,6 +199,7 @@ function installProjectClaudeHook(targetRoot) {
     if (!result.changed) return { changed: false };
     console.log("[Claude hook]");
     console.log(`  ✓ ${result.path} → UserPromptSubmit: ${CLAUDE_HOOK_COMMAND} (memory preload)`);
+    console.log(`  ✓ ${result.path} → UserPromptSubmit: fxmind cold-compact --hook (sessão fria + contexto grande)`);
     return { changed: true };
   } catch (error) {
     console.log(`[Claude hook] skipped: ${error.message}`);

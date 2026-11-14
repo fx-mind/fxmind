@@ -338,6 +338,19 @@ Required frontmatter: `topic`, `updated`, `lang: en-compact`, plus non-empty `pa
 **Best-practices layout:** one skill (`fivem-development`) + split refs (`communication.md`, `performance.md`, `architecture.md`, `style.md`, `security.md`, `api.md`) routed from `SKILL.md`. Index with stable § links: `best-practices.md`. Corrections categories map 1:1 to those files — do not create separate Cursor skills per topic.
 ---
 
+## Cold-session compact (Claude Code)
+
+Resuming a session idle past the prompt-cache TTL re-sends the whole context uncached. For orchestrators waking big sessions after a quota reset:
+
+```bash
+# Compacts first when the session is cold (idle ≥ 60 min) and large (≥ 80k tokens), then sends the message
+fxmind claude-send --session <session-id> "continue a tarefa" [-- --model opus]
+echo "mensagem longa" | fxmind claude-send --session <session-id>
+fxmind cold-compact <session-id>   # just report: tokens, idle time, verdict
+```
+
+The Claude hook installed by `fxmind --agent claude` also registers `fxmind cold-compact --hook` (UserPromptSubmit): in an interactive session it blocks the prompt and asks for `/compact` + resend (a hook cannot run `/compact` itself). Env: `FXMIND_COLD_MINUTES`, `FXMIND_COLD_TOKENS`, `FXMIND_COLD_COMPACT=0` to disable, `FXMIND_CLAUDE_BIN`.
+
 ## Hooks (Cursor)
 
 Installed automatically with `fxmind -y` for Cursor. Skip with `--no-hooks`.

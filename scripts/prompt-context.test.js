@@ -75,7 +75,7 @@ describe("prompt-context", () => {
     const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
     assert.deepEqual(settings.permissions, { allow: ["Bash(ls)"] });
     const commands = settings.hooks.UserPromptSubmit.flatMap((g) => g.hooks.map((h) => h.command));
-    assert.deepEqual(commands, [promptContext.CLAUDE_HOOK_COMMAND]);
+    assert.deepEqual(commands, ["fxmind cold-compact --hook", promptContext.CLAUDE_HOOK_COMMAND]);
   });
 });
 
