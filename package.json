@@ -18,6 +18,7 @@
     "scripts",
     "templates",
     "packs",
+    "mods",
     "web/dist"
   ],
   "dependencies": {
