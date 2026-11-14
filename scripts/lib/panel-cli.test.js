@@ -60,6 +60,13 @@ describe("panel-cli", () => {
     assert.equal(raw.byok.anthropic, "sk-ant-test-key-1234567890");
   });
 
+  it("coldCompact is on by default and persists partial updates", () => {
+    assert.deepEqual(panelCli.getAgentSettings().coldCompact, { enabled: true, minutes: 60, tokens: 80000 });
+    panelCli.putAgentSettings({ coldCompact: { enabled: false } });
+    const saved = panelCli.putAgentSettings({ coldCompact: { tokens: 120000 } });
+    assert.deepEqual(saved.coldCompact, { enabled: false, minutes: 60, tokens: 120000 });
+  });
+
   it("putAgentSettings persists taskMode", () => {
     const saved = panelCli.putAgentSettings({ taskMode: "quick" });
     assert.equal(saved.taskMode, "quick");

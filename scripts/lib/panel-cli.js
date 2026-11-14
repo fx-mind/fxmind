@@ -1023,6 +1023,8 @@ function getAgentSettings() {
     modelPrefs: agent.modelPrefs || {},
     demandQueueParallel: Boolean(panel.demandQueueParallel),
     maxConcurrentTasks: concurrencyLimit(),
+    // Claude Code: compact cold, large sessions before resuming (on by default).
+    coldCompact: require("./cold-compact").normalizeSettings(panel.coldCompact),
     subagents: readPanelSubagentDefaults(),
     judge: getJudgeSettings(),
     byok: {
@@ -1101,6 +1103,11 @@ function putAgentSettings(body = {}) {
     if (Number.isFinite(parsed) && parsed > 0) {
       config.panel.maxConcurrentTasks = Math.min(Math.floor(parsed), 32);
     }
+  }
+
+  if (body.coldCompact && typeof body.coldCompact === "object") {
+    const { normalizeSettings } = require("./cold-compact");
+    config.panel.coldCompact = normalizeSettings({ ...prevPanel.coldCompact, ...body.coldCompact });
   }
 
   config.byok = { ...prevByok };

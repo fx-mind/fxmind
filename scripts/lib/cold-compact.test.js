@@ -23,12 +23,13 @@ function assistant(at, tokens, extra = {}) {
 describe("cold-compact", () => {
   let dir;
   let file;
-  const env = { FXMIND_COLD_MINUTES: "60", FXMIND_COLD_TOKENS: "80000" };
+  let env;
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "fxcold-"));
     fs.mkdirSync(path.join(dir, "projects", "-repo"), { recursive: true });
     file = path.join(dir, "projects", "-repo", "abc-123.jsonl");
+    env = { FXMIND_PANEL_CONFIG: path.join(dir, "panel.json") };
   });
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
@@ -64,6 +65,17 @@ describe("cold-compact", () => {
     assert.match(out.reason, /\/compact/);
     assert.equal(cc.hookDecision({ prompt: "/compact", transcript_path: file }, env), null);
     assert.equal(cc.hookDecision({ prompt: "oi", transcript_path: file }, { ...env, FXMIND_COLD_COMPACT: "0" }), null);
+  });
+
+  it("is on by default and follows the panel setting, env overriding it", () => {
+    fs.writeFileSync(file, assistant(Date.now() - 2 * HOUR, 150000));
+    assert.deepEqual(cc.thresholds(env), { enabled: true, minutes: 60, tokens: 80000 });
+    fs.writeFileSync(env.FXMIND_PANEL_CONFIG, JSON.stringify({ panel: { coldCompact: { enabled: false } } }));
+    assert.equal(cc.hookDecision({ prompt: "continue a tarefa", transcript_path: file }, env), null);
+    assert.equal(cc.thresholds({ ...env, FXMIND_COLD_COMPACT: "1" }).enabled, true);
+    fs.writeFileSync(env.FXMIND_PANEL_CONFIG, JSON.stringify({ panel: { coldCompact: { minutes: 180, tokens: 200000 } } }));
+    assert.equal(cc.evaluate(file, { env }).shouldCompact, false);
+    assert.equal(cc.thresholds({ ...env, FXMIND_COLD_TOKENS: "1000" }).tokens, 1000);
   });
 
   it("finds the transcript by session id", () => {

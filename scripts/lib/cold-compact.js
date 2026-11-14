@@ -13,8 +13,9 @@
  *   cannot trigger /compact inside the running process, so it blocks the
  *   prompt and asks for `/compact` + resend. Fail-open on any error.
  *
- * Env: FXMIND_COLD_COMPACT=0 disables; FXMIND_COLD_MINUTES (default 60);
- * FXMIND_COLD_TOKENS (default 80000).
+ * Config: panel Settings (~/.fxmind/panel.json → panel.coldCompact
+ * {enabled, minutes, tokens}), enabled by default. Env overrides it:
+ * FXMIND_COLD_COMPACT=0|1, FXMIND_COLD_MINUTES (60), FXMIND_COLD_TOKENS (80000).
  */
 
 const fs = require("fs");
@@ -27,12 +28,38 @@ const DEFAULT_COLD_TOKENS = 80000;
 const HOOK_COMMAND = "fxmind cold-compact --hook";
 const TAIL_BYTES = 512 * 1024;
 
-function thresholds(env = process.env) {
-  const minutes = Number(env.FXMIND_COLD_MINUTES);
-  const tokens = Number(env.FXMIND_COLD_TOKENS);
+function positive(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Panel setting as stored, normalized; enabled unless explicitly false. */
+function normalizeSettings(raw) {
+  const value = raw && typeof raw === "object" ? raw : {};
   return {
-    minutes: Number.isFinite(minutes) && minutes > 0 ? minutes : DEFAULT_COLD_MINUTES,
-    tokens: Number.isFinite(tokens) && tokens > 0 ? tokens : DEFAULT_COLD_TOKENS,
+    enabled: value.enabled !== false,
+    minutes: Math.floor(positive(value.minutes) || DEFAULT_COLD_MINUTES),
+    tokens: Math.floor(positive(value.tokens) || DEFAULT_COLD_TOKENS),
+  };
+}
+
+function readPanelSettings(env = process.env) {
+  const file = env.FXMIND_PANEL_CONFIG || path.join(os.homedir(), ".fxmind", "panel.json");
+  try {
+    return normalizeSettings(JSON.parse(fs.readFileSync(file, "utf8"))?.panel?.coldCompact);
+  } catch {
+    return normalizeSettings(null);
+  }
+}
+
+/** Effective config: panel settings, overridden by env. */
+function thresholds(env = process.env) {
+  const panel = readPanelSettings(env);
+  const flag = env.FXMIND_COLD_COMPACT;
+  return {
+    enabled: flag === "0" ? false : flag === "1" ? true : panel.enabled,
+    minutes: positive(env.FXMIND_COLD_MINUTES) || panel.minutes,
+    tokens: positive(env.FXMIND_COLD_TOKENS) || panel.tokens,
   };
 }
 
@@ -136,7 +163,7 @@ function describe(result) {
 
 /** UserPromptSubmit hook output object, or null to let the prompt through. */
 function hookDecision(payload, env = process.env) {
-  if (env.FXMIND_COLD_COMPACT === "0") return null;
+  if (!thresholds(env).enabled) return null;
   const prompt = String(payload?.prompt || "").trim();
   if (prompt.startsWith("/")) return null; // /compact, /clear, ... pass through
   const file = payload?.transcript_path;
@@ -232,7 +259,7 @@ async function runSendCli(argv = [], deps = {}) {
   const childEnv = { ...env, FXMIND_COLD_COMPACT: "0" };
 
   let compact = opts.force;
-  if (!compact && env.FXMIND_COLD_COMPACT !== "0") {
+  if (!compact && thresholds(env).enabled) {
     const file = findTranscript(opts.session, { cwd, env });
     if (file) {
       const result = evaluate(file, { env });
@@ -269,6 +296,10 @@ async function runColdCompactCli(argv = []) {
 
 module.exports = {
   HOOK_COMMAND,
+  DEFAULT_COLD_MINUTES,
+  DEFAULT_COLD_TOKENS,
+  normalizeSettings,
+  readPanelSettings,
   thresholds,
   analyzeTranscript,
   evaluate,
