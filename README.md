@@ -351,7 +351,7 @@ fxmind cold-compact <session-id>   # just report: tokens, idle time, verdict
 
 The Claude hook installed by `fxmind --agent claude` also registers `fxmind cold-compact --hook` (UserPromptSubmit): in an interactive session it blocks the prompt and asks for `/compact` + resend (a hook cannot run `/compact` itself).
 
-**On by default.** Configure in the panel settings (`GET/PUT /api/settings` → `coldCompact: { enabled, minutes, tokens }`, stored in `~/.fxmind/panel.json`). Env overrides the panel: `FXMIND_COLD_COMPACT=0|1`, `FXMIND_COLD_MINUTES`, `FXMIND_COLD_TOKENS`, `FXMIND_CLAUDE_BIN`.
+**On by default.** Configure in the panel settings (`GET/PUT /api/settings/agent` → `coldCompact: { enabled, minutes, tokens }`, stored in `~/.fxmind/panel.json`). Env overrides the panel: `FXMIND_COLD_COMPACT=0|1`, `FXMIND_COLD_MINUTES`, `FXMIND_COLD_TOKENS`, `FXMIND_CLAUDE_BIN`.
 
 ## Hooks (Cursor)
 
