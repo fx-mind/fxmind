@@ -1,0 +1,10 @@
+{
+  "name": "fxmind-cold-compact",
+  "version": "0.1.0",
+  "description": "fxmind: compacts a cold session with a large context before the next prompt runs, then continues it.",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "FXMIND"
+  },
+  "license": "MIT"
+}
